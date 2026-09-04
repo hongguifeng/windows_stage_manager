@@ -53,7 +53,7 @@
 
 - [x] M6-01 实现 SetWindowPos 应用、内部事件抑制和后验验证。commit: 255c1cb
 - [x] M6-02 实现应用拒绝移动、窗口销毁和新事务抢占处理。commit: 54712ee
-- [x] M7-01 完成两窗口 DryRun 到真实移动的闭环和验收场景。commit: pending
+- [x] M7-01 完成两窗口 DryRun 到真实移动的闭环和验收场景。commit: d93a759
 
 ## 第四迭代：多窗口稳定性与发布
 
