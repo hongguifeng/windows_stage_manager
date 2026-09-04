@@ -140,13 +140,12 @@ std::optional<Region> Region::from_disjoint(
             return std::nullopt;
         }
         region.rectangles_.push_back(rectangle);
-        canonicalize(region.rectangles_);
-        if (region.rectangles_.size() > maximum_rectangles) {
-            return std::nullopt;
-        }
     }
 
     canonicalize(region.rectangles_);
+    if (region.rectangles_.size() > maximum_rectangles) {
+        return std::nullopt;
+    }
     return region;
 }
 
@@ -196,6 +195,13 @@ std::optional<Rect> Region::bounds() const noexcept
         result.bottom = std::max(result.bottom, rectangle.bottom);
     }
     return result;
+}
+
+bool Region::contains(Point point) const noexcept
+{
+    return std::any_of(rectangles_.begin(), rectangles_.end(), [point](const auto& rectangle) {
+        return rectangle.contains(point);
+    });
 }
 
 RegionOperationResult unite(const Region& left,

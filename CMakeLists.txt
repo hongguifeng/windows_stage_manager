@@ -181,4 +181,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_region_tests)
     target_link_libraries(stage_manager_region_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_region COMMAND stage_manager_region_tests)
+
+    add_executable(stage_manager_geometry_property_tests
+        tests/geometry_property_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_geometry_property_tests)
+    target_link_libraries(stage_manager_geometry_property_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_geometry_property COMMAND stage_manager_geometry_property_tests)
 endif()

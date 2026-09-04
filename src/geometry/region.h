@@ -27,6 +27,7 @@ public:
     std::size_t size() const noexcept;
     std::uint64_t area() const noexcept;
     std::optional<Rect> bounds() const noexcept;
+    bool contains(Point point) const noexcept;
 
 private:
     std::vector<Rect> rectangles_;

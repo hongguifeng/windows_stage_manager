@@ -44,7 +44,7 @@
 
 - [x] M4-01 实现 Rect、Region、DIP 转换和工作区边界。commit: 6e65c10
 - [x] M4-02 实现交互区、union/subtract 和命中采样模型。commit: 4b23821
-- [ ] M4-03 完成几何单元测试和属性测试。commit: 
+- [x] M4-03 完成几何单元测试和属性测试。commit: pending
 - [ ] M5-01 实现 LayoutSnapshot、Violation 和候选生成。commit: 
 - [ ] M5-02 实现硬约束过滤、软代价和确定性排序。commit: 
 - [ ] M5-03 实现模拟求解、状态哈希、超时和无解结果。commit: 
