@@ -33,6 +33,7 @@ stage_manager_target_defaults(stage_manager_core)
 
 add_executable(stage_manager WIN32
     src/app/main.cpp
+    src/app/app_lifecycle.cpp
 )
 
 if(WIN32)

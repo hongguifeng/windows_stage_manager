@@ -1,10 +1,13 @@
 #ifdef _WIN32
 
+#include "app/app_lifecycle.h"
+
 #include <windows.h>
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command)
 {
-    return 0;
+    stage_manager::app::AppLifecycle lifecycle;
+    return lifecycle.run(instance, show_command);
 }
 
 #else
@@ -15,4 +18,3 @@ int main()
 }
 
 #endif
-

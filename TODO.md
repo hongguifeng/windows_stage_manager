@@ -20,11 +20,11 @@
 
 - [x] M0-01 初始化 CMake/C++20 工程、Debug/Release 构建和测试 runner。commit: 4ba5d0d
 - [x] M0-02 增加 Windows 应用清单、Per-Monitor DPI Awareness V2 和编译警告基线。commit: ccc4bf0
-- [x] M0-03 增加统一配置、错误码、结构化日志和版本信息。commit: pending
+- [x] M0-03 增加统一配置、错误码、结构化日志和版本信息。commit: c787fa5
 
 ### M1 托盘进程与生命周期
 
-- [ ] M1-01 实现 WinMain、单实例互斥体、隐藏消息窗口和安全退出。commit: 
+- [x] M1-01 实现 WinMain、单实例互斥体、隐藏消息窗口和安全退出。commit: pending
 - [ ] M1-02 实现托盘图标、启用/暂停状态和紧急停用快捷键。commit: 
 - [ ] M1-03 实现配置持久化、DryRun 默认策略和显示器/DPI 变化通知。commit: 
 
