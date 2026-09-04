@@ -26,6 +26,7 @@ endfunction()
 add_library(stage_manager_core STATIC
     src/app/settings.cpp
     src/diagnostics/logger.cpp
+    src/window/event_queue.cpp
 )
 
 target_include_directories(stage_manager_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -68,4 +69,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_core_tests)
     target_link_libraries(stage_manager_core_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_core COMMAND stage_manager_core_tests)
+
+    add_executable(stage_manager_event_queue_tests
+        tests/event_queue_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_event_queue_tests)
+    target_link_libraries(stage_manager_event_queue_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_event_queue COMMAND stage_manager_event_queue_tests)
 endif()
