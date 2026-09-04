@@ -26,12 +26,12 @@
 
 - [x] M1-01 实现 WinMain、单实例互斥体、隐藏消息窗口和安全退出。commit: 4ece360
 - [x] M1-02 实现托盘图标、启用/暂停状态和紧急停用快捷键。commit: 64079ae
-- [x] M1-03 实现配置持久化、DryRun 默认策略和显示器/DPI 变化通知。commit: pending
+- [x] M1-03 实现配置持久化、DryRun 默认策略和显示器/DPI 变化通知。commit: 43709fc
 
 ### M2 WinEvent 事件管线
 
-- [x] M2-01 实现有界事件队列、事件类型和值对象及单元测试。commit: pending
-- [ ] M2-02 实现 OUTOFCONTEXT WinEvent hook、对象过滤和 HookThread 消息循环。commit: 
+- [x] M2-01 实现有界事件队列、事件类型和值对象及单元测试。commit: c528346
+- [x] M2-02 实现 OUTOFCONTEXT WinEvent hook、对象过滤和 HookThread 消息循环。commit: pending
 - [ ] M2-03 实现事件合并、周期 reconciliation 请求和内部移动令牌接口。commit: 
 
 ### M3 窗口发现、分类、身份和检查工具
