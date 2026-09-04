@@ -32,7 +32,7 @@
 
 - [x] M2-01 实现有界事件队列、事件类型和值对象及单元测试。commit: c528346
 - [x] M2-02 实现 OUTOFCONTEXT WinEvent hook、对象过滤和 HookThread 消息循环。commit: 70cb5ed
-- [x] M2-03 实现事件合并、周期 reconciliation 请求和内部移动令牌接口。commit: pending
+- [x] M2-03 实现事件合并、周期 reconciliation 请求和内部移动令牌接口。commit: cdcb3e0
 
 ### M3 窗口发现、分类、身份和检查工具
 
