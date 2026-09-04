@@ -25,6 +25,8 @@ struct WindowKey {
     NativeWindowHandle hwnd = 0;
     std::uint32_t processId = 0;
     std::uint64_t instanceGeneration = 0;
+
+    constexpr bool operator==(const WindowKey&) const noexcept = default;
 };
 
 enum class SnapshotRefreshReason : std::uint8_t {

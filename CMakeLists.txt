@@ -33,6 +33,8 @@ add_library(stage_manager_core STATIC
     src/geometry/work_area.cpp
     src/geometry/interaction_zones.cpp
     src/geometry/hit_testing.cpp
+    src/solver/visibility_analyzer.cpp
+    src/solver/candidate_generator.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
@@ -189,4 +191,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_geometry_property_tests)
     target_link_libraries(stage_manager_geometry_property_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_geometry_property COMMAND stage_manager_geometry_property_tests)
+
+    add_executable(stage_manager_candidate_tests
+        tests/candidate_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_candidate_tests)
+    target_link_libraries(stage_manager_candidate_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_candidate COMMAND stage_manager_candidate_tests)
 endif()
