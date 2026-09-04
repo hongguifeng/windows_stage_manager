@@ -1,5 +1,7 @@
 #include "window/window_classifier.h"
 
+#include "geometry/dpi.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -33,11 +35,6 @@ bool is_system_ui(std::wstring_view class_name)
     };
     return std::find(std::begin(kSystemClasses), std::end(kSystemClasses), class_name) !=
         std::end(kSystemClasses);
-}
-
-std::int64_t dip_to_pixels(std::uint32_t dip, std::uint32_t dpi)
-{
-    return (static_cast<std::int64_t>(dip) * dpi + 95) / 96;
 }
 
 bool has_owned_window(const WindowSnapshot& snapshot,
@@ -105,8 +102,8 @@ ClassificationResult ConservativeWindowClassifier::classify(
     const auto height = static_cast<std::int64_t>(snapshot.placementRect.bottom) -
         snapshot.placementRect.top;
     if (!snapshot.placementRect.valid() ||
-        width < dip_to_pixels(settings_.minOnscreenWidthDip, snapshot.dpi) ||
-        height < dip_to_pixels(settings_.minOnscreenHeightDip, snapshot.dpi)) {
+        width < geometry::scale_dip_ceil(settings_.minOnscreenWidthDip, snapshot.dpi) ||
+        height < geometry::scale_dip_ceil(settings_.minOnscreenHeightDip, snapshot.dpi)) {
         return unmanaged(UnmanagedReason::TooSmall);
     }
 

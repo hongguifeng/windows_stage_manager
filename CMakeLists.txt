@@ -27,6 +27,10 @@ endfunction()
 add_library(stage_manager_core STATIC
     src/app/settings.cpp
     src/diagnostics/logger.cpp
+    src/geometry/rect.cpp
+    src/geometry/region.cpp
+    src/geometry/dpi.cpp
+    src/geometry/work_area.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
@@ -150,4 +154,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_snapshot_report_tests)
     target_link_libraries(stage_manager_snapshot_report_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_snapshot_report COMMAND stage_manager_snapshot_report_tests)
+
+    add_executable(stage_manager_geometry_core_tests
+        tests/geometry_core_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_geometry_core_tests)
+    target_link_libraries(stage_manager_geometry_core_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_geometry_core COMMAND stage_manager_geometry_core_tests)
 endif()

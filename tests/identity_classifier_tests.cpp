@@ -144,6 +144,13 @@ int main()
     too_small.placementRect = {0, 0, 50, 50};
     CHECK(has_reason(classifier, too_small, UnmanagedReason::TooSmall));
 
+    auto scaled_boundary = normal;
+    scaled_boundary.dpi = 144;
+    scaled_boundary.placementRect = {0, 0, 150, 150};
+    CHECK(classifier.classify(scaled_boundary).managed());
+    scaled_boundary.placementRect.right = 149;
+    CHECK(has_reason(classifier, scaled_boundary, UnmanagedReason::TooSmall));
+
     auto owner = make_snapshot(40);
     auto owned = make_snapshot(41);
     owned.ownerHwnd = owner.key.hwnd;
