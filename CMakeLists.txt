@@ -28,6 +28,9 @@ add_library(stage_manager_core STATIC
     src/app/settings.cpp
     src/diagnostics/logger.cpp
     src/window/event_queue.cpp
+    src/window/event_coalescer.cpp
+    src/window/reconcile_scheduler.cpp
+    src/window/internal_move_tracker.cpp
     src/platform/win32/win_event_hook.cpp
 )
 
@@ -102,4 +105,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
         target_link_libraries(stage_manager_win_event_tests PRIVATE stage_manager_core user32)
         add_test(NAME stage_manager_win_event COMMAND stage_manager_win_event_tests)
     endif()
+
+    add_executable(stage_manager_event_pipeline_tests
+        tests/event_pipeline_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_event_pipeline_tests)
+    target_link_libraries(stage_manager_event_pipeline_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_event_pipeline COMMAND stage_manager_event_pipeline_tests)
 endif()
