@@ -51,7 +51,7 @@
 
 ## 第三迭代：真实窗口应用与 MVP
 
-- [x] M6-01 实现 SetWindowPos 应用、内部事件抑制和后验验证。commit: pending
+- [x] M6-01 实现 SetWindowPos 应用、内部事件抑制和后验验证。commit: 255c1cb
 - [ ] M6-02 实现应用拒绝移动、窗口销毁和新事务抢占处理。commit: 
 - [ ] M7-01 完成两窗口 DryRun 到真实移动的闭环和验收场景。commit: 
 
