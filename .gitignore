@@ -1,0 +1,21 @@
+# CMake and compiler output
+/build/
+/out/
+/cmake-build-*/
+
+# Visual Studio
+/.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Runtime data
+/logs/
+/crash-dumps/
+/local-config/
+
+# Test and packaging output
+/artifacts/
+/coverage/
+
