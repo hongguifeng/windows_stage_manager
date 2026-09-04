@@ -15,7 +15,7 @@ option(STAGE_MANAGER_BUILD_TESTS "Build unit and smoke tests" ON)
 function(stage_manager_target_defaults target)
     target_compile_features(${target} PRIVATE cxx_std_20)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_compile_definitions(${target} PRIVATE UNICODE _UNICODE)
+    target_compile_definitions(${target} PRIVATE UNICODE _UNICODE NOMINMAX)
 
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /WX)
@@ -31,6 +31,8 @@ add_library(stage_manager_core STATIC
     src/geometry/region.cpp
     src/geometry/dpi.cpp
     src/geometry/work_area.cpp
+    src/geometry/interaction_zones.cpp
+    src/geometry/hit_testing.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
@@ -39,6 +41,7 @@ add_library(stage_manager_core STATIC
     src/window/window_classifier.cpp
     src/window/snapshot_report.cpp
     src/platform/win32/window_provider.cpp
+    src/platform/win32/hit_tester.cpp
     src/platform/win32/win_event_hook.cpp
 )
 
@@ -137,6 +140,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
         stage_manager_target_defaults(stage_manager_identity_classifier_tests)
         target_link_libraries(stage_manager_identity_classifier_tests PRIVATE stage_manager_core user32)
         add_test(NAME stage_manager_identity_classifier COMMAND stage_manager_identity_classifier_tests)
+
+        add_executable(stage_manager_hit_testing_tests
+            tests/hit_testing_tests.cpp
+        )
+
+        stage_manager_target_defaults(stage_manager_hit_testing_tests)
+        target_link_libraries(stage_manager_hit_testing_tests PRIVATE stage_manager_core user32)
+        add_test(NAME stage_manager_hit_testing COMMAND stage_manager_hit_testing_tests)
     endif()
 
     add_executable(stage_manager_event_pipeline_tests
@@ -162,4 +173,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_geometry_core_tests)
     target_link_libraries(stage_manager_geometry_core_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_geometry_core COMMAND stage_manager_geometry_core_tests)
+
+    add_executable(stage_manager_region_tests
+        tests/region_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_region_tests)
+    target_link_libraries(stage_manager_region_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_region COMMAND stage_manager_region_tests)
 endif()

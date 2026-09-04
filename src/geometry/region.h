@@ -9,6 +9,12 @@
 
 namespace stage_manager::geometry {
 
+enum class RegionStatus : std::uint8_t {
+    Ok,
+    InvalidInput,
+    TooComplex,
+};
+
 class Region final {
 public:
     Region() = default;
@@ -25,5 +31,25 @@ public:
 private:
     std::vector<Rect> rectangles_;
 };
+
+struct RegionOperationResult {
+    RegionStatus status = RegionStatus::Ok;
+    Region region;
+
+    constexpr bool succeeded() const noexcept
+    {
+        return status == RegionStatus::Ok;
+    }
+};
+
+RegionOperationResult unite(const Region& left,
+                            const Region& right,
+                            std::size_t maximum_rectangles = 1024);
+RegionOperationResult subtract(const Region& source,
+                               const Region& blockers,
+                               std::size_t maximum_rectangles = 1024);
+RegionOperationResult intersect(const Region& left,
+                                const Region& right,
+                                std::size_t maximum_rectangles = 1024);
 
 } // namespace stage_manager::geometry

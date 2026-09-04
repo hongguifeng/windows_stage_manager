@@ -3,8 +3,123 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 namespace stage_manager::geometry {
+namespace {
+
+void sort_rectangles(std::vector<Rect>& rectangles)
+{
+    std::sort(rectangles.begin(), rectangles.end(), [](const auto& left, const auto& right) {
+        if (left.top != right.top) {
+            return left.top < right.top;
+        }
+        if (left.left != right.left) {
+            return left.left < right.left;
+        }
+        if (left.bottom != right.bottom) {
+            return left.bottom < right.bottom;
+        }
+        return left.right < right.right;
+    });
+}
+
+bool try_merge(const Rect& left, const Rect& right, Rect& merged)
+{
+    if (left.top == right.top && left.bottom == right.bottom && left.right == right.left) {
+        merged = {left.left, left.top, right.right, left.bottom};
+        return true;
+    }
+    if (left.left == right.left && left.right == right.right && left.bottom == right.top) {
+        merged = {left.left, left.top, left.right, right.bottom};
+        return true;
+    }
+    return false;
+}
+
+void canonicalize(std::vector<Rect>& rectangles)
+{
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        sort_rectangles(rectangles);
+        for (std::size_t left_index = 0; left_index < rectangles.size() && !changed;
+             ++left_index) {
+            for (std::size_t right_index = left_index + 1; right_index < rectangles.size();
+                 ++right_index) {
+                Rect merged;
+                if (!try_merge(rectangles[left_index], rectangles[right_index], merged)) {
+                    continue;
+                }
+                rectangles[left_index] = merged;
+                rectangles.erase(rectangles.begin() + static_cast<std::ptrdiff_t>(right_index));
+                changed = true;
+                break;
+            }
+        }
+    }
+    sort_rectangles(rectangles);
+}
+
+void append_if_not_empty(std::vector<Rect>& output, const Rect& rectangle)
+{
+    if (!rectangle.empty()) {
+        output.push_back(rectangle);
+    }
+}
+
+std::vector<Rect> subtract_rectangle(const Rect& source, const Rect& blocker)
+{
+    const auto overlap = source.intersection(blocker);
+    if (!overlap) {
+        return {source};
+    }
+
+    std::vector<Rect> result;
+    result.reserve(4);
+    append_if_not_empty(result, {source.left, source.top, source.right, overlap->top});
+    append_if_not_empty(result, {source.left, overlap->bottom, source.right, source.bottom});
+    append_if_not_empty(result, {source.left, overlap->top, overlap->left, overlap->bottom});
+    append_if_not_empty(result, {overlap->right, overlap->top, source.right, overlap->bottom});
+    return result;
+}
+
+RegionOperationResult make_result(std::vector<Rect> rectangles, std::size_t maximum_rectangles)
+{
+    canonicalize(rectangles);
+    if (rectangles.size() > maximum_rectangles) {
+        return {RegionStatus::TooComplex, {}};
+    }
+    auto region = Region::from_disjoint(rectangles, maximum_rectangles);
+    if (!region) {
+        return {RegionStatus::InvalidInput, {}};
+    }
+    return {RegionStatus::Ok, std::move(*region)};
+}
+
+RegionOperationResult subtract_rectangles(std::vector<Rect> pieces,
+                                          std::span<const Rect> blockers,
+                                          std::size_t maximum_rectangles)
+{
+    for (const auto& blocker : blockers) {
+        std::vector<Rect> next;
+        for (const auto& piece : pieces) {
+            auto fragments = subtract_rectangle(piece, blocker);
+            next.insert(next.end(), fragments.begin(), fragments.end());
+        }
+        canonicalize(next);
+        if (next.size() > maximum_rectangles) {
+            return {RegionStatus::TooComplex, {}};
+        }
+        pieces = std::move(next);
+        if (pieces.empty()) {
+            break;
+        }
+    }
+    return make_result(std::move(pieces), maximum_rectangles);
+}
+
+} // namespace
 
 std::optional<Region> Region::from_disjoint(
     std::span<const Rect> rectangles, std::size_t maximum_rectangles)
@@ -18,9 +133,6 @@ std::optional<Region> Region::from_disjoint(
         if (rectangle.empty()) {
             continue;
         }
-        if (region.rectangles_.size() == maximum_rectangles) {
-            return std::nullopt;
-        }
         if (std::any_of(region.rectangles_.begin(), region.rectangles_.end(),
                         [&rectangle](const auto& existing) {
                             return existing.intersects(rectangle);
@@ -28,21 +140,13 @@ std::optional<Region> Region::from_disjoint(
             return std::nullopt;
         }
         region.rectangles_.push_back(rectangle);
+        canonicalize(region.rectangles_);
+        if (region.rectangles_.size() > maximum_rectangles) {
+            return std::nullopt;
+        }
     }
 
-    std::sort(region.rectangles_.begin(), region.rectangles_.end(), [](const auto& left,
-                                                                       const auto& right) {
-        if (left.top != right.top) {
-            return left.top < right.top;
-        }
-        if (left.left != right.left) {
-            return left.left < right.left;
-        }
-        if (left.bottom != right.bottom) {
-            return left.bottom < right.bottom;
-        }
-        return left.right < right.right;
-    });
+    canonicalize(region.rectangles_);
     return region;
 }
 
@@ -92,6 +196,55 @@ std::optional<Rect> Region::bounds() const noexcept
         result.bottom = std::max(result.bottom, rectangle.bottom);
     }
     return result;
+}
+
+RegionOperationResult unite(const Region& left,
+                            const Region& right,
+                            std::size_t maximum_rectangles)
+{
+    std::vector<Rect> result = left.rectangles();
+    if (result.size() > maximum_rectangles) {
+        return {RegionStatus::TooComplex, {}};
+    }
+    for (const auto& rectangle : right.rectangles()) {
+        const auto uncovered = subtract_rectangles(
+            {rectangle}, std::span<const Rect>(result), maximum_rectangles);
+        if (!uncovered.succeeded()) {
+            return uncovered;
+        }
+        result.insert(result.end(),
+                      uncovered.region.rectangles().begin(),
+                      uncovered.region.rectangles().end());
+        canonicalize(result);
+        if (result.size() > maximum_rectangles) {
+            return {RegionStatus::TooComplex, {}};
+        }
+    }
+    return make_result(std::move(result), maximum_rectangles);
+}
+
+RegionOperationResult subtract(const Region& source,
+                               const Region& blockers,
+                               std::size_t maximum_rectangles)
+{
+    return subtract_rectangles(source.rectangles(), blockers.rectangles(), maximum_rectangles);
+}
+
+RegionOperationResult intersect(const Region& left,
+                                const Region& right,
+                                std::size_t maximum_rectangles)
+{
+    std::vector<Rect> intersections;
+    for (const auto& left_rectangle : left.rectangles()) {
+        for (const auto& right_rectangle : right.rectangles()) {
+            const auto overlap = left_rectangle.intersection(right_rectangle);
+            if (!overlap) {
+                continue;
+            }
+            intersections.push_back(*overlap);
+        }
+    }
+    return make_result(std::move(intersections), maximum_rectangles);
 }
 
 } // namespace stage_manager::geometry
