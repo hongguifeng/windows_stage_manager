@@ -15,6 +15,14 @@ enum class TrayAction {
     Exit,
 };
 
+enum class TrayStatus {
+    Running,
+    Paused,
+    Unsatisfiable,
+    ApiError,
+    Rebuilding,
+};
+
 class TrayController final {
 public:
     TrayController() = default;
@@ -27,6 +35,8 @@ public:
     void shutdown();
     void set_enabled(bool enabled);
     bool enabled() const noexcept;
+    void set_status(TrayStatus status);
+    TrayStatus status() const noexcept;
 
     TrayAction handle_callback(LPARAM event);
     TrayAction handle_command(WPARAM command);
@@ -43,10 +53,10 @@ private:
     NOTIFYICONDATAW icon_data_{};
     bool installed_ = false;
     bool enabled_ = true;
+    TrayStatus status_ = TrayStatus::Running;
     std::wstring tooltip_;
 };
 
 } // namespace stage_manager::app
 
 #endif
-

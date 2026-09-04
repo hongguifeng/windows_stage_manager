@@ -5,12 +5,16 @@
 #include "diagnostics/logger.h"
 #include "app/version.h"
 
+#include <algorithm>
+#include <chrono>
 #include <string>
+#include <vector>
 
 namespace stage_manager::app {
 
 AppLifecycle::~AppLifecycle()
 {
+    stop_window_manager();
     unregister_emergency_hotkey();
     tray_.shutdown();
     destroy_message_window();
@@ -31,17 +35,22 @@ int AppLifecycle::run(HINSTANCE instance, int)
     }
     settings_path_ = default_settings_path();
     settings_ = load_settings(settings_path_);
-    enabled_ = settings_.enabled;
-    dry_run_ = settings_.dryRun;
+    enabled_.store(settings_.enabled);
+    dry_run_.store(settings_.dryRun);
     diagnostics::Logger::instance().initialize(default_log_path());
     diagnostics::Logger::instance().log(
         diagnostics::LogLevel::Info,
         "application_start",
-        {{"version", kVersion}, {"dry_run", dry_run_ ? "true" : "false"}});
-    if (!tray_.initialize(message_window_, enabled_)) {
+        {{"version", kVersion}, {"dry_run", dry_run_.load() ? "true" : "false"}});
+    if (!tray_.initialize(message_window_, enabled_.load())) {
         return 1;
     }
     register_emergency_hotkey();
+    if (!start_window_manager()) {
+        tray_.set_status(TrayStatus::ApiError);
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Error, "window_manager_start_failed");
+    }
 
     MSG message{};
     while (true) {
@@ -59,12 +68,12 @@ int AppLifecycle::run(HINSTANCE instance, int)
 
 bool AppLifecycle::enabled() const noexcept
 {
-    return enabled_;
+    return enabled_.load();
 }
 
 bool AppLifecycle::dry_run() const noexcept
 {
-    return dry_run_;
+    return dry_run_.load();
 }
 
 std::uint64_t AppLifecycle::environment_generation() const noexcept
@@ -159,11 +168,17 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
         return 0;
     case WM_HOTKEY:
         if (w_param == 1) {
-            enabled_ = false;
-            settings_.enabled = enabled_;
+            enabled_.store(false);
+            if (move_guard_ != nullptr) {
+                move_guard_->cancel();
+            }
+            settings_.enabled = false;
             tray_.set_enabled(false);
             persist_settings();
         }
+        return 0;
+    case kCoordinatorStatusMessage:
+        update_runtime_status(static_cast<window::MvpBatchStatus>(w_param));
         return 0;
     case WM_DISPLAYCHANGE:
         mark_environment_changed("display_change");
@@ -178,6 +193,7 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
         request_exit();
         return 0;
     case WM_DESTROY:
+        stop_window_manager();
         unregister_emergency_hotkey();
         tray_.shutdown();
         PostQuitMessage(0);
@@ -199,15 +215,127 @@ void AppLifecycle::handle_tray_action(TrayAction action)
 {
     switch (action) {
     case TrayAction::ToggleEnabled:
-        enabled_ = !enabled_;
-        settings_.enabled = enabled_;
-        tray_.set_enabled(enabled_);
+        enabled_.store(!enabled_.load());
+        if (!enabled_.load() && move_guard_ != nullptr) {
+            move_guard_->cancel();
+        }
+        settings_.enabled = enabled_.load();
+        tray_.set_enabled(enabled_.load());
         persist_settings();
         return;
     case TrayAction::Exit:
         request_exit();
         return;
     case TrayAction::None:
+        return;
+    }
+}
+
+bool AppLifecycle::start_window_manager()
+{
+    event_queue_ = std::make_unique<window::EventQueue>(4096);
+    raw_provider_ = std::make_unique<platform::win32::Win32WindowProvider>();
+    identities_ = std::make_unique<window::WindowIdentityTracker>();
+    provider_ = std::make_unique<window::TrackingWindowProvider>(*raw_provider_, *identities_);
+    internal_moves_ = std::make_unique<window::InternalMoveTracker>();
+    move_guard_ = std::make_unique<window::MoveTransactionGuard>();
+    move_failures_ = std::make_unique<window::MoveFailureTracker>();
+    mover_ = std::make_unique<platform::win32::Win32WindowMover>();
+    move_applier_ = std::make_unique<window::VerifiedMoveApplier>(
+        *mover_, *provider_, *internal_moves_, move_guard_.get(), move_failures_.get());
+    coordinator_ = std::make_unique<window::MvpCoordinator>(
+        *provider_,
+        *move_applier_,
+        *move_guard_,
+        *internal_moves_,
+        window::ConservativeWindowClassifier(settings_),
+        settings_);
+    event_hook_ = std::make_unique<platform::win32::WinEventHook>(*event_queue_);
+    if (!event_hook_->start()) {
+        stop_window_manager();
+        return false;
+    }
+    coordinator_stop_.store(false);
+    coordinator_thread_ = std::thread(&AppLifecycle::coordinator_loop, this);
+    return true;
+}
+
+void AppLifecycle::stop_window_manager()
+{
+    coordinator_stop_.store(true);
+    if (event_queue_ != nullptr) {
+        event_queue_->close();
+    }
+    if (event_hook_ != nullptr) {
+        event_hook_->stop();
+    }
+    if (coordinator_thread_.joinable()) {
+        coordinator_thread_.join();
+    }
+    coordinator_.reset();
+    move_applier_.reset();
+    mover_.reset();
+    move_failures_.reset();
+    move_guard_.reset();
+    internal_moves_.reset();
+    provider_.reset();
+    identities_.reset();
+    raw_provider_.reset();
+    event_hook_.reset();
+    event_queue_.reset();
+}
+
+void AppLifecycle::coordinator_loop()
+{
+    using namespace std::chrono_literals;
+    std::uint64_t observed_drops = 0;
+    while (!coordinator_stop_.load()) {
+        window::WindowEvent first;
+        if (!event_queue_->wait_pop(first, 50ms)) {
+            continue;
+        }
+        std::vector<window::WindowEvent> events = {first};
+        const auto coalesce_window = std::min(settings_.eventCoalesceWindowMs, 100u);
+        std::this_thread::sleep_for(std::chrono::milliseconds(coalesce_window));
+        auto remaining = event_queue_->drain();
+        events.insert(events.end(), remaining.begin(), remaining.end());
+        const auto dropped = event_queue_->dropped_count();
+        if (dropped != observed_drops) {
+            observed_drops = dropped;
+            events.push_back({window::WindowEventType::HookError, 0, 0, 0, 0});
+        }
+        const auto result = coordinator_->process(
+            events, enabled_.load(), dry_run_.load());
+        if (message_window_ != nullptr) {
+            PostMessageW(message_window_,
+                         kCoordinatorStatusMessage,
+                         static_cast<WPARAM>(result.status),
+                         0);
+        }
+    }
+}
+
+void AppLifecycle::update_runtime_status(window::MvpBatchStatus status)
+{
+    switch (status) {
+    case window::MvpBatchStatus::Disabled:
+        tray_.set_status(TrayStatus::Paused);
+        return;
+    case window::MvpBatchStatus::Unsatisfiable:
+    case window::MvpBatchStatus::Suspended:
+        tray_.set_status(TrayStatus::Unsatisfiable);
+        return;
+    case window::MvpBatchStatus::ApiError:
+        tray_.set_status(TrayStatus::ApiError);
+        return;
+    case window::MvpBatchStatus::Rebuilding:
+        tray_.set_status(TrayStatus::Rebuilding);
+        return;
+    case window::MvpBatchStatus::Idle:
+    case window::MvpBatchStatus::Dragging:
+    case window::MvpBatchStatus::DryRun:
+    case window::MvpBatchStatus::Applied:
+        tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
         return;
     }
 }

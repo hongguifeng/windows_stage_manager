@@ -1,0 +1,243 @@
+#include "window/mvp_coordinator.h"
+#include "window/tracking_window_provider.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <optional>
+#include <vector>
+
+#define CHECK(condition)                                                                  \
+    do {                                                                                  \
+        if (!(condition)) {                                                               \
+            std::fprintf(stderr, "check failed: %s (line %d)\n", #condition, __LINE__); \
+            return 1;                                                                     \
+        }                                                                                 \
+    } while (false)
+
+namespace {
+
+stage_manager::window::WindowSnapshot make_window(std::uintptr_t hwnd,
+                                                   stage_manager::window::PixelRect rectangle,
+                                                   std::int32_t z_index)
+{
+    stage_manager::window::WindowSnapshot window;
+    window.key = {hwnd, static_cast<std::uint32_t>(hwnd + 100), 0};
+    window.rootHwnd = hwnd;
+    window.className = L"MvpCoordinatorTestWindow";
+    window.placementRect = rectangle;
+    window.visualRect = rectangle;
+    window.workArea = {0, 0, 1000, 700};
+    window.monitor = 1;
+    window.dpi = 96;
+    window.style = 1;
+    window.visible = true;
+    window.currentDesktop = true;
+    window.zIndex = z_index;
+    window.zOrderKnown = true;
+    return window;
+}
+
+class FakeDesktop final : public stage_manager::window::IWindowProvider,
+                          public stage_manager::window::IWindowMover {
+public:
+    stage_manager::window::WindowSnapshotBatch capture(
+        stage_manager::window::SnapshotRefreshReason reason) override
+    {
+        ++captureCalls;
+        if (switchMonitorAtCapture && captureCalls == *switchMonitorAtCapture) {
+            const auto iterator = std::find_if(windows.begin(), windows.end(), [this](const auto& item) {
+                return item.key.hwnd == switchMonitorWindow;
+            });
+            if (iterator != windows.end()) {
+                iterator->monitor = 2;
+                iterator->workArea = {1000, 0, 2000, 700};
+            }
+        }
+        stage_manager::window::WindowSnapshotBatch result;
+        result.version = static_cast<std::uint64_t>(captureCalls);
+        result.reason = reason;
+        result.status = stage_manager::window::SnapshotStatus::Ok;
+        result.complete = true;
+        result.windows = windows;
+        return result;
+    }
+
+    stage_manager::window::NativeMoveResult move(
+        const stage_manager::window::WindowKey& key,
+        const stage_manager::geometry::Rect& destination) override
+    {
+        ++moveCalls;
+        const auto iterator = std::find_if(windows.begin(), windows.end(), [&key](const auto& item) {
+            return item.key.hwnd == key.hwnd && item.key.processId == key.processId;
+        });
+        if (iterator == windows.end()) {
+            return {stage_manager::window::NativeMoveStatus::InvalidWindow, 1400};
+        }
+        const auto width = iterator->placementRect.right - iterator->placementRect.left;
+        const auto height = iterator->placementRect.bottom - iterator->placementRect.top;
+        iterator->placementRect = {
+            static_cast<std::int32_t>(destination.left),
+            static_cast<std::int32_t>(destination.top),
+            static_cast<std::int32_t>(destination.left + width),
+            static_cast<std::int32_t>(destination.top + height),
+        };
+        iterator->visualRect = iterator->placementRect;
+        return {stage_manager::window::NativeMoveStatus::Moved, 0};
+    }
+
+    std::vector<stage_manager::window::WindowSnapshot> windows;
+    std::optional<int> switchMonitorAtCapture;
+    std::uintptr_t switchMonitorWindow = 0;
+    int captureCalls = 0;
+    int moveCalls = 0;
+};
+
+stage_manager::app::Settings test_settings()
+{
+    stage_manager::app::Settings settings;
+    settings.maxSolveTimeMs = 1000;
+    return settings;
+}
+
+struct MvpFixture {
+    FakeDesktop desktop;
+    stage_manager::window::WindowIdentityTracker identities;
+    stage_manager::window::TrackingWindowProvider provider;
+    stage_manager::window::InternalMoveTracker internalMoves;
+    stage_manager::window::MoveTransactionGuard guard;
+    stage_manager::window::MoveFailureTracker failures;
+    stage_manager::app::Settings settings;
+    stage_manager::window::VerifiedMoveApplier applier;
+    stage_manager::window::MvpCoordinator coordinator;
+
+    MvpFixture()
+        : provider(desktop, identities),
+          settings(test_settings()),
+          applier(desktop, provider, internalMoves, &guard, &failures),
+          coordinator(provider,
+                      applier,
+                      guard,
+                      internalMoves,
+                      stage_manager::window::ConservativeWindowClassifier(settings),
+                      settings)
+    {
+    }
+};
+
+std::vector<stage_manager::window::WindowEvent> drag_events(std::uintptr_t active)
+{
+    using stage_manager::window::WindowEventType;
+    return {
+        {WindowEventType::MoveSizeStart, active, 1, 100, 1},
+        {WindowEventType::LocationChange, active, 1, 101, 2},
+        {WindowEventType::LocationChange, active, 1, 102, 3},
+        {WindowEventType::MoveSizeEnd, active, 1, 103, 4},
+    };
+}
+
+} // namespace
+
+int main()
+{
+    using stage_manager::solver::SolveStatus;
+    using stage_manager::window::MvpBatchStatus;
+    using stage_manager::window::MvpSuspendReason;
+    using stage_manager::window::WindowEvent;
+    using stage_manager::window::WindowEventType;
+
+    MvpFixture dry;
+    dry.desktop.windows = {
+        make_window(1, {100, 100, 400, 400}, 0),
+        make_window(2, {100, 100, 400, 400}, 1),
+        make_window(3, {700, 100, 950, 350}, 2),
+    };
+    const auto dry_result = dry.coordinator.process(drag_events(1), true, true);
+    CHECK(dry_result.status == MvpBatchStatus::DryRun);
+    CHECK(dry_result.solve.status == SolveStatus::Solved);
+    CHECK(dry_result.solve.moves.size() == 1);
+    CHECK(dry_result.solve.moves[0].window.hwnd == 2);
+    CHECK(dry_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
+    CHECK(dry.desktop.moveCalls == 0);
+    CHECK(dry_result.events.inputCount == 4);
+    CHECK(dry_result.events.coalescedLocationCount == 1);
+
+    MvpFixture live;
+    live.desktop.windows = dry.desktop.windows;
+    const auto live_result = live.coordinator.process(drag_events(1), true, false);
+    CHECK(live_result.status == MvpBatchStatus::Applied);
+    CHECK(live_result.apply.status == stage_manager::window::MoveApplyStatus::Applied);
+    CHECK(live.desktop.moveCalls == 1);
+    CHECK(live_result.apply.appliedMoves.size() == 1);
+    CHECK(live.internalMoves.find(2).has_value());
+    const std::vector<WindowEvent> internal_location = {
+        {WindowEventType::LocationChange, 2, 1, 110, 5},
+    };
+    const auto internal_result = live.coordinator.process(internal_location, true, false);
+    CHECK(internal_result.status == MvpBatchStatus::Applied);
+    CHECK(live.desktop.moveCalls == 1);
+    CHECK(!live.internalMoves.find(2).has_value());
+
+    MvpFixture crossed;
+    crossed.desktop.windows = dry.desktop.windows;
+    crossed.desktop.switchMonitorAtCapture = 2;
+    crossed.desktop.switchMonitorWindow = 1;
+    const auto crossed_result = crossed.coordinator.process(drag_events(1), true, true);
+    CHECK(crossed_result.status == MvpBatchStatus::Suspended);
+    CHECK(crossed_result.reason == MvpSuspendReason::ActiveMonitorChanged);
+    CHECK(crossed.desktop.moveCalls == 0);
+
+    MvpFixture maximized;
+    maximized.desktop.windows = dry.desktop.windows;
+    maximized.desktop.windows[0].zoomed = true;
+    const auto maximized_result = maximized.coordinator.process(drag_events(1), true, true);
+    CHECK(maximized_result.status == MvpBatchStatus::Suspended);
+    CHECK(maximized_result.reason == MvpSuspendReason::ActiveWindowUnavailable);
+    CHECK(maximized.desktop.moveCalls == 0);
+
+    MvpFixture disabled;
+    disabled.desktop.windows = dry.desktop.windows;
+    const auto disabled_result = disabled.coordinator.process(drag_events(1), false, false);
+    CHECK(disabled_result.status == MvpBatchStatus::Disabled);
+    CHECK(disabled.desktop.captureCalls == 0);
+    CHECK(disabled.desktop.moveCalls == 0);
+
+    MvpFixture rebuilding;
+    rebuilding.desktop.windows = dry.desktop.windows;
+    const std::vector<WindowEvent> hook_error = {
+        {WindowEventType::HookError, 0, 0, 100, 1},
+    };
+    const auto rebuilding_result = rebuilding.coordinator.process(hook_error, true, true);
+    CHECK(rebuilding_result.status == MvpBatchStatus::Rebuilding);
+    CHECK(rebuilding_result.reason == MvpSuspendReason::None);
+    CHECK(rebuilding.desktop.captureCalls == 1);
+    const auto rebuilt_idle = rebuilding.coordinator.process({}, true, true);
+    CHECK(rebuilt_idle.status == MvpBatchStatus::Idle);
+    CHECK(rebuilding.desktop.moveCalls == 0);
+
+    FakeDesktop identity_desktop;
+    identity_desktop.windows = {make_window(50, {10, 10, 210, 210}, 0)};
+    stage_manager::window::WindowIdentityTracker identities;
+    stage_manager::window::TrackingWindowProvider identity_provider(identity_desktop, identities);
+    const auto first_identity = identity_provider.capture(
+        stage_manager::window::SnapshotRefreshReason::Initial);
+    const auto second_identity = identity_provider.capture(
+        stage_manager::window::SnapshotRefreshReason::Event);
+    CHECK(first_identity.windows[0].key.instanceGeneration != 0);
+    CHECK(second_identity.windows[0].key == first_identity.windows[0].key);
+    identity_provider.handle_event({WindowEventType::Destroy, 50, 0, 0, 0});
+    const auto recreated = identity_provider.capture(
+        stage_manager::window::SnapshotRefreshReason::Event);
+    CHECK(recreated.windows[0].key.instanceGeneration !=
+          first_identity.windows[0].key.instanceGeneration);
+
+    MvpFixture recreated_during_flow;
+    recreated_during_flow.desktop.windows = dry.desktop.windows;
+    const std::vector<WindowEvent> destroyed = {
+        {WindowEventType::Destroy, 2, 1, 100, 1},
+    };
+    static_cast<void>(recreated_during_flow.coordinator.process(destroyed, true, true));
+    const auto identity_after_destroy = recreated_during_flow.provider.capture(
+        stage_manager::window::SnapshotRefreshReason::Event);
+    CHECK(identity_after_destroy.windows[1].key.instanceGeneration != 0);
+    return 0;
+}

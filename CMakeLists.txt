@@ -44,6 +44,8 @@ add_library(stage_manager_core STATIC
     src/window/internal_move_tracker.cpp
     src/window/move_applier.cpp
     src/window/move_transaction.cpp
+    src/window/mvp_coordinator.cpp
+    src/window/tracking_window_provider.cpp
     src/window/window_identity.cpp
     src/window/window_classifier.cpp
     src/window/snapshot_report.cpp
@@ -230,6 +232,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_move_applier_tests)
     target_link_libraries(stage_manager_move_applier_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_move_applier COMMAND stage_manager_move_applier_tests)
+
+    add_executable(stage_manager_mvp_coordinator_tests
+        tests/mvp_coordinator_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_mvp_coordinator_tests)
+    target_link_libraries(stage_manager_mvp_coordinator_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_mvp_coordinator COMMAND stage_manager_mvp_coordinator_tests)
 
     if(WIN32)
         add_executable(stage_manager_win32_window_mover_tests

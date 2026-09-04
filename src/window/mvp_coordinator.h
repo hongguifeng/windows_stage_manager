@@ -1,0 +1,81 @@
+#pragma once
+
+#include "app/settings.h"
+#include "solver/layout_solver.h"
+#include "window/event_coalescer.h"
+#include "window/move_applier.h"
+#include "window/move_transaction.h"
+#include "window/window_classifier.h"
+#include "window/window_provider.h"
+
+#include <cstdint>
+#include <optional>
+#include <span>
+
+namespace stage_manager::window {
+
+enum class MvpBatchStatus : std::uint8_t {
+    Disabled,
+    Idle,
+    Dragging,
+    DryRun,
+    Applied,
+    Unsatisfiable,
+    Suspended,
+    ApiError,
+    Rebuilding,
+};
+
+enum class MvpSuspendReason : std::uint8_t {
+    None,
+    SnapshotUnavailable,
+    ActiveWindowUnavailable,
+    ActiveMonitorChanged,
+    NoManagedPeer,
+    SolverFailure,
+    ApplyFailure,
+};
+
+struct MvpBatchResult {
+    MvpBatchStatus status = MvpBatchStatus::Idle;
+    MvpSuspendReason reason = MvpSuspendReason::None;
+    std::uint64_t transactionId = 0;
+    std::uint64_t layoutGeneration = 0;
+    CoalescedBatch events;
+    solver::SolveResult solve;
+    MoveApplyResult apply;
+};
+
+class MvpCoordinator final {
+public:
+    MvpCoordinator(IWindowProvider& provider,
+                   IMoveApplier& applier,
+                   MoveTransactionGuard& guard,
+                   InternalMoveTracker& internal_moves,
+                   ConservativeWindowClassifier classifier,
+                   app::Settings settings = {});
+
+    MvpBatchResult process(std::span<const WindowEvent> events,
+                           bool enabled,
+                           bool dry_run);
+    MvpBatchStatus status() const noexcept;
+
+private:
+    std::optional<WindowSnapshotBatch> capture(SnapshotRefreshReason reason);
+    MvpBatchResult settle(bool dry_run, CoalescedBatch events);
+
+    IWindowProvider& provider_;
+    IMoveApplier& applier_;
+    MoveTransactionGuard& guard_;
+    InternalMoveTracker& internal_moves_;
+    ConservativeWindowClassifier classifier_;
+    app::Settings settings_;
+    EventCoalescer coalescer_;
+    MvpBatchStatus status_ = MvpBatchStatus::Idle;
+    NativeWindowHandle active_window_ = 0;
+    NativeMonitorHandle starting_monitor_ = 0;
+    std::uint64_t next_transaction_id_ = 0;
+    std::uint64_t layout_generation_ = 0;
+};
+
+} // namespace stage_manager::window

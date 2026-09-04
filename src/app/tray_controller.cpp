@@ -19,6 +19,7 @@ bool TrayController::initialize(HWND owner, bool enabled)
 
     owner_ = owner;
     enabled_ = enabled;
+    status_ = enabled ? TrayStatus::Running : TrayStatus::Paused;
     icon_data_ = {};
     icon_data_.cbSize = sizeof(icon_data_);
     icon_data_.hWnd = owner_;
@@ -52,10 +53,26 @@ void TrayController::shutdown()
 void TrayController::set_enabled(bool enabled)
 {
     enabled_ = enabled;
+    status_ = enabled ? TrayStatus::Running : TrayStatus::Paused;
     update_tooltip();
     if (installed_) {
         Shell_NotifyIconW(NIM_MODIFY, &icon_data_);
     }
+}
+
+void TrayController::set_status(TrayStatus status)
+{
+    status_ = status;
+    enabled_ = status != TrayStatus::Paused;
+    update_tooltip();
+    if (installed_) {
+        Shell_NotifyIconW(NIM_MODIFY, &icon_data_);
+    }
+}
+
+TrayStatus TrayController::status() const noexcept
+{
+    return status_;
 }
 
 bool TrayController::enabled() const noexcept
@@ -114,12 +131,26 @@ void TrayController::show_context_menu()
 
 void TrayController::update_tooltip()
 {
-    tooltip_ = enabled_ ? L"Windows Stage Manager (enabled)"
-                        : L"Windows Stage Manager (paused)";
+    switch (status_) {
+    case TrayStatus::Running:
+        tooltip_ = L"Windows Stage Manager (running)";
+        break;
+    case TrayStatus::Paused:
+        tooltip_ = L"Windows Stage Manager (paused)";
+        break;
+    case TrayStatus::Unsatisfiable:
+        tooltip_ = L"Windows Stage Manager (no layout)";
+        break;
+    case TrayStatus::ApiError:
+        tooltip_ = L"Windows Stage Manager (API error)";
+        break;
+    case TrayStatus::Rebuilding:
+        tooltip_ = L"Windows Stage Manager (rebuilding)";
+        break;
+    }
     wcsncpy_s(icon_data_.szTip, tooltip_.c_str(), _TRUNCATE);
 }
 
 } // namespace stage_manager::app
 
 #endif
-
