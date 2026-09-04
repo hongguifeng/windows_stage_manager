@@ -1,8 +1,10 @@
 #pragma once
 
 #include "window/window_event.h"
+#include "window/window_snapshot.h"
 
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 
 namespace stage_manager::window {
@@ -11,12 +13,18 @@ struct InternalMoveToken {
     std::uintptr_t hwnd = 0;
     std::uint64_t generation = 0;
     std::uint64_t transactionId = 0;
+    std::uint64_t layoutGeneration = 0;
+    PixelRect expectedPlacementRect;
 };
 
 class InternalMoveTracker final {
 public:
-    InternalMoveToken begin(std::uintptr_t hwnd, std::uint64_t transaction_id);
+    InternalMoveToken begin(std::uintptr_t hwnd,
+                            std::uint64_t transaction_id,
+                            std::uint64_t layout_generation = 0,
+                            PixelRect expected_placement_rect = {});
     bool matches(const WindowEvent& event) const;
+    std::optional<InternalMoveToken> find(std::uintptr_t hwnd) const;
     bool complete(const InternalMoveToken& token);
     void cancel(std::uintptr_t hwnd);
     void clear();

@@ -42,10 +42,12 @@ add_library(stage_manager_core STATIC
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
+    src/window/move_applier.cpp
     src/window/window_identity.cpp
     src/window/window_classifier.cpp
     src/window/snapshot_report.cpp
     src/platform/win32/window_provider.cpp
+    src/platform/win32/window_mover.cpp
     src/platform/win32/hit_tester.cpp
     src/platform/win32/win_event_hook.cpp
 )
@@ -218,4 +220,22 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_layout_solver_tests)
     target_link_libraries(stage_manager_layout_solver_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_layout_solver COMMAND stage_manager_layout_solver_tests)
+
+    add_executable(stage_manager_move_applier_tests
+        tests/move_applier_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_move_applier_tests)
+    target_link_libraries(stage_manager_move_applier_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_move_applier COMMAND stage_manager_move_applier_tests)
+
+    if(WIN32)
+        add_executable(stage_manager_win32_window_mover_tests
+            tests/win32_window_mover_tests.cpp
+        )
+
+        stage_manager_target_defaults(stage_manager_win32_window_mover_tests)
+        target_link_libraries(stage_manager_win32_window_mover_tests PRIVATE stage_manager_core user32)
+        add_test(NAME stage_manager_win32_window_mover COMMAND stage_manager_win32_window_mover_tests)
+    endif()
 endif()

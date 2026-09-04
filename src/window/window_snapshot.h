@@ -55,6 +55,7 @@ enum class SnapshotField : std::uint32_t {
     CurrentDesktop = 1u << 7,
     ZOrder = 1u << 8,
     ClassName = 1u << 9,
+    Style = 1u << 10,
 };
 
 constexpr std::uint32_t field_bit(SnapshotField field) noexcept

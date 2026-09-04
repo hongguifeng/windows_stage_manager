@@ -143,6 +143,7 @@ int main()
     CHECK(first_snapshot->zOrderKnown);
     CHECK(owned_snapshot->zOrderKnown);
     CHECK((owner_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
+    CHECK((owner_snapshot->queryFailures & field_bit(SnapshotField::Style)) == 0);
     CHECK((first_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
     CHECK((owned_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
     CHECK(owner_snapshot->currentDesktop ||

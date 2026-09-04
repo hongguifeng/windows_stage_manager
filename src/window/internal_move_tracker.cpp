@@ -3,14 +3,26 @@
 namespace stage_manager::window {
 
 InternalMoveToken InternalMoveTracker::begin(
-    std::uintptr_t hwnd, std::uint64_t transaction_id)
+    std::uintptr_t hwnd,
+    std::uint64_t transaction_id,
+    std::uint64_t layout_generation,
+    PixelRect expected_placement_rect)
 {
     InternalMoveToken token;
     token.hwnd = hwnd;
     token.generation = ++next_generation_;
     token.transactionId = transaction_id;
+    token.layoutGeneration = layout_generation;
+    token.expectedPlacementRect = expected_placement_rect;
     active_[hwnd] = token;
     return token;
+}
+
+std::optional<InternalMoveToken> InternalMoveTracker::find(std::uintptr_t hwnd) const
+{
+    const auto iterator = active_.find(hwnd);
+    return iterator == active_.end() ? std::nullopt
+                                    : std::optional<InternalMoveToken>(iterator->second);
 }
 
 bool InternalMoveTracker::matches(const WindowEvent& event) const

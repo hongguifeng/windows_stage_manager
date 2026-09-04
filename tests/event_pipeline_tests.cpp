@@ -65,13 +65,20 @@ int main()
     assert(clamped_scheduler.due(1));
 
     InternalMoveTracker tracker;
-    const auto token = tracker.begin(10, 42);
+    const auto token = tracker.begin(10, 42, 7, {100, 120, 300, 320});
     assert(token.hwnd == 10);
     assert(token.transactionId == 42);
+    assert(token.layoutGeneration == 7);
+    assert(token.expectedPlacementRect.left == 100);
+    assert(token.expectedPlacementRect.top == 120);
+    assert(token.expectedPlacementRect.right == 300);
+    assert(token.expectedPlacementRect.bottom == 320);
+    assert(tracker.find(10).has_value());
     assert(tracker.matches({WindowEventType::LocationChange, 10, 0, 0, 0}));
     assert(!tracker.matches({WindowEventType::Hide, 10, 0, 0, 0}));
     assert(!tracker.matches({WindowEventType::LocationChange, 20, 0, 0, 0}));
     assert(tracker.complete(token));
+    assert(!tracker.find(10).has_value());
     assert(!tracker.matches({WindowEventType::LocationChange, 10, 0, 0, 0}));
     assert(!tracker.complete(token));
 

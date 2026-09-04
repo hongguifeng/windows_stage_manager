@@ -128,8 +128,19 @@ WindowSnapshot read_snapshot(HWND hwnd,
         snapshot.queryFailures |= stage_manager::window::field_bit(SnapshotField::Session);
     }
 
-    snapshot.style = static_cast<std::uint32_t>(GetWindowLongPtrW(hwnd, GWL_STYLE));
-    snapshot.exStyle = static_cast<std::uint32_t>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE));
+    SetLastError(ERROR_SUCCESS);
+    const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    if (style == 0 && GetLastError() != ERROR_SUCCESS) {
+        snapshot.queryFailures |= stage_manager::window::field_bit(SnapshotField::Style);
+    }
+    snapshot.style = static_cast<std::uint32_t>(style);
+
+    SetLastError(ERROR_SUCCESS);
+    const auto extended_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if (extended_style == 0 && GetLastError() != ERROR_SUCCESS) {
+        snapshot.queryFailures |= stage_manager::window::field_bit(SnapshotField::Style);
+    }
+    snapshot.exStyle = static_cast<std::uint32_t>(extended_style);
     snapshot.topmost = (snapshot.exStyle & WS_EX_TOPMOST) != 0;
 
     RECT placement{};
