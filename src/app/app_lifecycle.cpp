@@ -2,7 +2,10 @@
 
 #ifdef _WIN32
 
+#include "diagnostics/logger.h"
 #include "app/version.h"
+
+#include <string>
 
 namespace stage_manager::app {
 
@@ -17,6 +20,7 @@ AppLifecycle::~AppLifecycle()
     if (instance_mutex_ != nullptr) {
         CloseHandle(instance_mutex_);
     }
+    diagnostics::Logger::instance().shutdown();
 }
 
 int AppLifecycle::run(HINSTANCE instance, int)
@@ -25,6 +29,15 @@ int AppLifecycle::run(HINSTANCE instance, int)
     if (!acquire_single_instance() || !register_window_class() || !create_message_window()) {
         return 1;
     }
+    settings_path_ = default_settings_path();
+    settings_ = load_settings(settings_path_);
+    enabled_ = settings_.enabled;
+    dry_run_ = settings_.dryRun;
+    diagnostics::Logger::instance().initialize(default_log_path());
+    diagnostics::Logger::instance().log(
+        diagnostics::LogLevel::Info,
+        "application_start",
+        {{"version", kVersion}, {"dry_run", dry_run_ ? "true" : "false"}});
     if (!tray_.initialize(message_window_, enabled_)) {
         return 1;
     }
@@ -42,6 +55,21 @@ int AppLifecycle::run(HINSTANCE instance, int)
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+}
+
+bool AppLifecycle::enabled() const noexcept
+{
+    return enabled_;
+}
+
+bool AppLifecycle::dry_run() const noexcept
+{
+    return dry_run_;
+}
+
+std::uint64_t AppLifecycle::environment_generation() const noexcept
+{
+    return environment_generation_;
 }
 
 bool AppLifecycle::acquire_single_instance()
@@ -132,8 +160,19 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
     case WM_HOTKEY:
         if (w_param == 1) {
             enabled_ = false;
+            settings_.enabled = enabled_;
             tray_.set_enabled(false);
+            persist_settings();
         }
+        return 0;
+    case WM_DISPLAYCHANGE:
+        mark_environment_changed("display_change");
+        return 0;
+    case WM_SETTINGCHANGE:
+        mark_environment_changed("setting_change");
+        return 0;
+    case WM_DPICHANGED:
+        mark_environment_changed("dpi_change");
         return 0;
     case WM_CLOSE:
         request_exit();
@@ -161,7 +200,9 @@ void AppLifecycle::handle_tray_action(TrayAction action)
     switch (action) {
     case TrayAction::ToggleEnabled:
         enabled_ = !enabled_;
+        settings_.enabled = enabled_;
         tray_.set_enabled(enabled_);
+        persist_settings();
         return;
     case TrayAction::Exit:
         request_exit();
@@ -183,6 +224,23 @@ void AppLifecycle::unregister_emergency_hotkey()
         UnregisterHotKey(message_window_, 1);
     }
     emergency_hotkey_registered_ = false;
+}
+
+void AppLifecycle::mark_environment_changed(const char* reason)
+{
+    ++environment_generation_;
+    diagnostics::Logger::instance().log(
+        diagnostics::LogLevel::Debug,
+        "environment_changed",
+        {{"generation", std::to_string(environment_generation_)}, {"reason", reason}});
+}
+
+void AppLifecycle::persist_settings()
+{
+    if (!settings_path_.empty() && !save_settings(settings_, settings_path_)) {
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Warning, "settings_save_failed", {{"path", settings_path_.string()}});
+    }
 }
 
 } // namespace stage_manager::app
