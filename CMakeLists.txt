@@ -36,6 +36,8 @@ add_library(stage_manager_core STATIC
     src/solver/visibility_analyzer.cpp
     src/solver/candidate_generator.cpp
     src/solver/candidate_ranker.cpp
+    src/solver/layout_hash.cpp
+    src/solver/layout_solver.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
@@ -208,4 +210,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_candidate_ranker_tests)
     target_link_libraries(stage_manager_candidate_ranker_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_candidate_ranker COMMAND stage_manager_candidate_ranker_tests)
+
+    add_executable(stage_manager_layout_solver_tests
+        tests/layout_solver_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_layout_solver_tests)
+    target_link_libraries(stage_manager_layout_solver_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_layout_solver COMMAND stage_manager_layout_solver_tests)
 endif()

@@ -44,7 +44,7 @@ ViolationScanResult scan_visibility_violations(
         if (!target.managed || !target.visible || !target.currentDesktop) {
             continue;
         }
-        if (target.zIndex < 0 || target.visualRect.empty()) {
+        if (target.zIndex < 0 || target.visualRect.empty() || target.workArea.empty()) {
             result.status = ViolationScanStatus::InvalidSnapshot;
             result.violations.clear();
             return result;
@@ -56,8 +56,17 @@ ViolationScanResult scan_visibility_violations(
             target.visualRect, requirements.minimumExposedDepth);
         for (const auto& zone : zones) {
             const auto zone_region = region_of(zone.bounds, requirements.maximumRegionRectangles);
-            if (!zone_region) {
+            const auto work_region = region_of(
+                target.workArea, requirements.maximumRegionRectangles);
+            if (!zone_region || !work_region) {
                 result.status = ViolationScanStatus::InvalidSnapshot;
+                result.violations.clear();
+                return result;
+            }
+            const auto clipped_zone = geometry::intersect(
+                *zone_region, *work_region, requirements.maximumRegionRectangles);
+            if (!clipped_zone.succeeded()) {
+                result.status = ViolationScanStatus::GeometryTooComplex;
                 result.violations.clear();
                 return result;
             }
@@ -96,7 +105,7 @@ ViolationScanResult scan_visibility_violations(
             }
 
             const auto exposed = geometry::subtract(
-                *zone_region, blocker_region, requirements.maximumRegionRectangles);
+                clipped_zone.region, blocker_region, requirements.maximumRegionRectangles);
             if (!exposed.succeeded()) {
                 result.status = ViolationScanStatus::GeometryTooComplex;
                 result.violations.clear();

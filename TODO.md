@@ -47,7 +47,7 @@
 - [x] M4-03 完成几何单元测试和属性测试。commit: 2d5dd78
 - [x] M5-01 实现 LayoutSnapshot、Violation 和候选生成。commit: 9edf826
 - [x] M5-02 实现硬约束过滤、软代价和确定性排序。commit: 5b4e955
-- [ ] M5-03 实现模拟求解、状态哈希、超时和无解结果。commit: 
+- [x] M5-03 实现模拟求解、状态哈希、超时和无解结果。commit: pending
 
 ## 第三迭代：真实窗口应用与 MVP
 

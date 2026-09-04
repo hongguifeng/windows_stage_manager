@@ -1,0 +1,208 @@
+#include "solver/candidate_ranker.h"
+#include "solver/layout_hash.h"
+#include "solver/layout_solver.h"
+#include "solver/visibility_analyzer.h"
+
+#include <cstdio>
+#include <vector>
+
+#define CHECK(condition)                                                                  \
+    do {                                                                                  \
+        if (!(condition)) {                                                               \
+            std::fprintf(stderr, "check failed: %s (line %d)\n", #condition, __LINE__); \
+            return 1;                                                                     \
+        }                                                                                 \
+    } while (false)
+
+namespace {
+
+stage_manager::solver::LayoutWindow make_window(std::uintptr_t hwnd,
+                                                 stage_manager::geometry::Rect rectangle,
+                                                 std::int32_t z_index,
+                                                 bool managed)
+{
+    stage_manager::solver::LayoutWindow window;
+    window.key = {hwnd, static_cast<std::uint32_t>(hwnd), hwnd};
+    window.placementRect = rectangle;
+    window.visualRect = rectangle;
+    window.workArea = {0, 0, 500, 500};
+    window.lastStableRect = rectangle;
+    window.monitor = 1;
+    window.zIndex = z_index;
+    window.managed = managed;
+    window.movable = managed;
+    window.visible = true;
+    window.blocksVisibility = true;
+    window.currentDesktop = true;
+    return window;
+}
+
+stage_manager::solver::SolverPolicy make_policy()
+{
+    stage_manager::solver::SolverPolicy policy;
+    policy.ranking.visibility = {48, 24, 128};
+    policy.ranking.minimumOnscreenWidth = 100;
+    policy.ranking.minimumOnscreenHeight = 100;
+    policy.ranking.activeWindowIndex = 0;
+    policy.ranking.preferredEdge = stage_manager::geometry::Edge::Left;
+    policy.limits.maximumMoves = 8;
+    policy.limits.maximumStates = 512;
+    policy.limits.maximumElapsedMs = 1000;
+    policy.limits.maximumCandidatesPerViolation = 128;
+    policy.repairTargetLength = 64;
+    return policy;
+}
+
+class IncrementingClock final : public stage_manager::solver::ISolverClock {
+public:
+    explicit IncrementingClock(std::uint64_t step)
+        : step_(step)
+    {
+    }
+
+    std::uint64_t now_ms() override
+    {
+        const auto value = current_;
+        current_ += step_;
+        return value;
+    }
+
+private:
+    std::uint64_t current_ = 0;
+    std::uint64_t step_ = 0;
+};
+
+} // namespace
+
+int main()
+{
+    using stage_manager::geometry::Rect;
+    using stage_manager::solver::CandidateSource;
+    using stage_manager::solver::HardConstraintFailure;
+    using stage_manager::solver::LayoutSnapshot;
+    using stage_manager::solver::PlacementCandidate;
+    using stage_manager::solver::SolveStatus;
+    using stage_manager::solver::hash_layout;
+    using stage_manager::solver::rank_candidates;
+    using stage_manager::solver::scan_visibility_violations;
+    using stage_manager::solver::solve_layout;
+
+    auto policy = make_policy();
+
+    LayoutSnapshot valid;
+    valid.version = 1;
+    valid.windows = {
+        make_window(1, {100, 100, 300, 300}, 0, false),
+        make_window(2, {320, 100, 480, 300}, 1, true),
+    };
+    const auto no_violation = solve_layout(valid, policy);
+    CHECK(no_violation.status == SolveStatus::NoViolation);
+    CHECK(no_violation.moves.empty());
+    CHECK(no_violation.statesVisited == 1);
+    CHECK(no_violation.finalState == hash_layout(valid));
+
+    LayoutSnapshot covered;
+    covered.version = 2;
+    covered.windows = {
+        make_window(1, {100, 100, 300, 300}, 0, false),
+        make_window(2, {100, 100, 300, 300}, 1, true),
+    };
+    const auto solved = solve_layout(covered, policy);
+    CHECK(solved.status == SolveStatus::Solved);
+    CHECK(solved.moves.size() == 1);
+    CHECK(solved.moves[0].window == covered.windows[1].key);
+    CHECK((solved.moves[0].from == Rect{100, 100, 300, 300}));
+    CHECK((solved.moves[0].to == Rect{36, 100, 236, 300}));
+    CHECK(scan_visibility_violations(solved.finalSnapshot, policy.ranking.visibility)
+              .violations.empty());
+
+    const auto repeated = solve_layout(covered, policy);
+    CHECK(repeated.status == solved.status);
+    CHECK(repeated.finalState == solved.finalState);
+    CHECK(repeated.moves.size() == solved.moves.size());
+    CHECK(repeated.moves[0].to == solved.moves[0].to);
+
+    LayoutSnapshot chain = covered;
+    chain.windows.push_back(make_window(3, {36, 100, 236, 300}, 2, true));
+    const auto chain_result = solve_layout(chain, policy);
+    CHECK(chain_result.status == SolveStatus::Solved);
+    CHECK(chain_result.moves.size() >= 2);
+    CHECK(chain_result.moves[0].window == chain.windows[1].key);
+    CHECK(chain_result.moves[1].window == chain.windows[2].key);
+    CHECK(scan_visibility_violations(chain_result.finalSnapshot, policy.ranking.visibility)
+              .violations.empty());
+
+    auto active_target_policy = policy;
+    active_target_policy.ranking.activeWindowIndex = 1;
+    const auto unsatisfiable = solve_layout(covered, active_target_policy);
+    CHECK(unsatisfiable.status == SolveStatus::Unsatisfiable);
+    CHECK(unsatisfiable.moves.empty());
+    CHECK(!unsatisfiable.violations.empty());
+    CHECK(!unsatisfiable.candidateRejections.empty());
+    for (const auto& rejection : unsatisfiable.candidateRejections) {
+        CHECK(rejection.window == covered.windows[1].key);
+        CHECK(rejection.failure == HardConstraintFailure::ActiveWindow);
+    }
+    CHECK(unsatisfiable.finalState == hash_layout(covered));
+
+    auto state_limited_policy = policy;
+    state_limited_policy.limits.maximumStates = 1;
+    const auto state_limited = solve_layout(covered, state_limited_policy);
+    CHECK(state_limited.status == SolveStatus::Timeout);
+    CHECK(state_limited.statesVisited == 1);
+    CHECK(state_limited.moves.empty());
+    CHECK(state_limited.finalState == hash_layout(covered));
+
+    IncrementingClock timeout_clock(10);
+    auto timeout_policy = policy;
+    timeout_policy.limits.maximumElapsedMs = 5;
+    const auto timed_out = solve_layout(covered, timeout_policy, &timeout_clock);
+    CHECK(timed_out.status == SolveStatus::Timeout);
+    CHECK(timed_out.elapsedMs >= timeout_policy.limits.maximumElapsedMs);
+    CHECK(timed_out.moves.empty());
+    CHECK(timed_out.finalState == hash_layout(covered));
+
+    auto invalid_policy = policy;
+    invalid_policy.limits.maximumMoves = 0;
+    CHECK(solve_layout(covered, invalid_policy).status == SolveStatus::InvalidSnapshot);
+
+    auto complex = covered;
+    complex.windows[0].placementRect = {100, 175, 124, 225};
+    complex.windows[0].visualRect = complex.windows[0].placementRect;
+    auto complex_policy = policy;
+    complex_policy.ranking.visibility.maximumRegionRectangles = 1;
+    const auto too_complex = solve_layout(complex, complex_policy);
+    CHECK(too_complex.status == SolveStatus::GeometryTooComplex);
+    CHECK(too_complex.moves.empty());
+    CHECK(too_complex.finalState == hash_layout(complex));
+
+    LayoutSnapshot offscreen = covered;
+    offscreen.windows[0].placementRect = {0, 0, 200, 200};
+    offscreen.windows[0].visualRect = offscreen.windows[0].placementRect;
+    offscreen.windows[1].placementRect = {0, 0, 200, 200};
+    offscreen.windows[1].visualRect = offscreen.windows[1].placementRect;
+    offscreen.windows[1].lastStableRect = offscreen.windows[1].placementRect;
+    const auto offscreen_violations = scan_visibility_violations(
+        offscreen, policy.ranking.visibility);
+    CHECK(offscreen_violations.violations.size() == 1);
+    const std::vector<PlacementCandidate> offscreen_only = {
+        {{-64, 0, 136, 200}, -64, 0, CandidateSource::BlockerEdge},
+    };
+    auto intermediate_policy = policy.ranking;
+    intermediate_policy.requireStableLayout = false;
+    const auto clipped_edge = rank_candidates(offscreen,
+                                              offscreen_violations.violations[0],
+                                              offscreen_only,
+                                              intermediate_policy);
+    CHECK(clipped_edge.accepted.empty());
+    CHECK(clipped_edge.rejected.size() == 1);
+    CHECK(clipped_edge.rejected[0].failure == HardConstraintFailure::TargetStillViolated);
+
+    const auto original_hash = hash_layout(covered);
+    auto moved = covered;
+    moved.windows[1].placementRect = {101, 100, 301, 300};
+    moved.windows[1].visualRect = moved.windows[1].placementRect;
+    CHECK(hash_layout(moved) != original_hash);
+    CHECK(hash_layout(covered) == original_hash);
+    return 0;
+}
