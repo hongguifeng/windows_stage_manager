@@ -36,7 +36,7 @@
 
 ### M3 窗口发现、分类、身份和检查工具
 
-- [ ] M3-01 实现窗口枚举、窗口快照、DPI/工作区读取和 DWM 属性读取。commit: 
+- [x] M3-01 实现窗口枚举、窗口快照、DPI/工作区读取和 DWM 属性读取。commit: pending
 - [ ] M3-02 实现 HWND 实例身份、生命周期刷新和保守窗口分类器。commit: 
 - [ ] M3-03 实现当前快照 Z-order、虚拟桌面判断和 window_inspector 工具。commit: 
 

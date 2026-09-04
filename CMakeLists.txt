@@ -31,6 +31,7 @@ add_library(stage_manager_core STATIC
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
+    src/platform/win32/window_provider.cpp
     src/platform/win32/win_event_hook.cpp
 )
 
@@ -53,7 +54,7 @@ stage_manager_target_defaults(stage_manager)
 target_link_libraries(stage_manager PRIVATE stage_manager_core)
 
 if(WIN32)
-    target_link_libraries(stage_manager_core PUBLIC user32)
+    target_link_libraries(stage_manager_core PUBLIC user32 dwmapi ole32)
     target_link_libraries(stage_manager PRIVATE shell32)
     if(MSVC)
         target_link_options(stage_manager PRIVATE /MANIFEST:NO)
@@ -104,6 +105,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
         stage_manager_target_defaults(stage_manager_win_event_tests)
         target_link_libraries(stage_manager_win_event_tests PRIVATE stage_manager_core user32)
         add_test(NAME stage_manager_win_event COMMAND stage_manager_win_event_tests)
+
+        add_executable(stage_manager_window_provider_tests
+            tests/window_provider_tests.cpp
+        )
+
+        stage_manager_target_defaults(stage_manager_window_provider_tests)
+        target_link_libraries(stage_manager_window_provider_tests PRIVATE stage_manager_core user32)
+        add_test(NAME stage_manager_window_provider COMMAND stage_manager_window_provider_tests)
     endif()
 
     add_executable(stage_manager_event_pipeline_tests
