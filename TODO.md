@@ -42,7 +42,7 @@
 
 ## 第二迭代：纯内存几何和求解器
 
-- [x] M4-01 实现 Rect、Region、DIP 转换和工作区边界。commit: pending
+- [x] M4-01 实现 Rect、Region、DIP 转换和工作区边界。commit: 6e65c10
 - [ ] M4-02 实现交互区、union/subtract 和命中采样模型。commit: 
 - [ ] M4-03 完成几何单元测试和属性测试。commit: 
 - [ ] M5-01 实现 LayoutSnapshot、Violation 和候选生成。commit: 
