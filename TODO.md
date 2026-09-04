@@ -18,8 +18,8 @@
 
 ### M0 工程基线
 
-- [x] M0-01 初始化 CMake/C++20 工程、Debug/Release 构建和测试 runner。commit: pending
-- [ ] M0-02 增加 Windows 应用清单、Per-Monitor DPI Awareness V2 和编译警告基线。commit: 
+- [x] M0-01 初始化 CMake/C++20 工程、Debug/Release 构建和测试 runner。commit: 4ba5d0d
+- [x] M0-02 增加 Windows 应用清单、Per-Monitor DPI Awareness V2 和编译警告基线。commit: pending
 - [ ] M0-03 增加统一配置、错误码、结构化日志和版本信息。commit: 
 
 ### M1 托盘进程与生命周期

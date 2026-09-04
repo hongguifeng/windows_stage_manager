@@ -16,6 +16,12 @@ add_executable(stage_manager WIN32
     src/app/main.cpp
 )
 
+if(WIN32)
+    target_sources(stage_manager PRIVATE
+        src/app/resources.rc
+    )
+endif()
+
 target_compile_features(stage_manager PRIVATE cxx_std_20)
 
 if(MSVC)
@@ -45,4 +51,3 @@ if(STAGE_MANAGER_BUILD_TESTS)
 
     add_test(NAME stage_manager_smoke COMMAND stage_manager_smoke_tests)
 endif()
-
