@@ -12,6 +12,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(STAGE_MANAGER_BUILD_TESTS "Build unit and smoke tests" ON)
 
+function(stage_manager_target_defaults target)
+    target_compile_features(${target} PRIVATE cxx_std_20)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /WX)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+endfunction()
+
+add_library(stage_manager_core STATIC
+    src/app/settings.cpp
+    src/diagnostics/logger.cpp
+)
+
+target_include_directories(stage_manager_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+stage_manager_target_defaults(stage_manager_core)
+
 add_executable(stage_manager WIN32
     src/app/main.cpp
 )
@@ -22,13 +41,8 @@ if(WIN32)
     )
 endif()
 
-target_compile_features(stage_manager PRIVATE cxx_std_20)
-
-if(MSVC)
-    target_compile_options(stage_manager PRIVATE /W4 /permissive- /WX)
-else()
-    target_compile_options(stage_manager PRIVATE -Wall -Wextra -Wpedantic -Werror)
-endif()
+stage_manager_target_defaults(stage_manager)
+target_link_libraries(stage_manager PRIVATE stage_manager_core)
 
 if(WIN32)
     target_link_libraries(stage_manager PRIVATE user32)
@@ -41,13 +55,15 @@ if(STAGE_MANAGER_BUILD_TESTS)
         tests/smoke.cpp
     )
 
-    target_compile_features(stage_manager_smoke_tests PRIVATE cxx_std_20)
-
-    if(MSVC)
-        target_compile_options(stage_manager_smoke_tests PRIVATE /W4 /permissive- /WX)
-    else()
-        target_compile_options(stage_manager_smoke_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    endif()
+    stage_manager_target_defaults(stage_manager_smoke_tests)
 
     add_test(NAME stage_manager_smoke COMMAND stage_manager_smoke_tests)
+
+    add_executable(stage_manager_core_tests
+        tests/core_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_core_tests)
+    target_link_libraries(stage_manager_core_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_core COMMAND stage_manager_core_tests)
 endif()
