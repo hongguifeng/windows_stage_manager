@@ -145,6 +145,8 @@ int main()
     CHECK((owner_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
     CHECK((first_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
     CHECK((owned_snapshot->queryFailures & field_bit(SnapshotField::ZOrder)) == 0);
+    CHECK(owner_snapshot->currentDesktop ||
+          (owner_snapshot->queryFailures & field_bit(SnapshotField::CurrentDesktop)) != 0);
 
     SetWindowPos(owner, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     const auto reordered = provider.capture(SnapshotRefreshReason::Event);

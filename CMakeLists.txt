@@ -33,6 +33,7 @@ add_library(stage_manager_core STATIC
     src/window/internal_move_tracker.cpp
     src/window/window_identity.cpp
     src/window/window_classifier.cpp
+    src/window/snapshot_report.cpp
     src/platform/win32/window_provider.cpp
     src/platform/win32/win_event_hook.cpp
 )
@@ -61,6 +62,15 @@ if(WIN32)
     if(MSVC)
         target_link_options(stage_manager PRIVATE /MANIFEST:NO)
     endif()
+endif()
+
+if(WIN32)
+    add_executable(window_inspector
+        src/tools/window_inspector.cpp
+    )
+
+    stage_manager_target_defaults(window_inspector)
+    target_link_libraries(window_inspector PRIVATE stage_manager_core)
 endif()
 
 if(STAGE_MANAGER_BUILD_TESTS)
@@ -132,4 +142,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_event_pipeline_tests)
     target_link_libraries(stage_manager_event_pipeline_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_event_pipeline COMMAND stage_manager_event_pipeline_tests)
+
+    add_executable(stage_manager_snapshot_report_tests
+        tests/snapshot_report_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_snapshot_report_tests)
+    target_link_libraries(stage_manager_snapshot_report_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_snapshot_report COMMAND stage_manager_snapshot_report_tests)
 endif()
