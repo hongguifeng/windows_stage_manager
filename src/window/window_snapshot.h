@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace stage_manager::window {
@@ -51,6 +52,7 @@ enum class SnapshotField : std::uint32_t {
     Cloaked = 1u << 6,
     CurrentDesktop = 1u << 7,
     ZOrder = 1u << 8,
+    ClassName = 1u << 9,
 };
 
 constexpr std::uint32_t field_bit(SnapshotField field) noexcept
@@ -62,6 +64,7 @@ struct WindowSnapshot {
     WindowKey key;
     NativeWindowHandle rootHwnd = 0;
     NativeWindowHandle ownerHwnd = 0;
+    std::wstring className;
 
     PixelRect placementRect;
     PixelRect visualRect;

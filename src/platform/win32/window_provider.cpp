@@ -23,6 +23,17 @@ using stage_manager::window::PixelRect;
 using stage_manager::window::SnapshotField;
 using stage_manager::window::WindowSnapshot;
 
+std::wstring read_class_name(HWND hwnd)
+{
+    std::wstring class_name(256, L'\0');
+    const int length = GetClassNameW(hwnd, class_name.data(), static_cast<int>(class_name.size()));
+    if (length <= 0) {
+        return {};
+    }
+    class_name.resize(static_cast<std::size_t>(length));
+    return class_name;
+}
+
 struct ComScope final {
     HRESULT result = E_FAIL;
     bool shouldUninitialize = false;
@@ -95,6 +106,10 @@ WindowSnapshot read_snapshot(HWND hwnd,
     snapshot.key.hwnd = reinterpret_cast<NativeWindowHandle>(hwnd);
     snapshot.rootHwnd = reinterpret_cast<NativeWindowHandle>(GetAncestor(hwnd, GA_ROOT));
     snapshot.ownerHwnd = reinterpret_cast<NativeWindowHandle>(GetWindow(hwnd, GW_OWNER));
+    snapshot.className = read_class_name(hwnd);
+    if (snapshot.className.empty()) {
+        snapshot.queryFailures |= stage_manager::window::field_bit(SnapshotField::ClassName);
+    }
     snapshot.visible = IsWindowVisible(hwnd) != FALSE;
     snapshot.iconic = IsIconic(hwnd) != FALSE;
     snapshot.zoomed = IsZoomed(hwnd) != FALSE;

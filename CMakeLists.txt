@@ -31,6 +31,8 @@ add_library(stage_manager_core STATIC
     src/window/event_coalescer.cpp
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
+    src/window/window_identity.cpp
+    src/window/window_classifier.cpp
     src/platform/win32/window_provider.cpp
     src/platform/win32/win_event_hook.cpp
 )
@@ -113,6 +115,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
         stage_manager_target_defaults(stage_manager_window_provider_tests)
         target_link_libraries(stage_manager_window_provider_tests PRIVATE stage_manager_core user32)
         add_test(NAME stage_manager_window_provider COMMAND stage_manager_window_provider_tests)
+
+        add_executable(stage_manager_identity_classifier_tests
+            tests/identity_classifier_tests.cpp
+        )
+
+        stage_manager_target_defaults(stage_manager_identity_classifier_tests)
+        target_link_libraries(stage_manager_identity_classifier_tests PRIVATE stage_manager_core user32)
+        add_test(NAME stage_manager_identity_classifier COMMAND stage_manager_identity_classifier_tests)
     endif()
 
     add_executable(stage_manager_event_pipeline_tests
