@@ -13,6 +13,7 @@ struct LayoutWindow {
     geometry::Rect placementRect;
     geometry::Rect visualRect;
     geometry::Rect workArea;
+    geometry::Rect lastStableRect;
     std::uintptr_t monitor = 0;
     std::int32_t zIndex = -1;
     bool managed = false;
