@@ -4,6 +4,8 @@
 
 #include <windows.h>
 
+#include "app/tray_controller.h"
+
 namespace stage_manager::app {
 
 class AppLifecycle final {
@@ -28,10 +30,16 @@ private:
     void destroy_message_window();
     LRESULT handle_message(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
     void request_exit();
+    void handle_tray_action(TrayAction action);
+    void register_emergency_hotkey();
+    void unregister_emergency_hotkey();
 
     HINSTANCE instance_ = nullptr;
     HANDLE instance_mutex_ = nullptr;
     HWND message_window_ = nullptr;
+    TrayController tray_;
+    bool enabled_ = true;
+    bool emergency_hotkey_registered_ = false;
 };
 
 } // namespace stage_manager::app

@@ -24,8 +24,8 @@
 
 ### M1 托盘进程与生命周期
 
-- [x] M1-01 实现 WinMain、单实例互斥体、隐藏消息窗口和安全退出。commit: pending
-- [ ] M1-02 实现托盘图标、启用/暂停状态和紧急停用快捷键。commit: 
+- [x] M1-01 实现 WinMain、单实例互斥体、隐藏消息窗口和安全退出。commit: 4ece360
+- [x] M1-02 实现托盘图标、启用/暂停状态和紧急停用快捷键。commit: pending
 - [ ] M1-03 实现配置持久化、DryRun 默认策略和显示器/DPI 变化通知。commit: 
 
 ### M2 WinEvent 事件管线

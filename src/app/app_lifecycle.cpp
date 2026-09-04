@@ -8,6 +8,8 @@ namespace stage_manager::app {
 
 AppLifecycle::~AppLifecycle()
 {
+    unregister_emergency_hotkey();
+    tray_.shutdown();
     destroy_message_window();
     if (instance_ != nullptr) {
         UnregisterClassW(kMessageWindowClass, instance_);
@@ -23,6 +25,10 @@ int AppLifecycle::run(HINSTANCE instance, int)
     if (!acquire_single_instance() || !register_window_class() || !create_message_window()) {
         return 1;
     }
+    if (!tray_.initialize(message_window_, enabled_)) {
+        return 1;
+    }
+    register_emergency_hotkey();
 
     MSG message{};
     while (true) {
@@ -117,10 +123,24 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
             request_exit();
         }
         return 0;
+    case TrayController::kTrayCallbackMessage:
+        handle_tray_action(tray_.handle_callback(l_param));
+        return 0;
+    case WM_COMMAND:
+        handle_tray_action(tray_.handle_command(w_param));
+        return 0;
+    case WM_HOTKEY:
+        if (w_param == 1) {
+            enabled_ = false;
+            tray_.set_enabled(false);
+        }
+        return 0;
     case WM_CLOSE:
         request_exit();
         return 0;
     case WM_DESTROY:
+        unregister_emergency_hotkey();
+        tray_.shutdown();
         PostQuitMessage(0);
         return 0;
     default:
@@ -134,6 +154,35 @@ void AppLifecycle::request_exit()
         DestroyWindow(message_window_);
         message_window_ = nullptr;
     }
+}
+
+void AppLifecycle::handle_tray_action(TrayAction action)
+{
+    switch (action) {
+    case TrayAction::ToggleEnabled:
+        enabled_ = !enabled_;
+        tray_.set_enabled(enabled_);
+        return;
+    case TrayAction::Exit:
+        request_exit();
+        return;
+    case TrayAction::None:
+        return;
+    }
+}
+
+void AppLifecycle::register_emergency_hotkey()
+{
+    emergency_hotkey_registered_ = RegisterHotKey(
+        message_window_, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_F12) != FALSE;
+}
+
+void AppLifecycle::unregister_emergency_hotkey()
+{
+    if (emergency_hotkey_registered_ && message_window_ != nullptr) {
+        UnregisterHotKey(message_window_, 1);
+    }
+    emergency_hotkey_registered_ = false;
 }
 
 } // namespace stage_manager::app

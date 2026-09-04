@@ -34,6 +34,7 @@ stage_manager_target_defaults(stage_manager_core)
 add_executable(stage_manager WIN32
     src/app/main.cpp
     src/app/app_lifecycle.cpp
+    src/app/tray_controller.cpp
 )
 
 if(WIN32)
@@ -46,7 +47,7 @@ stage_manager_target_defaults(stage_manager)
 target_link_libraries(stage_manager PRIVATE stage_manager_core)
 
 if(WIN32)
-    target_link_libraries(stage_manager PRIVATE user32)
+    target_link_libraries(stage_manager PRIVATE user32 shell32)
 endif()
 
 if(STAGE_MANAGER_BUILD_TESTS)
