@@ -22,8 +22,23 @@ namespace {
 
 constexpr wchar_t kTestClassName[] = L"WindowsStageManager.WindowMoverTestWindow";
 
+struct WindowBehavior {
+    bool rejectMoves = false;
+};
+
 LRESULT CALLBACK test_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 {
+    auto* behavior = reinterpret_cast<WindowBehavior*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(l_param);
+        behavior = static_cast<WindowBehavior*>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(behavior));
+    }
+    if (message == WM_WINDOWPOSCHANGING && behavior != nullptr && behavior->rejectMoves) {
+        auto* position = reinterpret_cast<WINDOWPOS*>(l_param);
+        position->flags |= SWP_NOMOVE;
+        return 0;
+    }
     return DefWindowProcW(window, message, w_param, l_param);
 }
 
@@ -65,6 +80,7 @@ int main()
     using stage_manager::window::InternalMoveTracker;
     using stage_manager::window::MoveApplyOptions;
     using stage_manager::window::MoveApplyStatus;
+    using stage_manager::window::MoveFailureTracker;
     using stage_manager::window::SnapshotRefreshReason;
     using stage_manager::window::VerifiedMoveApplier;
 
@@ -75,6 +91,7 @@ int main()
     const HINSTANCE instance = GetModuleHandleW(nullptr);
     CHECK(instance != nullptr);
     CHECK(register_test_class(instance));
+    WindowBehavior rejecting_behavior;
     const HWND reference = CreateWindowExW(WS_EX_NOACTIVATE,
                                            kTestClassName,
                                            L"Window mover reference",
@@ -99,12 +116,27 @@ int main()
                                         nullptr,
                                         instance,
                                         nullptr);
+    const HWND rejecting = CreateWindowExW(WS_EX_NOACTIVATE,
+                                           kTestClassName,
+                                           L"Window mover rejecting",
+                                           WS_OVERLAPPEDWINDOW,
+                                           740,
+                                           100,
+                                           260,
+                                           180,
+                                           nullptr,
+                                           nullptr,
+                                           instance,
+                                           &rejecting_behavior);
     CHECK(reference != nullptr);
     CHECK(target != nullptr);
+    CHECK(rejecting != nullptr);
     ShowWindow(reference, SW_SHOWNOACTIVATE);
     ShowWindow(target, SW_SHOWNOACTIVATE);
+    ShowWindow(rejecting, SW_SHOWNOACTIVATE);
     UpdateWindow(reference);
     UpdateWindow(target);
+    UpdateWindow(rejecting);
 
     Win32WindowProvider provider;
     const auto before = provider.capture(SnapshotRefreshReason::Manual);
@@ -158,6 +190,30 @@ int main()
     CHECK(GetForegroundWindow() != target);
     CHECK(tracker.find(reinterpret_cast<std::uintptr_t>(target)).has_value());
 
+    const auto reject_before = provider.capture(SnapshotRefreshReason::Manual);
+    const auto* rejecting_snapshot = find_snapshot(reject_before, rejecting);
+    CHECK(rejecting_snapshot != nullptr);
+    stage_manager::solver::MovePlan rejected_plan;
+    rejected_plan.window = rejecting_snapshot->key;
+    rejected_plan.from = to_rect(rejecting_snapshot->placementRect);
+    rejected_plan.to = {rejected_plan.from.left + 40,
+                        rejected_plan.from.top + 30,
+                        rejected_plan.from.right + 40,
+                        rejected_plan.from.bottom + 30};
+    rejecting_behavior.rejectMoves = true;
+    InternalMoveTracker rejecting_tracker;
+    MoveFailureTracker failures;
+    VerifiedMoveApplier rejecting_applier(
+        mover, provider, rejecting_tracker, nullptr, &failures);
+    const std::vector rejected_plans = {rejected_plan};
+    const auto rejected = rejecting_applier.apply(rejected_plans, options);
+    CHECK(rejected.status == MoveApplyStatus::MoveRejected);
+    CHECK(rejected.requiresReconcile);
+    CHECK(rejected.windowFailureCount == 1);
+    CHECK(rejected.transactionNonCooperative);
+    CHECK(failures.is_non_cooperative(options.transactionId, rejected_plan.window));
+
+    DestroyWindow(rejecting);
     DestroyWindow(target);
     DestroyWindow(reference);
     UnregisterClassW(kTestClassName, instance);

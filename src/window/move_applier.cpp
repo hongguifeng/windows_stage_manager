@@ -125,8 +125,14 @@ bool valid_plan(std::span<const solver::MovePlan> plan)
 
 VerifiedMoveApplier::VerifiedMoveApplier(IWindowMover& mover,
                                          IWindowProvider& provider,
-                                         InternalMoveTracker& tracker)
-    : mover_(mover), provider_(provider), tracker_(tracker)
+                                         InternalMoveTracker& tracker,
+                                         const IMoveApplyGuard* guard,
+                                         MoveFailureTracker* failure_tracker)
+    : mover_(mover),
+      provider_(provider),
+      tracker_(tracker),
+      guard_(guard),
+      failure_tracker_(failure_tracker)
 {
 }
 
@@ -143,10 +149,29 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
         result.status = MoveApplyStatus::DryRun;
         return result;
     }
+    const auto cancelled = [this, &options] {
+        return guard_ != nullptr &&
+            !guard_->allows(options.transactionId, options.layoutGeneration);
+    };
+    const auto record_failure = [this, &options, &result](const WindowKey& window) {
+        result.requiresReconcile = true;
+        if (failure_tracker_ != nullptr) {
+            const auto failure = failure_tracker_->record_failure(
+                options.transactionId, window);
+            result.windowFailureCount = failure.count;
+            result.transactionNonCooperative = failure.nonCooperative;
+        }
+    };
+    if (cancelled()) {
+        result.status = MoveApplyStatus::Cancelled;
+        result.requiresReconcile = true;
+        return result;
+    }
 
     auto snapshot = provider_.capture(SnapshotRefreshReason::Event);
     if (!usable_snapshot(snapshot)) {
         result.status = MoveApplyStatus::SnapshotFailed;
+        result.requiresReconcile = true;
         result.finalSnapshot = std::move(snapshot);
         return result;
     }
@@ -156,10 +181,27 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
     for (std::size_t index = 0; index < plan.size(); ++index) {
         result.failedMoveIndex = index;
         const auto& move = plan[index];
+        if (cancelled()) {
+            result.status = MoveApplyStatus::Cancelled;
+            result.requiresReconcile = true;
+            result.finalSnapshot = std::move(snapshot);
+            return result;
+        }
+        if (failure_tracker_ != nullptr && failure_tracker_->is_non_cooperative(
+                options.transactionId, move.window)) {
+            result.status = MoveApplyStatus::NonCooperative;
+            result.windowFailureCount = failure_tracker_->failure_count(
+                options.transactionId, move.window);
+            result.transactionNonCooperative = true;
+            result.requiresReconcile = true;
+            result.finalSnapshot = std::move(snapshot);
+            return result;
+        }
         const auto* before = find_window(snapshot, move.window);
         if (before == nullptr || !usable_window(*before) ||
             !rectangles_match(before->placementRect, move.from, options.positionTolerance)) {
             result.status = MoveApplyStatus::WindowUnavailable;
+            record_failure(move.window);
             result.finalSnapshot = std::move(snapshot);
             return result;
         }
@@ -178,22 +220,39 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
         const auto native_result = mover_.move(move.window, move.to);
         if (native_result.status != NativeMoveStatus::Moved) {
             tracker_.cancel(move.window.hwnd);
-            result.status = MoveApplyStatus::NativeMoveFailed;
+            result.status = native_result.status == NativeMoveStatus::InvalidWindow
+                ? MoveApplyStatus::WindowDestroyed
+                : MoveApplyStatus::NativeMoveFailed;
             result.nativeStatus = native_result.status;
             result.lastError = native_result.lastError;
+            record_failure(move.window);
             result.finalSnapshot = std::move(snapshot);
             return result;
         }
 
         auto after = provider_.capture(SnapshotRefreshReason::Event);
+        if (!usable_snapshot(after)) {
+            tracker_.cancel(move.window.hwnd);
+            result.status = MoveApplyStatus::SnapshotFailed;
+            record_failure(move.window);
+            result.finalSnapshot = std::move(after);
+            return result;
+        }
         const auto* actual = find_window(after, move.window);
         const auto invariant = invariants.find(move.window.hwnd);
-        if (!usable_snapshot(after) || actual == nullptr || !usable_window(*actual) ||
-            invariant == invariants.end() ||
+        if (actual == nullptr) {
+            tracker_.cancel(move.window.hwnd);
+            result.status = MoveApplyStatus::WindowDestroyed;
+            record_failure(move.window);
+            result.finalSnapshot = std::move(after);
+            return result;
+        }
+        if (!usable_window(*actual) || invariant == invariants.end() ||
             !rectangles_match(actual->placementRect, move.to, options.positionTolerance) ||
             !preserves_invariant(*actual, invariant->second)) {
             tracker_.cancel(move.window.hwnd);
-            result.status = MoveApplyStatus::VerificationFailed;
+            result.status = MoveApplyStatus::MoveRejected;
+            record_failure(move.window);
             result.finalSnapshot = std::move(after);
             return result;
         }
@@ -205,6 +264,7 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
     auto final_snapshot = provider_.capture(SnapshotRefreshReason::Reconcile);
     if (!usable_snapshot(final_snapshot)) {
         result.status = MoveApplyStatus::SnapshotFailed;
+        result.requiresReconcile = true;
         result.finalSnapshot = std::move(final_snapshot);
         return result;
     }
@@ -221,6 +281,11 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
             !preserves_invariant(*actual, invariant->second)) {
             tracker_.cancel(hwnd);
             result.status = MoveApplyStatus::VerificationFailed;
+            if (plan_iterator != plan.end()) {
+                record_failure(plan_iterator->window);
+            } else {
+                result.requiresReconcile = true;
+            }
             result.finalSnapshot = std::move(final_snapshot);
             return result;
         }

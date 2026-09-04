@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -12,6 +13,8 @@
             return 1;                                                                     \
         }                                                                                 \
     } while (false)
+
+int move_transaction_tests();
 
 namespace {
 
@@ -52,12 +55,22 @@ public:
         const stage_manager::geometry::Rect& destination) override
     {
         ++moveCalls;
+        if (onMove) {
+            onMove(moveCalls);
+        }
         if (failMove) {
             return {stage_manager::window::NativeMoveStatus::ApiFailure, 1234};
         }
         auto* snapshot = find(key);
         if (snapshot == nullptr) {
             return {stage_manager::window::NativeMoveStatus::InvalidWindow, 1400};
+        }
+        if (destroyOnMove) {
+            windows.erase(std::remove_if(windows.begin(), windows.end(), [&key](const auto& item) {
+                              return item.key == key;
+                          }),
+                          windows.end());
+            return {stage_manager::window::NativeMoveStatus::Moved, 0};
         }
         const auto offset = alterDestination ? 10 : 0;
         const auto width = snapshot->placementRect.right - snapshot->placementRect.left;
@@ -106,6 +119,8 @@ public:
     std::optional<int> revertAtCapture;
     bool failMove = false;
     bool alterDestination = false;
+    bool destroyOnMove = false;
+    std::function<void(int)> onMove;
     int captureCalls = 0;
     int moveCalls = 0;
 };
@@ -114,11 +129,14 @@ public:
 
 int main()
 {
+    CHECK(move_transaction_tests() == 0);
     using stage_manager::geometry::Rect;
     using stage_manager::window::InternalMoveTracker;
     using stage_manager::window::MoveApplyOptions;
     using stage_manager::window::MoveApplyStatus;
     using stage_manager::window::NativeMoveStatus;
+    using stage_manager::window::MoveFailureTracker;
+    using stage_manager::window::MoveTransactionGuard;
     using stage_manager::window::VerifiedMoveApplier;
     using stage_manager::window::WindowEvent;
     using stage_manager::window::WindowEventType;
@@ -181,9 +199,73 @@ int main()
     VerifiedMoveApplier changed_applier(changed_desktop, changed_desktop, changed_tracker);
     const auto changed = changed_applier.apply(
         std::span<const stage_manager::solver::MovePlan>(plan.data(), 1), apply_options);
-    CHECK(changed.status == MoveApplyStatus::VerificationFailed);
+    CHECK(changed.status == MoveApplyStatus::MoveRejected);
     CHECK(changed.appliedMoves.empty());
     CHECK(!changed_tracker.find(first.hwnd));
+
+    FakeDesktop rejected_desktop;
+    rejected_desktop.windows = dry_desktop.windows;
+    rejected_desktop.alterDestination = true;
+    InternalMoveTracker rejected_tracker;
+    MoveFailureTracker failures;
+    VerifiedMoveApplier rejected_applier(
+        rejected_desktop, rejected_desktop, rejected_tracker, nullptr, &failures);
+    const auto rejected = rejected_applier.apply(
+        std::span<const stage_manager::solver::MovePlan>(plan.data(), 1), apply_options);
+    CHECK(rejected.status == MoveApplyStatus::MoveRejected);
+    CHECK(rejected.requiresReconcile);
+    CHECK(rejected.windowFailureCount == 1);
+    CHECK(rejected.transactionNonCooperative);
+    CHECK(failures.failure_count(apply_options.transactionId, first) == 1);
+    CHECK(failures.is_non_cooperative(apply_options.transactionId, first));
+
+    FakeDesktop retry_desktop;
+    retry_desktop.windows = dry_desktop.windows;
+    InternalMoveTracker retry_tracker;
+    VerifiedMoveApplier retry_applier(
+        retry_desktop, retry_desktop, retry_tracker, nullptr, &failures);
+    const auto retry = retry_applier.apply(
+        std::span<const stage_manager::solver::MovePlan>(plan.data(), 1), apply_options);
+    CHECK(retry.status == MoveApplyStatus::NonCooperative);
+    CHECK(retry.transactionNonCooperative);
+    CHECK(retry.windowFailureCount == 1);
+    CHECK(retry_desktop.moveCalls == 0);
+
+    FakeDesktop destroyed_desktop;
+    destroyed_desktop.windows = dry_desktop.windows;
+    destroyed_desktop.destroyOnMove = true;
+    InternalMoveTracker destroyed_tracker;
+    MoveFailureTracker destroyed_failures;
+    VerifiedMoveApplier destroyed_applier(
+        destroyed_desktop,
+        destroyed_desktop,
+        destroyed_tracker,
+        nullptr,
+        &destroyed_failures);
+    const auto destroyed = destroyed_applier.apply(
+        std::span<const stage_manager::solver::MovePlan>(plan.data(), 1), apply_options);
+    CHECK(destroyed.status == MoveApplyStatus::WindowDestroyed);
+    CHECK(destroyed.requiresReconcile);
+    CHECK(destroyed.windowFailureCount == 1);
+    CHECK(destroyed.appliedMoves.empty());
+
+    FakeDesktop cancelled_desktop;
+    cancelled_desktop.windows = dry_desktop.windows;
+    InternalMoveTracker cancelled_tracker;
+    MoveTransactionGuard guard;
+    guard.activate(apply_options.transactionId, apply_options.layoutGeneration);
+    cancelled_desktop.onMove = [&guard](int move_count) {
+        if (move_count == 1) {
+            guard.observe({WindowEventType::MoveSizeStart, 999, 0, 0, 0});
+        }
+    };
+    VerifiedMoveApplier cancelled_applier(
+        cancelled_desktop, cancelled_desktop, cancelled_tracker, &guard, nullptr);
+    const auto cancelled = cancelled_applier.apply(plan, apply_options);
+    CHECK(cancelled.status == MoveApplyStatus::Cancelled);
+    CHECK(cancelled.requiresReconcile);
+    CHECK(cancelled.appliedMoves.size() == 1);
+    CHECK(cancelled_desktop.moveCalls == 1);
 
     FakeDesktop failed_desktop;
     failed_desktop.windows = dry_desktop.windows;

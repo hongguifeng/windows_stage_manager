@@ -43,6 +43,7 @@ add_library(stage_manager_core STATIC
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
     src/window/move_applier.cpp
+    src/window/move_transaction.cpp
     src/window/window_identity.cpp
     src/window/window_classifier.cpp
     src/window/snapshot_report.cpp
@@ -223,6 +224,7 @@ if(STAGE_MANAGER_BUILD_TESTS)
 
     add_executable(stage_manager_move_applier_tests
         tests/move_applier_tests.cpp
+        tests/move_transaction_tests.cpp
     )
 
     stage_manager_target_defaults(stage_manager_move_applier_tests)

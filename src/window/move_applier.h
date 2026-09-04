@@ -2,6 +2,7 @@
 
 #include "solver/layout_solver.h"
 #include "window/internal_move_tracker.h"
+#include "window/move_transaction.h"
 #include "window/window_provider.h"
 
 #include <cstddef>
@@ -37,8 +38,12 @@ enum class MoveApplyStatus : std::uint8_t {
     InvalidRequest,
     SnapshotFailed,
     WindowUnavailable,
+    WindowDestroyed,
     NativeMoveFailed,
+    MoveRejected,
     VerificationFailed,
+    Cancelled,
+    NonCooperative,
 };
 
 struct MoveApplyOptions {
@@ -59,6 +64,9 @@ struct MoveApplyResult {
     std::size_t failedMoveIndex = 0;
     std::uint32_t lastError = 0;
     NativeMoveStatus nativeStatus = NativeMoveStatus::Moved;
+    std::uint32_t windowFailureCount = 0;
+    bool transactionNonCooperative = false;
+    bool requiresReconcile = false;
     std::vector<AppliedMove> appliedMoves;
     WindowSnapshotBatch finalSnapshot;
 };
@@ -74,7 +82,9 @@ class VerifiedMoveApplier final : public IMoveApplier {
 public:
     VerifiedMoveApplier(IWindowMover& mover,
                         IWindowProvider& provider,
-                        InternalMoveTracker& tracker);
+                        InternalMoveTracker& tracker,
+                        const IMoveApplyGuard* guard = nullptr,
+                        MoveFailureTracker* failure_tracker = nullptr);
 
     MoveApplyResult apply(std::span<const solver::MovePlan> plan,
                           const MoveApplyOptions& options) override;
@@ -83,6 +93,8 @@ private:
     IWindowMover& mover_;
     IWindowProvider& provider_;
     InternalMoveTracker& tracker_;
+    const IMoveApplyGuard* guard_ = nullptr;
+    MoveFailureTracker* failure_tracker_ = nullptr;
 };
 
 } // namespace stage_manager::window
