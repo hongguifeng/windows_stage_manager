@@ -103,6 +103,10 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_uint(value)) {
             settings.maxSolveTimeMs = *parsed;
         }
+    } else if (key == "max_managed_windows") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.maxManagedWindows = *parsed;
+        }
     }
 }
 
@@ -192,7 +196,8 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
            << "reconcile_interval_ms=" << settings.reconcileIntervalMs << '\n'
            << "max_moves_per_batch=" << settings.maxMovesPerBatch << '\n'
            << "max_solver_states=" << settings.maxSolverStates << '\n'
-           << "max_solve_time_ms=" << settings.maxSolveTimeMs << '\n';
+           << "max_solve_time_ms=" << settings.maxSolveTimeMs << '\n'
+           << "max_managed_windows=" << settings.maxManagedWindows << '\n';
     output.flush();
     if (!output) {
         return false;

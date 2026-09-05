@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <unordered_map>
+#include <vector>
 
 namespace stage_manager::window {
 
@@ -44,6 +46,8 @@ struct MvpBatchResult {
     CoalescedBatch events;
     solver::SolveResult solve;
     MoveApplyResult apply;
+    std::size_t managedWindowCount = 0;
+    std::size_t movedWindowCount = 0;
 };
 
 class MvpCoordinator final {
@@ -76,6 +80,13 @@ private:
     NativeMonitorHandle starting_monitor_ = 0;
     std::uint64_t next_transaction_id_ = 0;
     std::uint64_t layout_generation_ = 0;
+    struct StablePlacement {
+        WindowKey key;
+        geometry::Rect rectangle;
+    };
+    std::unordered_map<NativeWindowHandle, StablePlacement> stable_layout_;
+    std::vector<solver::LayoutHash> transaction_seen_states_;
+    std::optional<geometry::Edge> preferred_edge_;
 };
 
 } // namespace stage_manager::window

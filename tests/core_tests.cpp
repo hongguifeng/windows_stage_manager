@@ -18,6 +18,7 @@ int main()
     expected.dryRun = false;
     expected.minExposedEdgeDip = 56;
     expected.maxSolverStates = 99;
+    expected.maxManagedWindows = 12;
 
     const auto settings_path = root / "settings.ini";
     assert(stage_manager::app::save_settings(expected, settings_path));
@@ -26,6 +27,7 @@ int main()
     assert(actual.dryRun == expected.dryRun);
     assert(actual.minExposedEdgeDip == expected.minExposedEdgeDip);
     assert(actual.maxSolverStates == expected.maxSolverStates);
+    assert(actual.maxManagedWindows == expected.maxManagedWindows);
 
     const auto log_path = root / "logs" / "manager.log";
     auto& logger = stage_manager::diagnostics::Logger::instance();

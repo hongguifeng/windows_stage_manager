@@ -53,6 +53,16 @@ public:
                 iterator->workArea = {1000, 0, 2000, 700};
             }
         }
+        if (moveWindowAtCapture && captureCalls == *moveWindowAtCapture) {
+            const auto iterator = std::find_if(windows.begin(), windows.end(), [this](const auto& item) {
+                return item.key.hwnd == externallyMovedWindow;
+            });
+            if (iterator != windows.end()) {
+                iterator->placementRect.left += 10;
+                iterator->placementRect.right += 10;
+                iterator->visualRect = iterator->placementRect;
+            }
+        }
         stage_manager::window::WindowSnapshotBatch result;
         result.version = static_cast<std::uint64_t>(captureCalls);
         result.reason = reason;
@@ -87,7 +97,9 @@ public:
 
     std::vector<stage_manager::window::WindowSnapshot> windows;
     std::optional<int> switchMonitorAtCapture;
+    std::optional<int> moveWindowAtCapture;
     std::uintptr_t switchMonitorWindow = 0;
+    std::uintptr_t externallyMovedWindow = 0;
     int captureCalls = 0;
     int moveCalls = 0;
 };
@@ -160,6 +172,42 @@ int main()
     CHECK(dry.desktop.moveCalls == 0);
     CHECK(dry_result.events.inputCount == 4);
     CHECK(dry_result.events.coalescedLocationCount == 1);
+    CHECK(dry_result.managedWindowCount == 3);
+    CHECK(dry_result.movedWindowCount == 1);
+    const std::vector<WindowEvent> duplicate_end = {
+        {WindowEventType::MoveSizeEnd, 1, 1, 104, 5},
+    };
+    const auto duplicate_result = dry.coordinator.process(duplicate_end, true, true);
+    CHECK(duplicate_result.status == MvpBatchStatus::Unsatisfiable);
+    CHECK(duplicate_result.solve.status == SolveStatus::Unsatisfiable);
+    CHECK(duplicate_result.solve.moves.empty());
+
+    MvpFixture chain;
+    chain.desktop.windows = {
+        make_window(10, {192, 100, 392, 300}, 0),
+        make_window(11, {192, 100, 392, 300}, 1),
+        make_window(12, {128, 100, 328, 300}, 2),
+        make_window(13, {64, 100, 264, 300}, 3),
+    };
+    const auto chain_result = chain.coordinator.process(drag_events(10), true, true);
+    CHECK(chain_result.status == MvpBatchStatus::DryRun);
+    CHECK(chain_result.solve.status == SolveStatus::Solved);
+    CHECK(chain_result.managedWindowCount == 4);
+    CHECK(chain_result.movedWindowCount == 3);
+    CHECK(chain_result.solve.moves.size() >= 3);
+
+    MvpFixture capped;
+    for (std::uintptr_t index = 0; index < 21; ++index) {
+        const auto left = static_cast<std::int32_t>(index * 300);
+        auto window = make_window(100 + index, {left, 100, left + 200, 300},
+                                  static_cast<std::int32_t>(index));
+        window.workArea = {0, 0, 10000, 10000};
+        capped.desktop.windows.push_back(window);
+    }
+    const auto capped_result = capped.coordinator.process(drag_events(100), true, true);
+    CHECK(capped_result.status == MvpBatchStatus::Idle);
+    CHECK(capped_result.solve.status == SolveStatus::NoViolation);
+    CHECK(capped_result.managedWindowCount == 20);
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;
@@ -176,6 +224,17 @@ int main()
     CHECK(internal_result.status == MvpBatchStatus::Applied);
     CHECK(live.desktop.moveCalls == 1);
     CHECK(!live.internalMoves.find(2).has_value());
+
+    MvpFixture drifted;
+    drifted.desktop.windows = dry.desktop.windows;
+    drifted.desktop.moveWindowAtCapture = 5;
+    drifted.desktop.externallyMovedWindow = 3;
+    const auto drifted_result = drifted.coordinator.process(drag_events(1), true, false);
+    CHECK(drifted_result.status == MvpBatchStatus::ApiError);
+    CHECK(drifted_result.reason == MvpSuspendReason::ApplyFailure);
+    CHECK(drifted_result.apply.status ==
+          stage_manager::window::MoveApplyStatus::VerificationFailed);
+    CHECK(drifted_result.apply.requiresReconcile);
 
     MvpFixture crossed;
     crossed.desktop.windows = dry.desktop.windows;

@@ -20,6 +20,7 @@ struct Settings {
     std::uint32_t maxMovesPerBatch = 32;
     std::uint32_t maxSolverStates = 512;
     std::uint32_t maxSolveTimeMs = 16;
+    std::uint32_t maxManagedWindows = 20;
 };
 
 std::filesystem::path default_settings_path();
@@ -29,4 +30,3 @@ Settings load_settings(const std::filesystem::path& path);
 bool save_settings(const Settings& settings, const std::filesystem::path& path);
 
 } // namespace stage_manager::app
-
