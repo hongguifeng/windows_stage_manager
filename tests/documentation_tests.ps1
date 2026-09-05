@@ -172,6 +172,6 @@ if ($limits -notmatch 'scenario_runner') { throw "benchmark limitation is missin
 
 $versionMatch = [regex]::Match($versionHeader, 'kVersion\s*=\s*"([^"]+)"')
 if (-not $versionMatch.Success) { throw "application version is missing" }
-if ($versionMatch.Groups[1].Value -ne '0.1.0-rc16') { throw "application version was not advanced to rc16" }
+if ($versionMatch.Groups[1].Value -ne '0.1.0-rc17') { throw "application version was not advanced to rc17" }
 $documentedVersion = [regex]::Escape("-Version " + $versionMatch.Groups[1].Value)
 if ($readme -notmatch $documentedVersion) { throw "README release version does not match the application" }
