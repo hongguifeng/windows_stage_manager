@@ -38,7 +38,12 @@ stage_manager::solver::LayoutWindow make_window(
 stage_manager::solver::SolverPolicy make_policy()
 {
     stage_manager::solver::SolverPolicy policy;
-    policy.ranking.visibility = {48, 24, 128, 1};
+    const stage_manager::solver::EdgeAffordanceRule edge{48, 48, 24, 100};
+    policy.ranking.visibility.top = edge;
+    policy.ranking.visibility.left = edge;
+    policy.ranking.visibility.right = edge;
+    policy.ranking.visibility.bottom = edge;
+    policy.ranking.visibility.maximumRegionRectangles = 128;
     policy.ranking.minimumOnscreenWidth = 500;
     policy.ranking.minimumOnscreenHeight = 500;
     policy.ranking.activeWindowIndex = 0;

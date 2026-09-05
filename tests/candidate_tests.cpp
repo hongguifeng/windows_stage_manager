@@ -44,6 +44,22 @@ bool has_candidate(const stage_manager::solver::CandidateGenerationResult& resul
                        });
 }
 
+stage_manager::solver::VisibilityRequirements requirements_for(
+    stage_manager::solver::VisibilityGoal goal =
+        stage_manager::solver::VisibilityGoal::AnyRecognizableEdge,
+    std::size_t maximum_rectangles = 128)
+{
+    stage_manager::solver::VisibilityRequirements requirements;
+    const stage_manager::solver::EdgeAffordanceRule rule{48, 48, 24, 100};
+    requirements.top = rule;
+    requirements.left = rule;
+    requirements.right = rule;
+    requirements.bottom = rule;
+    requirements.maximumRegionRectangles = maximum_rectangles;
+    requirements.goal = goal;
+    return requirements;
+}
+
 } // namespace
 
 int main()
@@ -52,7 +68,9 @@ int main()
     using stage_manager::solver::CandidateGenerationStatus;
     using stage_manager::solver::LayoutSnapshot;
     using stage_manager::solver::ViolationScanStatus;
+    using stage_manager::solver::VisibilityGoal;
     using stage_manager::solver::VisibilityRequirements;
+    using stage_manager::solver::analyze_window_visibility;
     using stage_manager::solver::generate_candidates;
     using stage_manager::solver::scan_visibility_violations;
 
@@ -62,7 +80,7 @@ int main()
         make_window(1, {100, 100, 300, 300}, 0, false),
         make_window(2, {100, 100, 300, 300}, 1, true),
     };
-    const VisibilityRequirements requirements{48, 24, 128};
+    const auto requirements = requirements_for();
     const auto violations = scan_visibility_violations(covered, requirements);
     CHECK(violations.status == ViolationScanStatus::Ok);
     CHECK(violations.violations.size() == 1);
@@ -107,11 +125,11 @@ int main()
         make_window(13, {100, 100, 300, 300}, 3, true),
     };
     const auto one_edge_allowed = scan_visibility_violations(
-        one_edge_exposed, VisibilityRequirements{48, 24, 128, 1});
+        one_edge_exposed, requirements_for());
     CHECK(one_edge_allowed.status == ViolationScanStatus::Ok);
     CHECK(one_edge_allowed.violations.empty());
     const auto two_edges_required = scan_visibility_violations(
-        one_edge_exposed, VisibilityRequirements{48, 24, 128, 2});
+        one_edge_exposed, requirements_for(VisibilityGoal::TopAndSide));
     CHECK(two_edges_required.status == ViolationScanStatus::Ok);
     CHECK(two_edges_required.violations.size() == 1);
     CHECK(two_edges_required.violations[0].targetIndex == 3);
@@ -123,14 +141,18 @@ int main()
         make_window(21, {36, 100, 236, 300}, 1, true),
     };
     const auto single_strip_two_edge_scan = scan_visibility_violations(
-        single_strip_exposure, VisibilityRequirements{48, 24, 128, 2});
+        single_strip_exposure, requirements_for(VisibilityGoal::TopAndSide));
     CHECK(single_strip_two_edge_scan.status == ViolationScanStatus::Ok);
     CHECK(single_strip_two_edge_scan.violations.size() == 1);
     CHECK(single_strip_two_edge_scan.violations[0].targetIndex == 1);
-    CHECK(single_strip_two_edge_scan.violations[0].failedEdges.size() == 3);
+    const auto shared_corner_visibility = analyze_window_visibility(
+        single_strip_exposure, 1, requirements_for());
+    CHECK(shared_corner_visibility.has_value());
+    CHECK(shared_corner_visibility->left);
+    CHECK(!shared_corner_visibility->topLeft);
 
     const auto single_strip_one_edge_scan = scan_visibility_violations(
-        single_strip_exposure, VisibilityRequirements{48, 24, 128, 1});
+        single_strip_exposure, requirements_for());
     CHECK(single_strip_one_edge_scan.status == ViolationScanStatus::Ok);
     CHECK(single_strip_one_edge_scan.violations.empty());
 
@@ -138,9 +160,35 @@ int main()
     independent_two_edge_exposure.windows[1].placementRect = {36, 36, 236, 236};
     independent_two_edge_exposure.windows[1].visualRect = {36, 36, 236, 236};
     const auto independent_two_edge_scan = scan_visibility_violations(
-        independent_two_edge_exposure, VisibilityRequirements{48, 24, 128, 2});
+        independent_two_edge_exposure, requirements_for(VisibilityGoal::TopAndSide));
     CHECK(independent_two_edge_scan.status == ViolationScanStatus::Ok);
     CHECK(independent_two_edge_scan.violations.empty());
+
+    auto title_bar_sensitive = covered;
+    title_bar_sensitive.windows[0].placementRect = {100, 132, 300, 300};
+    title_bar_sensitive.windows[0].visualRect =
+        title_bar_sensitive.windows[0].placementRect;
+    title_bar_sensitive.windows[1].titleBarHeight = 32;
+    auto asymmetric = requirements_for();
+    asymmetric.top = {120, 240, 20, 25};
+    asymmetric.left = {120, 240, 40, 25};
+    asymmetric.right = {160, 300, 64, 30};
+    asymmetric.bottom = {180, 360, 64, 35};
+    const auto title_visibility = analyze_window_visibility(
+        title_bar_sensitive, 1, asymmetric);
+    CHECK(title_visibility.has_value());
+    CHECK(title_visibility->top);
+    CHECK(!title_visibility->left);
+    CHECK(!title_visibility->right);
+    CHECK(!title_visibility->bottom);
+
+    auto insufficient_title = title_bar_sensitive;
+    insufficient_title.windows[0].placementRect.top = 131;
+    insufficient_title.windows[0].visualRect.top = 131;
+    const auto insufficient_visibility = analyze_window_visibility(
+        insufficient_title, 1, asymmetric);
+    CHECK(insufficient_visibility.has_value());
+    CHECK(!insufficient_visibility->top);
 
     auto unmanaged_target = covered;
     unmanaged_target.windows[1].managed = false;
@@ -150,7 +198,7 @@ int main()
     other_monitor.windows[0].monitor = 2;
     CHECK(scan_visibility_violations(other_monitor, requirements).violations.empty());
 
-    VisibilityRequirements fragment_limited{48, 24, 1};
+    auto fragment_limited = requirements_for(VisibilityGoal::AnyRecognizableEdge, 1);
     auto split_edge = covered;
     split_edge.windows[0].visualRect = {100, 175, 124, 225};
     split_edge.windows[0].placementRect = split_edge.windows[0].visualRect;
@@ -163,13 +211,21 @@ int main()
     invalid_violation.targetIndex = 99;
     CHECK(generate_candidates(covered, invalid_violation, 64).status ==
           CandidateGenerationStatus::InvalidInput);
-    CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 0}).status ==
+    auto invalid_regions = requirements_for();
+    invalid_regions.maximumRegionRectangles = 0;
+    CHECK(scan_visibility_violations(covered, invalid_regions).status ==
           ViolationScanStatus::InvalidSnapshot);
-    CHECK(scan_visibility_violations(covered, VisibilityRequirements{0, 24, 128}).status ==
+    auto invalid_length = requirements_for();
+    invalid_length.top.minimumLengthDip = 0;
+    CHECK(scan_visibility_violations(covered, invalid_length).status ==
           ViolationScanStatus::InvalidSnapshot);
-    CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 128, 0}).status ==
+    auto invalid_depth = requirements_for();
+    invalid_depth.left.depthDip = 0;
+    CHECK(scan_visibility_violations(covered, invalid_depth).status ==
           ViolationScanStatus::InvalidSnapshot);
-    CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 128, 5}).status ==
+    auto invalid_percent = requirements_for();
+    invalid_percent.right.lengthPercent = 101;
+    CHECK(scan_visibility_violations(covered, invalid_percent).status ==
           ViolationScanStatus::InvalidSnapshot);
     auto fixed_target = covered;
     fixed_target.windows[1].movable = false;

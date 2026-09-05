@@ -142,6 +142,19 @@ stage_manager::app::Settings test_settings()
     return settings;
 }
 
+stage_manager::solver::VisibilityRequirements two_edge_requirements()
+{
+    stage_manager::solver::VisibilityRequirements requirements;
+    const stage_manager::solver::EdgeAffordanceRule rule{48, 48, 24, 100};
+    requirements.top = rule;
+    requirements.left = rule;
+    requirements.right = rule;
+    requirements.bottom = rule;
+    requirements.maximumRegionRectangles = 128;
+    requirements.goal = stage_manager::solver::VisibilityGoal::TopAndSide;
+    return requirements;
+}
+
 struct MvpFixture {
     FakeDesktop desktop;
     stage_manager::window::WindowIdentityTracker identities;
@@ -267,7 +280,7 @@ int main()
     CHECK(chain_result.solve.moves.size() >= 1);
     const auto chain_visibility = stage_manager::solver::scan_visibility_violations(
         chain_result.solve.finalSnapshot,
-        stage_manager::solver::VisibilityRequirements{48, 24, 128, 2});
+        two_edge_requirements());
     CHECK(chain_visibility.status ==
           stage_manager::solver::ViolationScanStatus::Ok);
     CHECK(chain_visibility.violations.empty());
@@ -290,7 +303,7 @@ int main()
     CHECK(stacked_result.solve.moves.size() == 3);
     const auto stacked_visibility = stage_manager::solver::scan_visibility_violations(
         stacked_result.solve.finalSnapshot,
-        stage_manager::solver::VisibilityRequirements{48, 24, 128, 2});
+        two_edge_requirements());
     CHECK(stacked_visibility.status ==
           stage_manager::solver::ViolationScanStatus::Ok);
     CHECK(stacked_visibility.violations.empty());
@@ -351,8 +364,8 @@ int main()
         z_order_dry.coordinator.process(drag_events(201), true, true);
     CHECK(z_order_dry_result.status == MvpBatchStatus::DryRun);
     CHECK(z_order_dry_result.zOrderFallbackUsed);
-    CHECK(!z_order_dry_result.edgeGoalDegraded);
-    CHECK(z_order_dry_result.requiredExposedEdges == 2);
+    CHECK(z_order_dry_result.edgeGoalDegraded);
+    CHECK(z_order_dry_result.requiredExposedEdges == 1);
     CHECK(z_order_dry_result.reorderedWindowCount == 1);
     CHECK(z_order_dry_result.zOrderSolve.candidatesTried == 1);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].window.hwnd == 203);

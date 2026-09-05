@@ -332,6 +332,8 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             ? stable->second.rectangle
             : item.placementRect;
         item.monitor = window.monitor;
+        item.dpi = window.dpi;
+        item.titleBarHeight = window.titleBarHeight;
         item.zIndex = window.zIndex;
         item.managed = managed_handles.contains(window.key.hwnd);
         item.movable = item.managed;
@@ -379,15 +381,22 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         dpi = std::max(dpi, window->dpi);
     }
     solver::SolverPolicy policy;
-    policy.ranking.visibility.minimumExposedLength = static_cast<std::uint64_t>(
-        geometry::scale_dip_ceil(settings_.minExposedEdgeDip, dpi));
-    policy.ranking.visibility.minimumExposedDepth = static_cast<std::uint64_t>(
-        geometry::scale_dip_ceil(settings_.minExposedDepthDip, dpi));
+    const solver::EdgeAffordanceRule legacy_edge_rule{
+        settings_.minExposedEdgeDip,
+        settings_.minExposedEdgeDip,
+        settings_.minExposedDepthDip,
+        100};
+    policy.ranking.visibility.top = legacy_edge_rule;
+    policy.ranking.visibility.left = legacy_edge_rule;
+    policy.ranking.visibility.right = legacy_edge_rule;
+    policy.ranking.visibility.bottom = legacy_edge_rule;
     const auto preferred_exposed_edges = std::clamp<std::uint32_t>(
         settings_.preferredExposedEdges, 1, 4);
     const auto minimum_exposed_edges = std::clamp<std::uint32_t>(
         settings_.minimumExposedEdges, 1, preferred_exposed_edges);
-    policy.ranking.visibility.minimumExposedEdges = preferred_exposed_edges;
+    policy.ranking.visibility.goal = preferred_exposed_edges > 1
+        ? solver::VisibilityGoal::TopAndSide
+        : solver::VisibilityGoal::AnyRecognizableEdge;
     result.requiredExposedEdges = preferred_exposed_edges;
     policy.ranking.minimumOnscreenWidth = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(settings_.minOnscreenWidthDip, dpi));
@@ -424,7 +433,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         managed_handles = full_managed_handles;
         result.managedWindowCount = full_managed_count;
         result.fallbackUsed = false;
-        policy.ranking.visibility.minimumExposedEdges = exposed_edges;
+        policy.ranking.visibility.goal = exposed_edges > 1
+            ? solver::VisibilityGoal::TopAndSide
+            : solver::VisibilityGoal::AnyRecognizableEdge;
         result.requiredExposedEdges = exposed_edges;
         result.solve = solver::solve_layout(layout, policy);
         if (result.solve.status == solver::SolveStatus::Solved ||
@@ -463,7 +474,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         managed_handles = full_managed_handles;
         layout = full_layout;
         const auto attempt_z_order = [&](std::uint32_t exposed_edges) {
-            policy.ranking.visibility.minimumExposedEdges = exposed_edges;
+            policy.ranking.visibility.goal = exposed_edges > 1
+                ? solver::VisibilityGoal::TopAndSide
+                : solver::VisibilityGoal::AnyRecognizableEdge;
             result.requiredExposedEdges = exposed_edges;
             result.zOrderSolve = solver::solve_z_order_fallback(
                 full_layout, policy, *active_index);
@@ -562,6 +575,8 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             item.visualRect = to_rect(actual->visualRect);
             item.workArea = to_rect(actual->workArea);
             item.monitor = actual->monitor;
+            item.dpi = actual->dpi;
+            item.titleBarHeight = actual->titleBarHeight;
             item.visible = actual->visible && !actual->iconic && !actual->cloaked;
             item.blocksVisibility = item.visible && actual->currentDesktop;
             item.currentDesktop = actual->currentDesktop;

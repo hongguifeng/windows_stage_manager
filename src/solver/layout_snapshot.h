@@ -15,6 +15,8 @@ struct LayoutWindow {
     geometry::Rect workArea;
     geometry::Rect lastStableRect;
     std::uintptr_t monitor = 0;
+    std::uint32_t dpi = 96;
+    std::uint32_t titleBarHeight = 0;
     std::int32_t zIndex = -1;
     bool managed = false;
     bool movable = false;

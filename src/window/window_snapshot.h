@@ -76,6 +76,7 @@ struct WindowSnapshot {
 
     std::uint32_t sessionId = 0;
     std::uint32_t dpi = 96;
+    std::uint32_t titleBarHeight = 0;
     std::uint32_t style = 0;
     std::uint32_t exStyle = 0;
     std::uint32_t queryFailures = 0;

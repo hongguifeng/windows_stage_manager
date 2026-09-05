@@ -40,7 +40,12 @@ stage_manager::solver::LayoutWindow make_window(std::uintptr_t hwnd,
 stage_manager::solver::SolverPolicy make_policy()
 {
     stage_manager::solver::SolverPolicy policy;
-    policy.ranking.visibility = {48, 24, 128};
+    const stage_manager::solver::EdgeAffordanceRule edge{48, 48, 24, 100};
+    policy.ranking.visibility.top = edge;
+    policy.ranking.visibility.left = edge;
+    policy.ranking.visibility.right = edge;
+    policy.ranking.visibility.bottom = edge;
+    policy.ranking.visibility.maximumRegionRectangles = 128;
     policy.ranking.minimumOnscreenWidth = 100;
     policy.ranking.minimumOnscreenHeight = 100;
     policy.ranking.activeWindowIndex = 0;
@@ -113,7 +118,7 @@ int main()
     CHECK(solved.moves.size() == 1);
     CHECK(solved.moves[0].window == covered.windows[1].key);
     CHECK((solved.moves[0].from == Rect{100, 100, 300, 300}));
-    CHECK((solved.moves[0].to == Rect{164, 164, 364, 364}));
+    CHECK((solved.moves[0].to == Rect{0, 164, 200, 364}));
     CHECK(scan_visibility_violations(solved.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 
@@ -141,7 +146,8 @@ int main()
         make_window(13, {100, 100, 400, 400}, 3, true),
     };
     auto incremental_policy = policy;
-    incremental_policy.ranking.visibility.minimumExposedEdges = 2;
+    incremental_policy.ranking.visibility.goal =
+        stage_manager::solver::VisibilityGoal::TopAndSide;
     const auto incremental = solve_layout_incrementally(stacked, incremental_policy, 0);
     CHECK(incremental.status == SolveStatus::Solved);
     CHECK(incremental.moves.size() == 3);

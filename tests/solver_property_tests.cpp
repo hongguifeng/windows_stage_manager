@@ -84,7 +84,12 @@ stage_manager::solver::LayoutSnapshot random_layout(std::mt19937_64& random,
 stage_manager::solver::SolverPolicy property_policy()
 {
     stage_manager::solver::SolverPolicy policy;
-    policy.ranking.visibility = {48, 24, 256};
+    const stage_manager::solver::EdgeAffordanceRule edge{48, 48, 24, 100};
+    policy.ranking.visibility.top = edge;
+    policy.ranking.visibility.left = edge;
+    policy.ranking.visibility.right = edge;
+    policy.ranking.visibility.bottom = edge;
+    policy.ranking.visibility.maximumRegionRectangles = 256;
     policy.ranking.minimumOnscreenWidth = 100;
     policy.ranking.minimumOnscreenHeight = 100;
     policy.ranking.activeWindowIndex = 0;

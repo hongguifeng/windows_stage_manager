@@ -30,10 +30,13 @@ enum class CandidateRankingStatus : std::uint8_t {
 };
 
 enum class VisibilityPreferenceRank : std::uint8_t {
-    LeftTop = 0,
-    RightBottom = 1,
+    TopLeft = 0,
+    TopRight = 1,
     TopOnly = 2,
-    Unranked = 3,
+    LeftOnly = 3,
+    RightOnly = 4,
+    BottomOnly = 5,
+    Unrecognized = 6,
 };
 
 struct CandidateRankingPolicy {
@@ -46,7 +49,7 @@ struct CandidateRankingPolicy {
 };
 
 struct CandidateCost {
-    VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unranked;
+    VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unrecognized;
     std::uint64_t centerDistance = 0;
     std::uint32_t movedWindowCount = 0;
     std::uint64_t manhattanDistance = 0;

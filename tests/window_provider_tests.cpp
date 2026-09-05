@@ -139,6 +139,8 @@ int main()
     CHECK(owner_snapshot->visualRect.valid());
     CHECK(owner_snapshot->workArea.valid());
     CHECK(owner_snapshot->dpi > 0);
+    CHECK(owner_snapshot->titleBarHeight > 0);
+    CHECK(owned_snapshot->titleBarHeight > 0);
     CHECK(owner_snapshot->zOrderKnown);
     CHECK(first_snapshot->zOrderKnown);
     CHECK(owned_snapshot->zOrderKnown);

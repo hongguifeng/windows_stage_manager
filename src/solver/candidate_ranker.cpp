@@ -117,7 +117,8 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
 {
     const auto& left_cost = left.cost;
     const auto& right_cost = right.cost;
-    return std::tie(left_cost.centerDistance,
+    return std::tie(left_cost.visibilityPreference,
+                    left_cost.centerDistance,
                     left_cost.movedWindowCount,
                     left_cost.manhattanDistance,
                     left_cost.stableDistance,
@@ -128,7 +129,8 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
                     left_cost.left,
                     left_cost.top,
                     left.originalIndex) <
-        std::tie(right_cost.centerDistance,
+        std::tie(right_cost.visibilityPreference,
+                 right_cost.centerDistance,
                  right_cost.movedWindowCount,
                  right_cost.manhattanDistance,
                  right_cost.stableDistance,
@@ -163,54 +165,30 @@ std::optional<VisibilityPreferenceRank> visibility_preference_rank(
         return std::nullopt;
     }
 
-    auto probe = snapshot;
-    for (std::size_t index = 0; index < probe.windows.size(); ++index) {
-        probe.windows[index].managed = index == target_index;
-    }
-    auto probe_requirements = requirements;
-    probe_requirements.minimumExposedEdges = 4;
-    const auto scan = scan_visibility_violations(probe, probe_requirements);
-    if (scan.status != ViolationScanStatus::Ok) {
+    const auto visibility = analyze_window_visibility(snapshot, target_index, requirements);
+    if (!visibility) {
         return std::nullopt;
     }
 
-    bool left = true;
-    bool right = true;
-    bool top = true;
-    bool bottom = true;
-    const auto violation = std::find_if(
-        scan.violations.begin(), scan.violations.end(), [target_index](const auto& item) {
-            return item.targetIndex == target_index;
-        });
-    if (violation != scan.violations.end()) {
-        for (const auto edge : violation->failedEdges) {
-            switch (edge) {
-            case geometry::Edge::Left:
-                left = false;
-                break;
-            case geometry::Edge::Right:
-                right = false;
-                break;
-            case geometry::Edge::Top:
-                top = false;
-                break;
-            case geometry::Edge::Bottom:
-                bottom = false;
-                break;
-            }
-        }
+    if (visibility->topLeft) {
+        return VisibilityPreferenceRank::TopLeft;
     }
-
-    if (left && top) {
-        return VisibilityPreferenceRank::LeftTop;
+    if (visibility->topRight) {
+        return VisibilityPreferenceRank::TopRight;
     }
-    if (right && bottom) {
-        return VisibilityPreferenceRank::RightBottom;
-    }
-    if (top && !left && !right && !bottom) {
+    if (visibility->top) {
         return VisibilityPreferenceRank::TopOnly;
     }
-    return VisibilityPreferenceRank::Unranked;
+    if (visibility->left) {
+        return VisibilityPreferenceRank::LeftOnly;
+    }
+    if (visibility->right) {
+        return VisibilityPreferenceRank::RightOnly;
+    }
+    if (visibility->bottom) {
+        return VisibilityPreferenceRank::BottomOnly;
+    }
+    return VisibilityPreferenceRank::Unrecognized;
 }
 
 CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
