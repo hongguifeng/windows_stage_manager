@@ -12,6 +12,8 @@ if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is m
 if ($guide -notmatch 'preferred_exposed_edges=2') { throw "preferred edge behavior is missing" }
 if ($guide -notmatch 'edge_goal_degraded') { throw "edge degradation diagnostics are missing" }
 if (-not $guide.Contains('left+top > right+bottom > top-only > unranked')) { throw "edge preference order is missing" }
+if ($guide -notmatch 'z_order_fallback_used') { throw "Z-order fallback diagnostics are missing" }
+if ($guide -notmatch 'bottom-first') { throw "bottom-first Z-order policy is missing" }
 if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
 if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }
 if ($limits -notmatch 'UAC') { throw "privilege limitation is missing" }

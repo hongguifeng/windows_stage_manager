@@ -19,7 +19,11 @@ max_managed_windows=20
 max_consecutive_failures=3
 ```
 
-程序开箱即可工作，只改变非活动窗口的位置，不改变尺寸、激活状态或 Z-order。默认先尝试让每个受影响窗口保留两个独立的合格边缘；只有该目标无解时才降级为一个边缘。合法候选的边缘组合按 `left+top > right+bottom > top-only > unranked` 排序，该顺序优先于移动距离。日志中的 `required_exposed_edges` 是本批次实际采用的目标，`edge_goal_degraded=true` 表示发生了降级。拖动结束和点击切换前台窗口都会触发布局检查。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序。
+程序开箱即可工作，不改变窗口尺寸或活动窗口。默认先尝试让每个受影响窗口保留两个独立的合格边缘；只有该目标无解时才降级为一个边缘。合法候选的边缘组合按 `left+top > right+bottom > top-only > unranked` 排序，该顺序优先于移动距离。
+
+协调器会先完成所有纯位置求解；只有两边缘和单边缘的位置方案都明确无解时，才启用 Z-order fallback。fallback 采用 bottom-first（最底层优先）策略：只提升一个受管理的非活动、非置顶窗口到活动窗口正下方，并按当前 `zIndex` 从最底层向上尝试；底层候选能形成完整合法布局时，不再尝试或调整更高层窗口。活动窗口不会被重排，也不会被候选窗口越过。日志中的 `required_exposed_edges` 是本批次实际采用的目标，`edge_goal_degraded=true` 表示边缘数降级，`z_order_fallback_used=true` 表示使用了该回退；`planned_reorders` 和 `applied_reorders` 分别记录计划和已验证的重排数。
+
+拖动结束和点击切换前台窗口都会触发布局检查。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序；DryRun 会生成移动和重排计划，但不会调用 Win32 修改窗口。
 
 ## 日常操作与故障处理
 
@@ -27,7 +31,7 @@ max_consecutive_failures=3
 - `Ctrl+Alt+F12` 会立即停用自动管理并取消当前移动事务。
 - 连续 API 或快照故障达到阈值后，程序会自动停用；检查日志、恢复 `dry_run=true` 后再从托盘重新启用。
 - 显示器、DPI、工作区变化以及队列溢出会触发全量快照重建。
-- `Unsatisfiable` 表示当前布局没有满足硬约束的安全移动方案，不会强行越界或移动活动窗口。
+- `Unsatisfiable` 表示位置与安全 Z-order fallback 都没有满足硬约束的方案，不会强行越界、移动活动窗口或跨越活动窗口。
 
 ## 回滚
 
