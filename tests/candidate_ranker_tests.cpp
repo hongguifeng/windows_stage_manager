@@ -160,6 +160,30 @@ int main()
     CHECK(preference_over_distance.accepted[1].cost.centerDistance == 180);
     CHECK(preference_over_distance.accepted[1].cost.manhattanDistance == 80);
 
+    LayoutSnapshot wide_snapshot;
+    wide_snapshot.version = 11;
+    wide_snapshot.windows = {
+        make_window(30, {450, 200, 550, 300}, 0, false),
+        make_window(31, {450, 200, 550, 300}, 1, true),
+    };
+    for (auto& window : wide_snapshot.windows) {
+        window.workArea = {0, 0, 1000, 500};
+    }
+    const auto wide_violations = scan_visibility_violations(wide_snapshot, requirements);
+    CHECK(wide_violations.violations.size() == 1);
+    const std::vector<PlacementCandidate> equal_pixel_distance = {
+        {{614, 200, 714, 300}, 164, 0, CandidateSource::BlockerEdge},
+        {{450, 36, 550, 136}, 0, -164, CandidateSource::BlockerEdge},
+    };
+    const auto wide_ranked = rank_candidates(wide_snapshot,
+                                             wide_violations.violations[0],
+                                             equal_pixel_distance,
+                                             no_preference_policy);
+    CHECK(wide_ranked.accepted.size() == 2);
+    CHECK(wide_ranked.accepted[0].originalIndex == 0);
+    CHECK(wide_ranked.accepted[0].cost.centerDistance == 82);
+    CHECK(wide_ranked.accepted[1].cost.centerDistance == 164);
+
     const auto repeated = rank_candidates(
         snapshot, violations.violations[0], generated.candidates, policy);
     CHECK(repeated.status == CandidateRankingStatus::Ok);

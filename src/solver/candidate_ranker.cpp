@@ -48,8 +48,31 @@ std::uint64_t center_distance(const geometry::Rect& rectangle,
     const auto rectangle_center_y = std::midpoint(rectangle.top, rectangle.bottom);
     const auto work_area_center_x = std::midpoint(work_area.left, work_area.right);
     const auto work_area_center_y = std::midpoint(work_area.top, work_area.bottom);
-    return saturating_add(unsigned_distance(rectangle_center_x, work_area_center_x),
-                          unsigned_distance(rectangle_center_y, work_area_center_y));
+    const auto work_width = static_cast<std::uint64_t>(work_area.width());
+    const auto work_height = static_cast<std::uint64_t>(work_area.height());
+    if (work_width == 0 || work_height == 0) {
+        return std::numeric_limits<std::uint64_t>::max();
+    }
+    const auto reference_extent = std::min(work_width, work_height);
+    const auto scale_axis = [reference_extent](std::uint64_t distance,
+                                                std::uint64_t axis_extent) {
+        if (distance == 0 || reference_extent == axis_extent) {
+            return distance;
+        }
+        if (distance <= std::numeric_limits<std::uint64_t>::max() / reference_extent) {
+            return distance * reference_extent / axis_extent;
+        }
+        const auto scaled = static_cast<long double>(distance) *
+            static_cast<long double>(reference_extent) /
+            static_cast<long double>(axis_extent);
+        return scaled >= static_cast<long double>(
+                             std::numeric_limits<std::uint64_t>::max())
+            ? std::numeric_limits<std::uint64_t>::max()
+            : static_cast<std::uint64_t>(scaled);
+    };
+    return saturating_add(
+        scale_axis(unsigned_distance(rectangle_center_x, work_area_center_x), work_width),
+        scale_axis(unsigned_distance(rectangle_center_y, work_area_center_y), work_height));
 }
 
 std::uint32_t direction_change_penalty(
