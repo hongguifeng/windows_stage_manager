@@ -37,12 +37,31 @@ bool is_system_ui(std::wstring_view class_name)
         std::end(kSystemClasses);
 }
 
-bool has_owned_window(const WindowSnapshot& snapshot,
-                     std::span<const WindowSnapshot> all_windows)
+bool is_substantive_owned_window(const WindowSnapshot& candidate,
+                                 const app::Settings& settings)
 {
-    return std::any_of(all_windows.begin(), all_windows.end(), [&snapshot](const auto& candidate) {
-        return candidate.ownerHwnd == snapshot.key.hwnd;
-    });
+    if (!candidate.visible || !candidate.currentDesktop || candidate.iconic || candidate.cloaked ||
+        !candidate.placementRect.valid()) {
+        return false;
+    }
+
+    const auto width = static_cast<std::int64_t>(candidate.placementRect.right) -
+        candidate.placementRect.left;
+    const auto height = static_cast<std::int64_t>(candidate.placementRect.bottom) -
+        candidate.placementRect.top;
+    return width >= geometry::scale_dip_ceil(settings.minOnscreenWidthDip, candidate.dpi) &&
+        height >= geometry::scale_dip_ceil(settings.minOnscreenHeightDip, candidate.dpi);
+}
+
+bool has_substantive_owned_window(const WindowSnapshot& snapshot,
+                                  std::span<const WindowSnapshot> all_windows,
+                                  const app::Settings& settings)
+{
+    return std::any_of(
+        all_windows.begin(), all_windows.end(), [&snapshot, &settings](const auto& candidate) {
+            return candidate.ownerHwnd == snapshot.key.hwnd &&
+                is_substantive_owned_window(candidate, settings);
+        });
 }
 
 } // namespace
@@ -90,7 +109,8 @@ ClassificationResult ConservativeWindowClassifier::classify(
     }
 #endif
 
-    if (snapshot.ownerHwnd != 0 || has_owned_window(snapshot, all_windows)) {
+    if (snapshot.ownerHwnd != 0 ||
+        has_substantive_owned_window(snapshot, all_windows, settings_)) {
         return unmanaged(UnmanagedReason::OwnedWindow);
     }
     if (is_system_ui(snapshot.className)) {

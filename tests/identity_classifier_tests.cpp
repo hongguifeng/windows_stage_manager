@@ -160,6 +160,47 @@ int main()
     CHECK(group_results[0].reason == UnmanagedReason::OwnedWindow);
     CHECK(group_results[1].reason == UnmanagedReason::OwnedWindow);
 
+    auto owner_with_hidden_ime = make_snapshot(42);
+    auto hidden_ime = make_snapshot(43);
+    hidden_ime.ownerHwnd = owner_with_hidden_ime.key.hwnd;
+    hidden_ime.className = L"IME";
+    hidden_ime.visible = false;
+    hidden_ime.placementRect = {0, 0, 0, 0};
+    const std::vector<stage_manager::window::WindowSnapshot> hidden_ime_group = {
+        owner_with_hidden_ime, hidden_ime};
+    const auto hidden_ime_results = classifier.classify_batch(hidden_ime_group);
+    CHECK(hidden_ime_results[0].managed());
+    CHECK(hidden_ime_results[1].reason == UnmanagedReason::Invisible);
+
+    auto terminal = make_snapshot(44);
+    terminal.className = L"CASCADIA_HOSTING_WINDOW_CLASS";
+    auto pseudo_console = make_snapshot(45);
+    pseudo_console.ownerHwnd = terminal.key.hwnd;
+    pseudo_console.className = L"PseudoConsoleWindow";
+    pseudo_console.exStyle = WS_EX_TOOLWINDOW;
+    pseudo_console.placementRect = {0, 0, 0, 0};
+    const std::vector<stage_manager::window::WindowSnapshot> pseudo_console_group = {
+        terminal, pseudo_console};
+    const auto pseudo_console_results = classifier.classify_batch(pseudo_console_group);
+    CHECK(pseudo_console_results[0].managed());
+    CHECK(pseudo_console_results[1].reason == UnmanagedReason::ToolWindow);
+
+    auto owner_with_cloaked_helper = make_snapshot(46);
+    auto cloaked_helper = make_snapshot(47);
+    cloaked_helper.ownerHwnd = owner_with_cloaked_helper.key.hwnd;
+    cloaked_helper.cloaked = true;
+    const std::vector<stage_manager::window::WindowSnapshot> cloaked_group = {
+        owner_with_cloaked_helper, cloaked_helper};
+    CHECK(classifier.classify_batch(cloaked_group)[0].managed());
+
+    auto owner_with_other_desktop_helper = make_snapshot(48);
+    auto other_desktop_helper = make_snapshot(49);
+    other_desktop_helper.ownerHwnd = owner_with_other_desktop_helper.key.hwnd;
+    other_desktop_helper.currentDesktop = false;
+    const std::vector<stage_manager::window::WindowSnapshot> other_desktop_group = {
+        owner_with_other_desktop_helper, other_desktop_helper};
+    CHECK(classifier.classify_batch(other_desktop_group)[0].managed());
+
     WindowSnapshotBatch annotated;
     annotated.windows.push_back(normal);
     annotated.windows.push_back(tool);
