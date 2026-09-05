@@ -431,6 +431,9 @@ void AppLifecycle::coordinator_loop()
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
         const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
                                                        : std::string_view{"false"};
+        const auto required_exposed_edges = std::to_string(result.requiredExposedEdges);
+        const auto edge_goal_degraded = result.edgeGoalDegraded ? std::string_view{"true"}
+                                                                : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
         const auto queue_depth_text = std::to_string(queue_depth);
         const auto total_batches = std::to_string(metrics.batches);
@@ -450,6 +453,8 @@ void AppLifecycle::coordinator_loop()
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
              {"fallback_used", fallback_used},
+             {"required_exposed_edges", required_exposed_edges},
+             {"edge_goal_degraded", edge_goal_degraded},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

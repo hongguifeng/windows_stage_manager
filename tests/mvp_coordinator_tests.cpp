@@ -122,9 +122,9 @@ struct MvpFixture {
     stage_manager::window::VerifiedMoveApplier applier;
     stage_manager::window::MvpCoordinator coordinator;
 
-    MvpFixture()
+    explicit MvpFixture(stage_manager::app::Settings initial_settings = test_settings())
         : provider(desktop, identities),
-          settings(test_settings()),
+          settings(initial_settings),
           applier(desktop, provider, internalMoves, &guard, &failures),
           coordinator(provider,
                       applier,
@@ -211,6 +211,41 @@ int main()
     CHECK(chain_result.managedWindowCount == 4);
     CHECK(chain_result.movedWindowCount == 3);
     CHECK(chain_result.solve.moves.size() >= 3);
+
+    MvpFixture two_edge_goal;
+    two_edge_goal.desktop.windows = {
+        make_window(14, {130, 50, 430, 450}, 0),
+        make_window(15, {100, 100, 400, 400}, 1),
+    };
+    const auto two_edge_result =
+        two_edge_goal.coordinator.process(drag_events(14), true, true);
+    CHECK(two_edge_result.status == MvpBatchStatus::DryRun);
+    CHECK(!two_edge_result.edgeGoalDegraded);
+    CHECK(two_edge_result.requiredExposedEdges == 2);
+    CHECK(two_edge_result.solve.status == SolveStatus::Solved);
+    CHECK(two_edge_result.solve.moves.size() == 1);
+    CHECK(two_edge_result.solve.moves[0].window.hwnd == 15);
+
+    auto one_edge_settings = test_settings();
+    one_edge_settings.maxSolverStates = 1;
+    MvpFixture one_edge_fallback(one_edge_settings);
+    auto fixed_top = make_window(16, {100, 100, 300, 124}, 1);
+    fixed_top.topmost = true;
+    auto fixed_bottom = make_window(17, {100, 276, 300, 300}, 2);
+    fixed_bottom.topmost = true;
+    one_edge_fallback.desktop.windows = {
+        make_window(18, {100, 124, 276, 276}, 0),
+        fixed_top,
+        fixed_bottom,
+        make_window(19, {100, 100, 300, 300}, 3),
+    };
+    const auto one_edge_result =
+        one_edge_fallback.coordinator.process(drag_events(18), true, true);
+    CHECK(one_edge_result.status == MvpBatchStatus::Idle);
+    CHECK(one_edge_result.edgeGoalDegraded);
+    CHECK(one_edge_result.requiredExposedEdges == 1);
+    CHECK(one_edge_result.solve.status == SolveStatus::NoViolation);
+    CHECK(one_edge_result.solve.moves.empty());
 
     MvpFixture crowded;
     auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);

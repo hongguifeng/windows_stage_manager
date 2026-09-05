@@ -288,6 +288,12 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         geometry::scale_dip_ceil(settings_.minExposedEdgeDip, dpi));
     policy.ranking.visibility.minimumExposedDepth = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(settings_.minExposedDepthDip, dpi));
+    const auto preferred_exposed_edges = std::clamp<std::uint32_t>(
+        settings_.preferredExposedEdges, 1, 4);
+    const auto minimum_exposed_edges = std::clamp<std::uint32_t>(
+        settings_.minimumExposedEdges, 1, preferred_exposed_edges);
+    policy.ranking.visibility.minimumExposedEdges = preferred_exposed_edges;
+    result.requiredExposedEdges = preferred_exposed_edges;
     policy.ranking.minimumOnscreenWidth = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(settings_.minOnscreenWidthDip, dpi));
     policy.ranking.minimumOnscreenHeight = static_cast<std::uint64_t>(
@@ -299,9 +305,22 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
     policy.limits.maximumElapsedMs = settings_.maxSolveTimeMs;
     policy.repairTargetLength = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(settings_.repairTargetEdgeDip, dpi));
-    result.solve = solver::solve_layout(layout, policy);
-    if (result.solve.status != solver::SolveStatus::Solved &&
-        result.solve.status != solver::SolveStatus::NoViolation) {
+    const auto full_layout = layout;
+    const auto full_managed_handles = managed_handles;
+    const auto full_managed_count = result.managedWindowCount;
+    const auto attempt_goal = [&](std::uint32_t exposed_edges) {
+        layout = full_layout;
+        managed_handles = full_managed_handles;
+        result.managedWindowCount = full_managed_count;
+        result.fallbackUsed = false;
+        policy.ranking.visibility.minimumExposedEdges = exposed_edges;
+        result.requiredExposedEdges = exposed_edges;
+        result.solve = solver::solve_layout(layout, policy);
+        if (result.solve.status == solver::SolveStatus::Solved ||
+            result.solve.status == solver::SolveStatus::NoViolation) {
+            return true;
+        }
+
         const auto targets = directly_obscured_targets(
             layout, result.solve.violations, *active_index);
         for (const auto target_index : targets) {
@@ -322,8 +341,15 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
             managed_handles.insert(layout.windows[target_index].key.hwnd);
             result.managedWindowCount = managed_handles.size();
             result.fallbackUsed = true;
-            break;
+            return true;
         }
+        return false;
+    };
+
+    if (!attempt_goal(preferred_exposed_edges) &&
+        minimum_exposed_edges < preferred_exposed_edges) {
+        result.edgeGoalDegraded = true;
+        static_cast<void>(attempt_goal(minimum_exposed_edges));
     }
     if (transaction_seen_states_.empty()) {
         transaction_seen_states_.push_back(solver::hash_layout(layout));

@@ -52,6 +52,8 @@ struct MvpBatchResult {
     std::size_t managedWindowCount = 0;
     std::size_t movedWindowCount = 0;
     bool fallbackUsed = false;
+    std::uint32_t requiredExposedEdges = 1;
+    bool edgeGoalDegraded = false;
 };
 
 class MvpCoordinator final {
