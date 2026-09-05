@@ -39,7 +39,7 @@ int main()
                 observation.dryRun = batch % 2 == 0;
                 observation.solverFailure = batch % 20 == 0;
                 observation.apiFailure = batch % 100 == 0;
-                observation.zOrderFallback = batch % 4 == 0;
+                observation.partialLayout = batch % 4 == 0;
                 metrics.record(observation);
             }
         });
@@ -63,7 +63,7 @@ int main()
     CHECK(result.dryRunBatches == batches / 2);
     CHECK(result.solverFailures == kThreads * 50);
     CHECK(result.apiFailures == kThreads * 10);
-    CHECK(result.zOrderFallbackBatches == batches / 4);
+    CHECK(result.partialLayoutBatches == batches / 4);
     CHECK(result.maximumQueueDepth == 7);
     CHECK(result.maximumBatchDurationUs == batches - 1);
     return 0;

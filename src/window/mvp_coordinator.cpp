@@ -462,45 +462,29 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         result.managedWindowCount = full_managed_count;
         managed_handles = full_managed_handles;
         layout = full_layout;
-        const auto attempt_z_order = [&](std::uint32_t exposed_edges) {
-            policy.ranking.visibility.goal = exposed_edges > 1
-                ? solver::VisibilityGoal::TopAndSide
-                : solver::VisibilityGoal::AnyRecognizableEdge;
-            result.affordanceGoal = exposed_edges > 1
-                ? solver::VisibilityGoal::TopAndSide
-                : solver::VisibilityGoal::AnyRecognizableEdge;
-            result.zOrderSolve = solver::solve_z_order_fallback(
-                full_layout, policy, *active_index);
-            if (result.zOrderSolve.status != solver::SolveStatus::Solved) {
-                return false;
-            }
-            if (result.zOrderSolve.positionSolve.moves.size() > remaining_position_moves) {
-                result.zOrderSolve.status = solver::SolveStatus::Unsatisfiable;
-                return false;
-            }
-            result.solve = result.zOrderSolve.positionSolve;
+        policy.ranking.visibility.goal = solver::VisibilityGoal::AnyRecognizableEdge;
+        result.affordanceGoal = solver::VisibilityGoal::AnyRecognizableEdge;
+        result.affordanceGoalDegraded = true;
+        result.solve = solver::solve_layout_prioritized(
+            layout, policy, *active_index);
+        if ((result.solve.status == solver::SolveStatus::Solved ||
+             result.solve.status == solver::SolveStatus::PartiallySolved) &&
+            result.solve.moves.size() <= remaining_position_moves) {
             include_activation_move();
-            result.zOrderFallbackUsed = true;
-            result.reorderedWindowCount = result.zOrderSolve.reorders.size();
-            return true;
-        };
-
-        result.affordanceGoalDegraded = false;
-        solved = attempt_z_order(2);
-        if (!solved && result.zOrderSolve.status == solver::SolveStatus::Unsatisfiable) {
-            result.affordanceGoalDegraded = true;
-            solved = attempt_z_order(1);
+            result.partialLayoutUsed =
+                result.solve.status == solver::SolveStatus::PartiallySolved;
+            solved = true;
         }
     }
     if (transaction_seen_states_.empty()) {
         transaction_seen_states_.push_back(observed_state);
     }
-    if (result.solve.status == solver::SolveStatus::NoViolation &&
-        !result.zOrderFallbackUsed) {
+    if (result.solve.status == solver::SolveStatus::NoViolation) {
         result.status = status_;
         return result;
     }
     if (result.solve.status != solver::SolveStatus::Solved &&
+        result.solve.status != solver::SolveStatus::PartiallySolved &&
         result.solve.status != solver::SolveStatus::NoViolation) {
         status_ = MvpBatchStatus::Unsatisfiable;
         result.status = status_;
@@ -535,14 +519,11 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     options.dryRun = dry_run;
     options.transactionId = next_transaction_id_;
     options.layoutGeneration = layout_generation_;
-    result.apply = applier_.apply(
-        result.solve.moves, result.zOrderSolve.reorders, options);
+    result.apply = applier_.apply(result.solve.moves, options);
     if (result.apply.status == MoveApplyStatus::DryRun) {
         status_ = MvpBatchStatus::DryRun;
     } else if (result.apply.status == MoveApplyStatus::Applied) {
-        auto verified_layout = result.zOrderFallbackUsed
-            ? result.zOrderSolve.finalSnapshot
-            : layout;
+        auto verified_layout = result.solve.finalSnapshot;
         bool verification_failed = false;
         for (auto& item : verified_layout.windows) {
             const auto actual = std::find_if(
@@ -561,6 +542,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             if (item.managed && actual->monitor != item.monitor) {
                 verification_failed = true;
             }
+            if (actual->zIndex != item.zIndex) {
+                verification_failed = true;
+            }
             item.placementRect = actual_placement;
             item.visualRect = to_rect(actual->visualRect);
             item.workArea = to_rect(actual->workArea);
@@ -575,8 +559,32 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         }
         const auto verification = solver::scan_visibility_violations(
             verified_layout, policy.ranking.visibility);
+        const auto violation_targets = [](const auto& snapshot, const auto& violations) {
+            std::vector<WindowKey> targets;
+            targets.reserve(violations.size());
+            for (const auto& violation : violations) {
+                if (violation.targetIndex < snapshot.windows.size()) {
+                    targets.push_back(snapshot.windows[violation.targetIndex].key);
+                }
+            }
+            std::sort(targets.begin(), targets.end(), [](const auto& left, const auto& right) {
+                if (left.hwnd != right.hwnd) {
+                    return left.hwnd < right.hwnd;
+                }
+                if (left.processId != right.processId) {
+                    return left.processId < right.processId;
+                }
+                return left.instanceGeneration < right.instanceGeneration;
+            });
+            return targets;
+        };
+        const bool violations_match = result.solve.status ==
+                solver::SolveStatus::PartiallySolved
+            ? violation_targets(verified_layout, verification.violations) ==
+                violation_targets(result.solve.finalSnapshot, result.solve.violations)
+            : verification.violations.empty();
         if (verification_failed || verification.status != solver::ViolationScanStatus::Ok ||
-            !verification.violations.empty()) {
+            !violations_match) {
             result.apply.status = MoveApplyStatus::VerificationFailed;
             result.apply.requiresReconcile = true;
             status_ = MvpBatchStatus::ApiError;
@@ -584,7 +592,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             result.status = status_;
             return result;
         }
-        status_ = MvpBatchStatus::Applied;
+        status_ = result.solve.status == solver::SolveStatus::PartiallySolved
+            ? MvpBatchStatus::PartiallySolved
+            : MvpBatchStatus::Applied;
         for (const auto& window : result.apply.finalSnapshot.windows) {
             if (managed_handles.contains(window.key.hwnd)) {
                 stable_layout_[window.key.hwnd] = {

@@ -366,4 +366,177 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
                            clock);
 }
 
+SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
+                                     const SolverPolicy& policy,
+                                     std::size_t active_window_index,
+                                     ISolverClock* supplied_clock)
+{
+    SteadySolverClock default_clock;
+    ISolverClock& clock = supplied_clock == nullptr ? static_cast<ISolverClock&>(default_clock)
+                                                    : *supplied_clock;
+    const auto start = clock.now_ms();
+    if (active_window_index >= initial.windows.size() ||
+        policy.limits.maximumMoves == 0 || policy.limits.maximumStates == 0 ||
+        policy.limits.maximumElapsedMs == 0 ||
+        policy.limits.maximumCandidatesPerViolation == 0) {
+        return terminal_result(
+            SolveStatus::InvalidSnapshot, initial, {}, {}, 0, start, clock);
+    }
+
+    const auto initial_scan = scan_visibility_violations(initial, policy.ranking.visibility);
+    if (initial_scan.status == ViolationScanStatus::InvalidSnapshot) {
+        return terminal_result(
+            SolveStatus::InvalidSnapshot, initial, {}, {}, 1, start, clock);
+    }
+    if (initial_scan.status == ViolationScanStatus::GeometryTooComplex) {
+        return terminal_result(
+            SolveStatus::GeometryTooComplex, initial, {}, {}, 1, start, clock);
+    }
+    if (initial_scan.violations.empty()) {
+        return terminal_result(
+            SolveStatus::NoViolation, initial, {}, {}, 1, start, clock);
+    }
+
+    std::vector<std::size_t> targets;
+    targets.reserve(initial.windows.size());
+    for (std::size_t index = 0; index < initial.windows.size(); ++index) {
+        const auto& window = initial.windows[index];
+        if (index != active_window_index && window.managed && window.visible &&
+            window.currentDesktop) {
+            targets.push_back(index);
+        }
+    }
+    std::stable_sort(targets.begin(), targets.end(), [&initial](std::size_t left,
+                                                                std::size_t right) {
+        return initial.windows[left].zIndex < initial.windows[right].zIndex;
+    });
+
+    auto current = initial;
+    std::vector<MovePlan> moves;
+    std::uint32_t states_visited = 1;
+    for (const auto target_index : targets) {
+        const auto elapsed = elapsed_since(start, clock.now_ms());
+        if (elapsed >= policy.limits.maximumElapsedMs ||
+            states_visited >= policy.limits.maximumStates) {
+            return terminal_result(SolveStatus::Timeout,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+
+        const auto scan = scan_visibility_violations(current, policy.ranking.visibility);
+        if (scan.status == ViolationScanStatus::InvalidSnapshot) {
+            return terminal_result(SolveStatus::InvalidSnapshot,
+                                   initial,
+                                   {},
+                                   {},
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        if (scan.status == ViolationScanStatus::GeometryTooComplex) {
+            return terminal_result(SolveStatus::GeometryTooComplex,
+                                   initial,
+                                   {},
+                                   {},
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        const auto violated = std::find_if(
+            scan.violations.begin(), scan.violations.end(), [target_index](const auto& item) {
+                return item.targetIndex == target_index;
+            });
+        if (violated == scan.violations.end()) {
+            continue;
+        }
+        if (!current.windows[target_index].movable ||
+            moves.size() >= policy.limits.maximumMoves) {
+            continue;
+        }
+
+        auto local = current;
+        for (std::size_t index = 0; index < local.windows.size(); ++index) {
+            const bool is_target = index == target_index;
+            local.windows[index].managed = is_target;
+            local.windows[index].movable = is_target && current.windows[index].movable;
+        }
+        auto local_policy = policy;
+        local_policy.limits.maximumMoves = 1;
+        local_policy.limits.maximumStates = policy.limits.maximumStates - states_visited;
+        local_policy.limits.maximumElapsedMs = policy.limits.maximumElapsedMs - elapsed;
+        const auto local_result = solve_layout(local, local_policy, &clock);
+        states_visited += local_result.statesVisited;
+        if (local_result.status == SolveStatus::Timeout ||
+            local_result.status == SolveStatus::GeometryTooComplex ||
+            local_result.status == SolveStatus::InvalidSnapshot) {
+            return terminal_result(local_result.status,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        if (local_result.status != SolveStatus::Solved ||
+            local_result.moves.size() != 1) {
+            continue;
+        }
+
+        current.windows[target_index].placementRect =
+            local_result.finalSnapshot.windows[target_index].placementRect;
+        current.windows[target_index].visualRect =
+            local_result.finalSnapshot.windows[target_index].visualRect;
+        moves.push_back(local_result.moves.front());
+    }
+
+    const auto final_scan = scan_visibility_violations(current, policy.ranking.visibility);
+    if (final_scan.status == ViolationScanStatus::InvalidSnapshot) {
+        return terminal_result(SolveStatus::InvalidSnapshot,
+                               initial,
+                               {},
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (final_scan.status == ViolationScanStatus::GeometryTooComplex) {
+        return terminal_result(SolveStatus::GeometryTooComplex,
+                               initial,
+                               {},
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (final_scan.violations.empty()) {
+        return terminal_result(SolveStatus::Solved,
+                               current,
+                               std::move(moves),
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (moves.empty()) {
+        return terminal_result(SolveStatus::Unsatisfiable,
+                               initial,
+                               {},
+                               initial_scan.violations,
+                               states_visited,
+                               start,
+                               clock);
+    }
+    return terminal_result(SolveStatus::PartiallySolved,
+                           current,
+                           std::move(moves),
+                           final_scan.violations,
+                           states_visited,
+                           start,
+                           clock);
+}
+
 } // namespace stage_manager::solver

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "solver/layout_solver.h"
-#include "solver/z_order_solver.h"
+#include "solver/z_order_plan.h"
 #include "window/internal_move_tracker.h"
 #include "window/move_transaction.h"
 #include "window/window_provider.h"

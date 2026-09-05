@@ -40,7 +40,6 @@ add_library(stage_manager_core STATIC
     src/solver/candidate_ranker.cpp
     src/solver/layout_hash.cpp
     src/solver/layout_solver.cpp
-    src/solver/z_order_solver.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/activation_placement.cpp
@@ -272,13 +271,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     target_link_libraries(stage_manager_layout_solver_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_layout_solver COMMAND stage_manager_layout_solver_tests)
 
-    add_executable(stage_manager_z_order_solver_tests
-        tests/z_order_solver_tests.cpp
+    add_executable(stage_manager_prioritized_layout_solver_tests
+        tests/prioritized_layout_solver_tests.cpp
     )
 
-    stage_manager_target_defaults(stage_manager_z_order_solver_tests)
-    target_link_libraries(stage_manager_z_order_solver_tests PRIVATE stage_manager_core)
-    add_test(NAME stage_manager_z_order_solver COMMAND stage_manager_z_order_solver_tests)
+    stage_manager_target_defaults(stage_manager_prioritized_layout_solver_tests)
+    target_link_libraries(stage_manager_prioritized_layout_solver_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_prioritized_layout_solver
+        COMMAND stage_manager_prioritized_layout_solver_tests)
 
     add_executable(stage_manager_solver_property_tests
         tests/solver_property_tests.cpp

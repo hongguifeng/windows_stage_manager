@@ -87,8 +87,10 @@ if ($guide -notmatch 'activation_placement_used') { throw "activation placement 
 if ($guide -notmatch '\u5b9e\u9645\u6807\u9898\u680f\u9ad8\u5ea6') { throw "title bar affordance behavior is missing" }
 if ($guide -notmatch '\u5de6\u4e0a\u6216\u53f3\u4e0a' -or $guide -notmatch '\u901a\u9053\u8d1f\u8f7d') { throw "balanced top channel behavior is missing" }
 if ($guide -notmatch '\u5173\u95ed\u8be5\u5f00\u5173\u65f6\u4ecd\u4f1a\u4fee\u590d\u88ab\u906e\u6321\u7a97\u53e3') { throw "disabled placement behavior is missing" }
-if ($guide -notmatch 'z_order_fallback_used') { throw "Z-order fallback diagnostics are missing" }
-if ($guide -notmatch 'bottom-first' -or $guide -notmatch 'top-prefix') { throw "protected Z-order policy is missing" }
+if ($readme -notmatch '\u4e0d\u8c03\u6574\u7a97\u53e3\u5c3a\u5bf8\u6216 Z-order' -or
+    $readme -notmatch '\u4f18\u5148\u4fdd\u8bc1\u6700\u8fd1\u4f7f\u7528\u7684\u4e0a\u5c42\u7a97\u53e3') {
+    throw "README lost immutable Z-order or upper-window priority policy"
+}
 if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
 if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }
 if ($guide -notmatch '\u81ea\u5b9a\u4e49\u2026') { throw "custom numeric setting instructions are missing" }
@@ -115,8 +117,6 @@ foreach ($term in @(
     'TopRightChannel',
     'channelImbalance',
     'centerDistance',
-    'top-prefix',
-    'bottom-first',
     'placeActivatedWindow'
 )) {
     if ($design -notmatch [regex]::Escape($term)) {

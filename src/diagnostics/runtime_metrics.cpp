@@ -33,8 +33,8 @@ void RuntimeMetrics::record(const BatchObservation& observation) noexcept
                                std::memory_order_relaxed);
     api_failures_.fetch_add(observation.apiFailure ? 1 : 0,
                             std::memory_order_relaxed);
-    z_order_fallback_batches_.fetch_add(observation.zOrderFallback ? 1 : 0,
-                                        std::memory_order_relaxed);
+    partial_layout_batches_.fetch_add(observation.partialLayout ? 1 : 0,
+                                      std::memory_order_relaxed);
     update_maximum(maximum_queue_depth_, observation.queueDepth);
     update_maximum(maximum_batch_duration_us_, observation.durationUs);
 }
@@ -56,8 +56,8 @@ RuntimeMetricsSnapshot RuntimeMetrics::snapshot() const noexcept
     result.dryRunBatches = dry_run_batches_.load(std::memory_order_relaxed);
     result.solverFailures = solver_failures_.load(std::memory_order_relaxed);
     result.apiFailures = api_failures_.load(std::memory_order_relaxed);
-    result.zOrderFallbackBatches =
-        z_order_fallback_batches_.load(std::memory_order_relaxed);
+    result.partialLayoutBatches =
+        partial_layout_batches_.load(std::memory_order_relaxed);
     result.maximumQueueDepth = maximum_queue_depth_.load(std::memory_order_relaxed);
     result.maximumBatchDurationUs =
         maximum_batch_duration_us_.load(std::memory_order_relaxed);

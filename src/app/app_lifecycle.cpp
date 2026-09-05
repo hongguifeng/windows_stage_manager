@@ -32,6 +32,8 @@ std::string_view status_name(window::MvpBatchStatus status) noexcept
         return "dry_run";
     case window::MvpBatchStatus::Applied:
         return "applied";
+    case window::MvpBatchStatus::PartiallySolved:
+        return "partially_solved";
     case window::MvpBatchStatus::Unsatisfiable:
         return "unsatisfiable";
     case window::MvpBatchStatus::Suspended:
@@ -526,7 +528,7 @@ void AppLifecycle::coordinator_loop()
         observation.solverStates = result.solve.statesVisited;
         observation.plannedMoves = result.solve.moves.size();
         observation.appliedMoves = result.apply.appliedMoves.size();
-        observation.plannedReorders = result.zOrderSolve.reorders.size();
+        observation.plannedReorders = 0;
         observation.appliedReorders = result.apply.appliedReorders.size();
         observation.droppedEvents = dropped_delta;
         observation.durationUs = static_cast<std::uint64_t>(batch_duration.count());
@@ -536,7 +538,7 @@ void AppLifecycle::coordinator_loop()
         observation.solverFailure = result.status == window::MvpBatchStatus::Unsatisfiable;
         observation.apiFailure = result.status == window::MvpBatchStatus::ApiError ||
             result.reason == window::MvpSuspendReason::SnapshotUnavailable;
-        observation.zOrderFallback = result.zOrderFallbackUsed;
+        observation.partialLayout = result.partialLayoutUsed;
         runtime_metrics_.record(observation);
         const auto health_action = health_monitor_.observe(result.status, result.reason);
         if (health_action == window::HealthAction::DisableAutomation &&
@@ -565,7 +567,7 @@ void AppLifecycle::coordinator_loop()
         const auto solver_states = std::to_string(result.solve.statesVisited);
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
-        const auto planned_reorders = std::to_string(result.zOrderSolve.reorders.size());
+        const auto planned_reorders = std::string{"0"};
         const auto applied_reorders = std::to_string(result.apply.appliedReorders.size());
         const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
                                                        : std::string_view{"false"};
@@ -576,9 +578,10 @@ void AppLifecycle::coordinator_loop()
         const auto affordance_goal_degraded = result.affordanceGoalDegraded
             ? std::string_view{"true"}
             : std::string_view{"false"};
-        const auto z_order_fallback_used = result.zOrderFallbackUsed
+        const auto partial_layout_used = result.partialLayoutUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
+        const auto remaining_violations = std::to_string(result.solve.violations.size());
         const auto activation_placement_used = result.activationPlacementUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
@@ -605,7 +608,8 @@ void AppLifecycle::coordinator_loop()
              {"fallback_used", fallback_used},
              {"affordance_goal", affordance_goal},
              {"affordance_goal_degraded", affordance_goal_degraded},
-             {"z_order_fallback_used", z_order_fallback_used},
+             {"partial_layout_used", partial_layout_used},
+             {"remaining_violation_count", remaining_violations},
              {"activation_placement_used", activation_placement_used},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
@@ -643,6 +647,7 @@ void AppLifecycle::update_runtime_status(window::MvpBatchStatus status)
     case window::MvpBatchStatus::Dragging:
     case window::MvpBatchStatus::DryRun:
     case window::MvpBatchStatus::Applied:
+    case window::MvpBatchStatus::PartiallySolved:
         tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
         return;
     }

@@ -13,6 +13,7 @@ namespace stage_manager::solver {
 
 enum class SolveStatus : std::uint8_t {
     Solved,
+    PartiallySolved,
     NoViolation,
     Unsatisfiable,
     InvalidSnapshot,
@@ -70,5 +71,13 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
                                        const SolverPolicy& policy,
                                        std::size_t active_window_index,
                                        ISolverClock* clock = nullptr);
+
+// Finds the best position-only layout in foreground-recency order. A window
+// that has already become recognizable is never moved again for a less recent
+// window. Z-order is treated as immutable input.
+SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
+                                     const SolverPolicy& policy,
+                                     std::size_t active_window_index,
+                                     ISolverClock* clock = nullptr);
 
 } // namespace stage_manager::solver

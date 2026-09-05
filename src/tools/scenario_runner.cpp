@@ -164,6 +164,8 @@ int main(int argc, char** argv)
                     return 1;
                 }
                 break;
+            case stage_manager::solver::SolveStatus::PartiallySolved:
+                return 1;
             case stage_manager::solver::SolveStatus::NoViolation:
                 ++no_violation;
                 break;
