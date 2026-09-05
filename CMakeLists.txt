@@ -284,6 +284,11 @@ if(STAGE_MANAGER_BUILD_TESTS)
                 -ScriptPath ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_release.ps1
                 -BuildDirectory $<TARGET_FILE_DIR:stage_manager>)
 
+        add_test(NAME stage_manager_documentation
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/documentation_tests.ps1
+                -Workspace ${CMAKE_CURRENT_SOURCE_DIR})
+
         add_executable(stage_manager_win32_window_mover_tests
             tests/win32_window_mover_tests.cpp
         )
