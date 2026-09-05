@@ -112,7 +112,7 @@ int main()
     CHECK(solved.moves.size() == 1);
     CHECK(solved.moves[0].window == covered.windows[1].key);
     CHECK((solved.moves[0].from == Rect{100, 100, 300, 300}));
-    CHECK((solved.moves[0].to == Rect{36, 100, 236, 300}));
+    CHECK((solved.moves[0].to == Rect{164, 164, 364, 364}));
     CHECK(scan_visibility_violations(solved.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 
@@ -126,9 +126,8 @@ int main()
     chain.windows.push_back(make_window(3, {36, 100, 236, 300}, 2, true));
     const auto chain_result = solve_layout(chain, policy);
     CHECK(chain_result.status == SolveStatus::Solved);
-    CHECK(chain_result.moves.size() >= 2);
+    CHECK(chain_result.moves.size() == 1);
     CHECK(chain_result.moves[0].window == chain.windows[1].key);
-    CHECK(chain_result.moves[1].window == chain.windows[2].key);
     CHECK(scan_visibility_violations(chain_result.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 

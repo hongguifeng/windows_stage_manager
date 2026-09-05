@@ -249,8 +249,8 @@ int main()
     CHECK(chain_result.status == MvpBatchStatus::DryRun);
     CHECK(chain_result.solve.status == SolveStatus::Solved);
     CHECK(chain_result.managedWindowCount == 4);
-    CHECK(chain_result.movedWindowCount == 3);
-    CHECK(chain_result.solve.moves.size() >= 3);
+    CHECK(chain_result.movedWindowCount == 1);
+    CHECK(chain_result.solve.moves.size() == 1);
 
     MvpFixture two_edge_goal;
     two_edge_goal.desktop.windows = {

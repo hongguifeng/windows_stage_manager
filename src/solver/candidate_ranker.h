@@ -47,6 +47,7 @@ struct CandidateRankingPolicy {
 
 struct CandidateCost {
     VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unranked;
+    std::uint64_t centerDistance = 0;
     std::uint32_t movedWindowCount = 0;
     std::uint64_t manhattanDistance = 0;
     std::uint64_t stableDistance = 0;

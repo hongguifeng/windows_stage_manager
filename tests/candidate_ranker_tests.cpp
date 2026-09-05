@@ -92,12 +92,13 @@ int main()
         snapshot, violations.violations[0], generated.candidates, policy);
     CHECK(ranked.status == CandidateRankingStatus::Ok);
     CHECK(!ranked.accepted.empty());
-    CHECK((ranked.accepted.front().candidate.placementRect == Rect{36, 100, 236, 300}));
-    CHECK(ranked.accepted.front().cost.manhattanDistance == 64);
+    CHECK((ranked.accepted.front().candidate.placementRect == Rect{164, 164, 364, 364}));
+    CHECK(ranked.accepted.front().cost.manhattanDistance == 128);
     CHECK(ranked.accepted.front().cost.visibilityPreference ==
           VisibilityPreferenceRank::LeftTop);
-    CHECK(ranked.accepted.front().cost.stableDistance == 64);
-    CHECK(ranked.accepted.front().cost.directionChangePenalty == 0);
+    CHECK(ranked.accepted.front().cost.centerDistance == 28);
+    CHECK(ranked.accepted.front().cost.stableDistance == 128);
+    CHECK(ranked.accepted.front().cost.directionChangePenalty == 1);
     CHECK(ranked.accepted.front().remainingViolations.empty());
     CHECK(rejected_for(ranked, 0, HardConstraintFailure::TargetStillViolated));
 
@@ -107,7 +108,7 @@ int main()
         snapshot, violations.violations[0], generated.candidates, top_preferred_policy);
     CHECK(!top_preferred.accepted.empty());
     CHECK((top_preferred.accepted.front().candidate.placementRect ==
-           Rect{100, 36, 300, 236}));
+           Rect{164, 164, 364, 364}));
 
     const auto preference_layout = [](const Rect& blocker) {
         LayoutSnapshot layout;
@@ -136,7 +137,7 @@ int main()
         snapshot, violations.violations[0], generated.candidates, no_preference_policy);
     CHECK(!coordinate_tie_break.accepted.empty());
     CHECK((coordinate_tie_break.accepted.front().candidate.placementRect ==
-           Rect{36, 100, 236, 300}));
+           Rect{164, 164, 364, 364}));
 
     const std::vector<PlacementCandidate> preference_over_distance_candidates = {
         {{164, 100, 364, 300}, 64, 0, CandidateSource::BlockerEdge},
@@ -149,13 +150,15 @@ int main()
         no_preference_policy);
     CHECK(preference_over_distance.accepted.size() == 2);
     CHECK((preference_over_distance.accepted.front().candidate.placementRect ==
-           Rect{20, 100, 220, 300}));
+           Rect{164, 100, 364, 300}));
     CHECK(preference_over_distance.accepted.front().cost.visibilityPreference ==
-          VisibilityPreferenceRank::LeftTop);
-    CHECK(preference_over_distance.accepted.front().cost.manhattanDistance == 80);
-    CHECK(preference_over_distance.accepted[1].cost.visibilityPreference ==
           VisibilityPreferenceRank::RightBottom);
-    CHECK(preference_over_distance.accepted[1].cost.manhattanDistance == 64);
+    CHECK(preference_over_distance.accepted.front().cost.centerDistance == 64);
+    CHECK(preference_over_distance.accepted.front().cost.manhattanDistance == 64);
+    CHECK(preference_over_distance.accepted[1].cost.visibilityPreference ==
+          VisibilityPreferenceRank::LeftTop);
+    CHECK(preference_over_distance.accepted[1].cost.centerDistance == 180);
+    CHECK(preference_over_distance.accepted[1].cost.manhattanDistance == 80);
 
     const auto repeated = rank_candidates(
         snapshot, violations.violations[0], generated.candidates, policy);

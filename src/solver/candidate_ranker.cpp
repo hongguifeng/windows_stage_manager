@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <tuple>
 
 namespace stage_manager::solver {
@@ -40,6 +41,17 @@ std::uint64_t boundary_distance(const geometry::Rect& rectangle,
     return saturating_add(horizontal, vertical);
 }
 
+std::uint64_t center_distance(const geometry::Rect& rectangle,
+                              const geometry::Rect& work_area) noexcept
+{
+    const auto rectangle_center_x = std::midpoint(rectangle.left, rectangle.right);
+    const auto rectangle_center_y = std::midpoint(rectangle.top, rectangle.bottom);
+    const auto work_area_center_x = std::midpoint(work_area.left, work_area.right);
+    const auto work_area_center_y = std::midpoint(work_area.top, work_area.bottom);
+    return saturating_add(unsigned_distance(rectangle_center_x, work_area_center_x),
+                          unsigned_distance(rectangle_center_y, work_area_center_y));
+}
+
 std::uint32_t direction_change_penalty(
     const PlacementCandidate& candidate, std::optional<geometry::Edge> preferred_edge) noexcept
 {
@@ -64,6 +76,7 @@ CandidateCost calculate_cost(const LayoutWindow& target,
         : target.lastStableRect;
     CandidateCost cost;
     cost.visibilityPreference = visibility_preference;
+    cost.centerDistance = center_distance(candidate.placementRect, target.workArea);
     cost.movedWindowCount = candidate.deltaX == 0 && candidate.deltaY == 0 ? 0u : 1u;
     cost.manhattanDistance = saturating_add(unsigned_distance(candidate.deltaX, 0),
                                             unsigned_distance(candidate.deltaY, 0));
@@ -81,7 +94,7 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
 {
     const auto& left_cost = left.cost;
     const auto& right_cost = right.cost;
-    return std::tie(left_cost.visibilityPreference,
+    return std::tie(left_cost.centerDistance,
                     left_cost.movedWindowCount,
                     left_cost.manhattanDistance,
                     left_cost.stableDistance,
@@ -92,7 +105,7 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
                     left_cost.left,
                     left_cost.top,
                     left.originalIndex) <
-        std::tie(right_cost.visibilityPreference,
+        std::tie(right_cost.centerDistance,
                  right_cost.movedWindowCount,
                  right_cost.manhattanDistance,
                  right_cost.stableDistance,
