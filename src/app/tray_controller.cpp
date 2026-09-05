@@ -16,7 +16,7 @@ struct CustomSettingDialogState {
     SettingField field = SettingField::Count;
     std::uint32_t currentValue = 0;
     std::optional<std::uint32_t> result;
-    UiLanguage language = UiLanguage::SimplifiedChinese;
+    UiLanguage language = UiLanguage::English;
 };
 
 std::wstring choice_text(SettingField field, std::uint32_t value, UiLanguage language)

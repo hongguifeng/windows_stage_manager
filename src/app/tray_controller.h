@@ -37,7 +37,7 @@ std::optional<std::uint32_t> prompt_custom_setting_value(
     HWND owner,
     SettingField field,
     std::uint32_t current_value,
-    UiLanguage language = UiLanguage::SimplifiedChinese);
+    UiLanguage language = UiLanguage::English);
 
 enum class TrayStatus {
     Running,
@@ -57,7 +57,7 @@ struct UnsatisfiableNotification final {
 constexpr std::uint64_t kUnsatisfiableNotificationCooldownMs = 10'000;
 
 UnsatisfiableNotification unsatisfiable_notification(
-    UiLanguage language = UiLanguage::SimplifiedChinese) noexcept;
+    UiLanguage language = UiLanguage::English) noexcept;
 bool unsatisfiable_notification_due(
     std::optional<std::uint64_t> last_notification_ms,
     std::uint64_t now_ms) noexcept;

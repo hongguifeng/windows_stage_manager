@@ -35,7 +35,7 @@ struct DipPreviewMetrics {
 
 SettingHelp setting_help(
     SettingField field,
-    UiLanguage language = UiLanguage::SimplifiedChinese) noexcept;
+    UiLanguage language = UiLanguage::English) noexcept;
 DipPreviewMetrics make_dip_preview_metrics(
     const Settings& settings, std::uint32_t dpi) noexcept;
 std::optional<Settings> prompt_settings_dialog(HWND owner, const Settings& current);

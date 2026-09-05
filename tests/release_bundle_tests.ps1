@@ -41,7 +41,10 @@ try {
     Expand-Archive -LiteralPath (Join-Path $testRoot $current.package) -DestinationPath $expanded
     $expandedExecutable = Join-Path $expanded "stage_manager.exe"
     if (-not (Test-Path -LiteralPath $expandedExecutable -PathType Leaf)) { throw "executable missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "README.md") -PathType Leaf)) { throw "English README missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "README.zh-CN.md") -PathType Leaf)) { throw "Chinese README missing" }
     if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\feature-overview.svg") -PathType Leaf)) { throw "README illustration missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\feature-overview.en.svg") -PathType Leaf)) { throw "English README illustration missing" }
     if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\windows-stage-manager.svg") -PathType Leaf)) { throw "icon source missing" }
     if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\windows-stage-manager.ico") -PathType Leaf)) { throw "icon file missing" }
     $module = [StageManagerResourceMethods]::LoadLibraryEx($expandedExecutable, [IntPtr]::Zero, 2)
@@ -61,6 +64,7 @@ try {
     if ($settings -notmatch '(?m)^activation_horizontal_alignment=1$') { throw "horizontal activation alignment is missing" }
     if ($settings -notmatch '(?m)^activation_vertical_alignment=2$') { throw "vertical activation alignment is missing" }
     if ($settings -notmatch '(?m)^affordance_preset=1$') { throw "balanced affordance preset is missing" }
+    if ($settings -notmatch '(?m)^ui_language=1$') { throw "English UI default is missing" }
     if ($settings -notmatch '(?m)^top_depth_dip=32$') { throw "top affordance is missing" }
     if ($settings -notmatch '(?m)^right_depth_dip=64$') { throw "right affordance is missing" }
     $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json
@@ -69,6 +73,7 @@ try {
     if ($manifest.activationHorizontalAlignmentDefault -ne "center") { throw "horizontal activation alignment manifest mismatch" }
     if ($manifest.activationVerticalAlignmentDefault -ne "bottom") { throw "vertical activation alignment manifest mismatch" }
     if ($manifest.affordancePresetDefault -ne "balanced") { throw "affordance preset manifest mismatch" }
+    if ($manifest.uiLanguageDefault -ne "english") { throw "UI language manifest mismatch" }
 } finally {
     $resolved = [IO.Path]::GetFullPath($testRoot)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

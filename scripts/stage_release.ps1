@@ -29,6 +29,7 @@ New-Item -ItemType Directory -Path $stagingRoot | Out-Null
 try {
     Copy-Item -LiteralPath $executable -Destination $stagingRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\README.md") -Destination $stagingRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\README.zh-CN.md") -Destination $stagingRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\assets") -Destination $stagingRoot -Recurse
     $sampleSettings = @'
 enabled=true
@@ -37,6 +38,7 @@ place_activated_window=true
 activation_horizontal_alignment=1
 activation_vertical_alignment=2
 affordance_preset=1
+ui_language=1
 top_depth_dip=32
 left_depth_dip=40
 right_depth_dip=64
@@ -55,6 +57,7 @@ max_consecutive_failures=3
         activationHorizontalAlignmentDefault = "center"
         activationVerticalAlignmentDefault = "bottom"
         affordancePresetDefault = "balanced"
+        uiLanguageDefault = "english"
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingRoot "manifest.json") -Encoding utf8
 
     $temporaryPackage = "$packagePath.tmp.zip"

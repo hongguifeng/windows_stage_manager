@@ -25,7 +25,7 @@ int main()
           stage_manager::app::ActivationHorizontalAlignment::Center);
     CHECK(defaults.activationVerticalAlignment ==
           stage_manager::app::ActivationVerticalAlignment::Bottom);
-    CHECK(defaults.uiLanguage == stage_manager::app::UiLanguage::SimplifiedChinese);
+    CHECK(defaults.uiLanguage == stage_manager::app::UiLanguage::English);
     CHECK(defaults.topDepthDip < defaults.leftDepthDip);
     CHECK(defaults.leftDepthDip < defaults.rightDepthDip);
     CHECK(defaults.bottomMinimumLengthDip > defaults.topMinimumLengthDip);

@@ -253,7 +253,12 @@ try {
         throw 'process exited while rebuilding after the custom setting change'
     }
 
-    # UiLanguage is field 30; choice index 1 switches the complete UI to English.
+    # UiLanguage is field 30. Verify both directions before continuing in English.
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x0111, [IntPtr]2480, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'Simplified Chinese UI language was not persisted' -Condition {
+        (Get-Content -Raw -LiteralPath $settingsPath) -match '(?m)^ui_language=0\r?$'
+    }
     [StageManagerNativeMethods]::SendMessage(
         $script:window, 0x0111, [IntPtr]2481, [IntPtr]::Zero) | Out-Null
     Wait-Until -FailureMessage 'English UI language was not persisted' -Condition {

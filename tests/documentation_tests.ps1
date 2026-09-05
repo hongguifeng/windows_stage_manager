@@ -21,7 +21,7 @@ function Assert-Match(
 }
 
 $readme = Read-WorkspaceFile "README.md"
-$englishReadme = Read-WorkspaceFile "README.en.md"
+$chineseReadme = Read-WorkspaceFile "README.zh-CN.md"
 $agentInstructions = Read-WorkspaceFile "AGENTS.md"
 $requiredAgentInstruction = '\u6bcf\u6b21\u66f4\u65b0\u529f\u80fd\u4e4b\u540e\uff0c\u90fd\u8981\u540c\u6b65\u4fee\u6539\u4ee3\u7801\u6587\u6863\u3002'
 $functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
@@ -53,22 +53,22 @@ Assert-Match $readme ([regex]::Escape("-Version $version")) `
 
 Assert-Match $readme 'docs/SOFTWARE_FEATURES\.md' `
     "README does not link to the current software feature document"
-Assert-Match $readme 'README\.en\.md' `
-    "Chinese README does not link to the English README"
-Assert-Match $englishReadme 'README\.md' `
-    "English README does not link to the Chinese README"
-Assert-Match $englishReadme 'place_activated_window=true' `
-    "English README does not document activated-window placement"
-Assert-Match $englishReadme 'Ctrl\+Alt\+F12' `
-    "English README does not document the emergency shortcut"
-Assert-Match $englishReadme 'windows-debug' `
-    "English README does not document the build preset"
-Assert-Match $englishReadme 'assets/feature-overview\.en\.svg' `
-    "English README does not use the English feature illustration"
+Assert-Match $readme 'README\.zh-CN\.md' `
+    "default English README does not link to the Chinese README"
+Assert-Match $chineseReadme 'README\.md' `
+    "Chinese README does not link to the default English README"
+Assert-Match $readme 'place_activated_window=true' `
+    "default English README does not document activated-window placement"
+Assert-Match $readme 'Ctrl\+Alt\+F12' `
+    "default English README does not document the emergency shortcut"
+Assert-Match $readme 'windows-debug' `
+    "default English README does not document the build preset"
+Assert-Match $readme 'assets/feature-overview\.en\.svg' `
+    "default English README does not use the English feature illustration"
 Assert-Match $readme 'docs/SOFTWARE_DESIGN\.md' `
     "README does not link to the current software design document"
-Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
-    "README does not identify the authoritative current document"
+Assert-Match $chineseReadme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
+    "Chinese README does not identify the authoritative current document"
 Assert-Match $agentInstructions $requiredAgentInstruction `
     "AGENTS.md does not require documentation updates after feature changes"
 Assert-Match $functions 'As-built' `
@@ -157,6 +157,7 @@ foreach ($sourcePattern in @(
     'ActivationHorizontalAlignment::Center',
     'ActivationVerticalAlignment::Bottom',
     'AffordancePreset::Balanced',
+    'UiLanguage::English',
     'std::uint32_t maxManagedWindows = 20;',
     'std::uint32_t maxConsecutiveFailures = 3;'
 )) {
@@ -170,6 +171,7 @@ foreach ($documentPattern in @(
     '\| `activation_horizontal_alignment` \| `1` \|',
     '\| `activation_vertical_alignment` \| `2` \|',
     '\| `affordance_preset` \| `1` \|',
+    '\| `ui_language` \| `1` \|',
     '\| `max_managed_windows` \| 20 \|',
     '\| `max_consecutive_failures` \| 3 \|'
 )) {
@@ -196,8 +198,10 @@ Assert-Match $readme 'activation_horizontal_alignment=1' `
 Assert-Match $readme 'activation_vertical_alignment=2' `
     "README lost the default vertical activation alignment"
 Assert-Match $readme 'stage_release\.ps1' "README release command is missing"
-Assert-Match $readme 'assets/feature-overview\.svg' `
-    "README feature illustration is missing"
+Assert-Match $readme 'assets/feature-overview\.en\.svg' `
+    "default English README feature illustration is missing"
+Assert-Match $chineseReadme 'assets/feature-overview\.svg' `
+    "Chinese README feature illustration is missing"
 
 if ($feature -notmatch '<svg' -or
     $feature -notmatch 'viewBox="0 0 1400 780"' -or

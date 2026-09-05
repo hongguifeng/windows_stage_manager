@@ -38,7 +38,7 @@ struct Settings {
     ActivationVerticalAlignment activationVerticalAlignment =
         ActivationVerticalAlignment::Bottom;
     AffordancePreset affordancePreset = AffordancePreset::Balanced;
-    UiLanguage uiLanguage = UiLanguage::SimplifiedChinese;
+    UiLanguage uiLanguage = UiLanguage::English;
 
     std::uint32_t topMinimumLengthDip = 120;
     std::uint32_t topMaximumLengthDip = 240;

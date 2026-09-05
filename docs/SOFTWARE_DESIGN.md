@@ -1,7 +1,7 @@
 # Windows Stage Manager 软件设计文档
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
-> 适用版本：0.1.0-rc22
+> 适用版本：0.2.0
 > 更新日期：2026-09-05
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 
@@ -69,7 +69,7 @@
 | `src/tools` | 窗口检查与场景运行工具 |
 | `tests` | 与各模块对应的测试和 PowerShell 集成测试 |
 | `scripts` | 发布打包脚本 |
-| `assets` | ICO、SVG 图标和中英文功能示意图；两份 README 分别引用 `feature-overview.svg` 与 `feature-overview.en.svg` |
+| `assets` | ICO、SVG 图标和中英文功能示意图；默认英文 `README.md` 引用 `feature-overview.en.svg`，`README.zh-CN.md` 引用 `feature-overview.svg` |
 | `.github/workflows` | Windows 2022 + MSVC 的 CI 构建、测试和发版 |
 
 ## 4. 总体架构
@@ -607,7 +607,7 @@ SetWindowPos(
 
 `app::Settings` 是运行配置的单一结构体，带默认成员初始化。`load_settings` 使用简单 `key=value` 解析，忽略空行、注释、section、未知键和无效值。`save_settings` 先写 `.tmp`，再替换正式文件。
 
-`UiLanguage` 当前包含 `SimplifiedChinese` 和 `English`，由 `Settings::uiLanguage` 持有并以 `ui_language=0/1` 持久化；默认使用简体中文。语言只影响显示文本，不进入求解器策略。
+`UiLanguage` 当前包含 `SimplifiedChinese` 和 `English`，由 `Settings::uiLanguage` 持有并以 `ui_language=0/1` 持久化；默认使用英文。语言只影响显示文本，不进入求解器策略。
 
 配置文件路径：
 

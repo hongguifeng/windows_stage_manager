@@ -12,7 +12,8 @@ int main()
     using stage_manager::app::TrayStatus;
     using stage_manager::app::SettingField;
 
-    const auto notification = stage_manager::app::unsatisfiable_notification();
+    const auto notification = stage_manager::app::unsatisfiable_notification(
+        stage_manager::app::UiLanguage::SimplifiedChinese);
     CHECK(notification.title == L"\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3");
     CHECK(notification.message.find(L"\u672a\u6539\u53d8\u7a97\u53e3\u5c42\u7ea7") !=
           std::wstring_view::npos);
@@ -25,6 +26,8 @@ int main()
     CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 10'099));
     CHECK(stage_manager::app::unsatisfiable_notification_due(100, 10'100));
     CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 99));
+    CHECK(stage_manager::app::unsatisfiable_notification().title ==
+          L"No window layout is currently available");
 
     TrayController controller;
     CHECK(controller.handle_command(TrayController::kCommandToggle).type ==
@@ -38,6 +41,7 @@ int main()
     CHECK(controller.handle_command(9999).type == TrayActionType::None);
 
     stage_manager::app::Settings settings;
+    settings.uiLanguage = stage_manager::app::UiLanguage::SimplifiedChinese;
     settings.dryRun = false;
     settings.affordancePreset = stage_manager::app::AffordancePreset::Balanced;
     controller.set_settings(settings);
