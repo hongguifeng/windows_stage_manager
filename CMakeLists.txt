@@ -278,6 +278,12 @@ if(STAGE_MANAGER_BUILD_TESTS)
     add_test(NAME stage_manager_mvp_coordinator COMMAND stage_manager_mvp_coordinator_tests)
 
     if(WIN32)
+        add_test(NAME stage_manager_release_bundle
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_bundle_tests.ps1
+                -ScriptPath ${CMAKE_CURRENT_SOURCE_DIR}/scripts/stage_release.ps1
+                -BuildDirectory $<TARGET_FILE_DIR:stage_manager>)
+
         add_executable(stage_manager_win32_window_mover_tests
             tests/win32_window_mover_tests.cpp
         )
