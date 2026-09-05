@@ -157,6 +157,22 @@ int main()
     using stage_manager::window::WindowEvent;
     using stage_manager::window::WindowEventType;
 
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::None) == "none");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::SnapshotUnavailable) ==
+          "snapshot_unavailable");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::ActiveWindowUnavailable) ==
+          "active_window_unavailable");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::ActiveMonitorChanged) ==
+          "active_monitor_changed");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::NoManagedPeer) ==
+          "no_managed_peer");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::SolverFailure) ==
+          "solver_failure");
+    CHECK(stage_manager::window::suspend_reason_name(MvpSuspendReason::ApplyFailure) ==
+          "apply_failure");
+    CHECK(stage_manager::window::suspend_reason_name(static_cast<MvpSuspendReason>(255)) ==
+          "unknown");
+
     MvpFixture dry;
     dry.desktop.windows = {
         make_window(1, {100, 100, 400, 400}, 0),

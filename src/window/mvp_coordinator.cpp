@@ -48,6 +48,27 @@ std::optional<geometry::Edge> move_direction(const solver::MovePlan& move) noexc
 
 } // namespace
 
+std::string_view suspend_reason_name(MvpSuspendReason reason) noexcept
+{
+    switch (reason) {
+    case MvpSuspendReason::None:
+        return "none";
+    case MvpSuspendReason::SnapshotUnavailable:
+        return "snapshot_unavailable";
+    case MvpSuspendReason::ActiveWindowUnavailable:
+        return "active_window_unavailable";
+    case MvpSuspendReason::ActiveMonitorChanged:
+        return "active_monitor_changed";
+    case MvpSuspendReason::NoManagedPeer:
+        return "no_managed_peer";
+    case MvpSuspendReason::SolverFailure:
+        return "solver_failure";
+    case MvpSuspendReason::ApplyFailure:
+        return "apply_failure";
+    }
+    return "unknown";
+}
+
 MvpCoordinator::MvpCoordinator(IWindowProvider& provider,
                                IMoveApplier& applier,
                                MoveTransactionGuard& guard,

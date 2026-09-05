@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +38,8 @@ enum class MvpSuspendReason : std::uint8_t {
     SolverFailure,
     ApplyFailure,
 };
+
+std::string_view suspend_reason_name(MvpSuspendReason reason) noexcept;
 
 struct MvpBatchResult {
     MvpBatchStatus status = MvpBatchStatus::Idle;

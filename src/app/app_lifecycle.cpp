@@ -437,6 +437,7 @@ void AppLifecycle::coordinator_loop()
             diagnostics::LogLevel::Debug,
             "batch_complete",
             {{"status", status_name(result.status)},
+             {"reason", window::suspend_reason_name(result.reason)},
              {"transaction_id", transaction_id},
              {"layout_generation", layout_generation},
              {"input_events", input_count},
