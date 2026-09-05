@@ -4,6 +4,7 @@
 #include "resource.h"
 
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "stage_manager.manifest"
+IDI_STAGE_MANAGER ICON "../../assets/windows-stage-manager.ico"
 
 IDD_CUSTOM_SETTING DIALOGEX 0, 0, 228, 82
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU

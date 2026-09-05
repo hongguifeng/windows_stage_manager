@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Windows 窗口管理器图标</title>
+  <desc id="desc">前台窗口覆盖后台窗口，同时保留后台窗口左边缘和上边缘的几何标志。</desc>
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="#0b1733"/>
+  <rect x="76" y="94" width="282" height="300" rx="48" fill="#22c7f2"/>
+  <rect x="112" y="132" width="210" height="224" rx="24" fill="#0b1733"/>
+  <path d="M112 154a22 22 0 0 1 22-22h166" fill="none" stroke="#ffd166" stroke-width="18" stroke-linecap="round"/>
+  <path d="M112 154v178" fill="none" stroke="#ffd166" stroke-width="18" stroke-linecap="round"/>
+  <rect x="174" y="164" width="266" height="244" rx="48" fill="#f7fbff"/>
+  <path d="M174 212a48 48 0 0 1 48-48h170a48 48 0 0 1 48 48v26H174z" fill="#2764f5"/>
+  <circle cx="218" cy="202" r="10" fill="#d8e6ff"/>
+  <circle cx="250" cy="202" r="10" fill="#d8e6ff"/>
+  <rect x="242" y="272" width="130" height="88" rx="24" fill="#e9f1ff"/>
+  <path d="M282 316h50M307 291v50" stroke="#2764f5" stroke-width="18" stroke-linecap="round"/>
+</svg>

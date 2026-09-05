@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 
+#include "app/resource.h"
 #include "diagnostics/logger.h"
 #include "app/version.h"
 #include "window/reconcile_scheduler.h"
@@ -138,6 +139,24 @@ bool AppLifecycle::register_window_class()
     window_class.hInstance = instance_;
     window_class.lpfnWndProc = &AppLifecycle::window_proc;
     window_class.lpszClassName = kMessageWindowClass;
+    window_class.hIcon = static_cast<HICON>(LoadImageW(
+        instance_,
+        MAKEINTRESOURCEW(IDI_STAGE_MANAGER),
+        IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON),
+        GetSystemMetrics(SM_CYICON),
+        LR_SHARED));
+    window_class.hIconSm = static_cast<HICON>(LoadImageW(
+        instance_,
+        MAKEINTRESOURCEW(IDI_STAGE_MANAGER),
+        IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON),
+        GetSystemMetrics(SM_CYSMICON),
+        LR_SHARED));
+
+    if (window_class.hIcon == nullptr || window_class.hIconSm == nullptr) {
+        return false;
+    }
 
     if (RegisterClassExW(&window_class) != 0) {
         return true;

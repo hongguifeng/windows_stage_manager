@@ -4,6 +4,28 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class StageManagerResourceMethods
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr LoadImage(
+        IntPtr instance, IntPtr name, uint type, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    public static extern bool DestroyIcon(IntPtr icon);
+
+    [DllImport("kernel32.dll")]
+    public static extern bool FreeLibrary(IntPtr module);
+}
+'@
+
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("windows-stage-manager-release-test-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
@@ -17,7 +39,18 @@ try {
 
     $expanded = Join-Path $testRoot "expanded"
     Expand-Archive -LiteralPath (Join-Path $testRoot $current.package) -DestinationPath $expanded
-    if (-not (Test-Path -LiteralPath (Join-Path $expanded "stage_manager.exe") -PathType Leaf)) { throw "executable missing" }
+    $expandedExecutable = Join-Path $expanded "stage_manager.exe"
+    if (-not (Test-Path -LiteralPath $expandedExecutable -PathType Leaf)) { throw "executable missing" }
+    $module = [StageManagerResourceMethods]::LoadLibraryEx($expandedExecutable, [IntPtr]::Zero, 2)
+    if ($module -eq [IntPtr]::Zero) { throw "executable resources could not be loaded" }
+    try {
+        $icon = [StageManagerResourceMethods]::LoadImage(
+            $module, [IntPtr]102, 1, 32, 32, 0)
+        if ($icon -eq [IntPtr]::Zero) { throw "application icon resource missing" }
+        [StageManagerResourceMethods]::DestroyIcon($icon) | Out-Null
+    } finally {
+        [StageManagerResourceMethods]::FreeLibrary($module) | Out-Null
+    }
     $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
     if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
     if ($settings -notmatch '(?m)^center_activated_window=true$') { throw "activation centering default is missing" }

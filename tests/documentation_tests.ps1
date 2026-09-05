@@ -11,6 +11,8 @@ $allDocuments = (Get-ChildItem -LiteralPath $Workspace -Filter '*.md' -File |
 if ($readme -notmatch 'dry_run=false') { throw "README lost the active default" }
 if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
 if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
+if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.svg') -PathType Leaf)) { throw "application icon source is missing" }
+if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.ico') -PathType Leaf)) { throw "application icon file is missing" }
 if ($guide -notmatch 'preferred_exposed_edges=2') { throw "preferred edge behavior is missing" }
 if ($guide -notmatch 'center_activated_window=true') { throw "activation centering default is missing" }
 if ($guide -notmatch 'edge_goal_degraded') { throw "edge degradation diagnostics are missing" }

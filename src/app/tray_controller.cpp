@@ -271,7 +271,17 @@ bool TrayController::initialize(HWND owner, const Settings& settings)
     icon_data_.uID = 1;
     icon_data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     icon_data_.uCallbackMessage = kTrayCallbackMessage;
-    icon_data_.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    icon_data_.hIcon = static_cast<HICON>(LoadImageW(
+        GetModuleHandleW(nullptr),
+        MAKEINTRESOURCEW(IDI_STAGE_MANAGER),
+        IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON),
+        GetSystemMetrics(SM_CYSMICON),
+        LR_SHARED));
+    if (icon_data_.hIcon == nullptr) {
+        owner_ = nullptr;
+        return false;
+    }
     update_tooltip();
 
     if (!Shell_NotifyIconW(NIM_ADD, &icon_data_)) {
