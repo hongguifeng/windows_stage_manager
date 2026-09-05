@@ -306,6 +306,20 @@ int main()
     CHECK(prioritized_result.solve.moves.size() == 1);
     CHECK(prioritized_result.solve.moves[0].window.hwnd == 132);
 
+    MvpFixture coverage_prioritized(prioritized_settings);
+    coverage_prioritized.desktop.windows = {
+        make_window(140, {100, 100, 400, 400}, 0),
+        make_window(141, {350, 100, 650, 400}, 1),
+        make_window(142, {100, 100, 400, 400}, 2),
+    };
+    const auto coverage_result =
+        coverage_prioritized.coordinator.process(drag_events(140), true, true);
+    CHECK(coverage_result.status == MvpBatchStatus::DryRun);
+    CHECK(coverage_result.solve.status == SolveStatus::Solved);
+    CHECK(coverage_result.managedWindowCount == 2);
+    CHECK(coverage_result.solve.moves.size() == 1);
+    CHECK(coverage_result.solve.moves[0].window.hwnd == 142);
+
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;
     const auto live_result = live.coordinator.process(drag_events(1), true, false);

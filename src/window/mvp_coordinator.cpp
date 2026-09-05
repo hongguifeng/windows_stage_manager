@@ -39,6 +39,28 @@ bool directly_obscured_by(const WindowSnapshot& blocker,
         rectangles_intersect(blocker.visualRect, target.visualRect);
 }
 
+long double obscured_fraction(const PixelRect& blocker, const PixelRect& target) noexcept
+{
+    if (!rectangles_intersect(blocker, target)) {
+        return 0.0L;
+    }
+    const auto intersection_width = static_cast<std::int64_t>(
+        std::min(blocker.right, target.right)) -
+        static_cast<std::int64_t>(std::max(blocker.left, target.left));
+    const auto intersection_height = static_cast<std::int64_t>(
+        std::min(blocker.bottom, target.bottom)) -
+        static_cast<std::int64_t>(std::max(blocker.top, target.top));
+    const auto target_width = static_cast<std::int64_t>(target.right) - target.left;
+    const auto target_height = static_cast<std::int64_t>(target.bottom) - target.top;
+    if (target_width <= 0 || target_height <= 0) {
+        return 0.0L;
+    }
+    return (static_cast<long double>(intersection_width) *
+            static_cast<long double>(intersection_height)) /
+        (static_cast<long double>(target_width) *
+         static_cast<long double>(target_height));
+}
+
 bool contains_hash(std::span<const solver::LayoutHash> hashes,
                    const solver::LayoutHash& value)
 {
@@ -240,19 +262,30 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         return window.key.hwnd != active->key.hwnd && window.managed &&
             window.monitor == active->monitor;
     };
-    const auto append_peers = [&](bool directly_obscured) {
-        for (const auto& window : captured->windows) {
-            if (managed.size() == maximum_managed) {
-                return;
-            }
-            if (eligible_peer(window) &&
-                directly_obscured_by(*active, window) == directly_obscured) {
-                managed.push_back(&window);
-            }
+    std::vector<const WindowSnapshot*> peers;
+    for (const auto& window : captured->windows) {
+        if (eligible_peer(window)) {
+            peers.push_back(&window);
         }
-    };
-    append_peers(true);
-    append_peers(false);
+    }
+    std::stable_sort(peers.begin(), peers.end(), [&active](const auto* left, const auto* right) {
+        const bool left_direct = directly_obscured_by(*active, *left);
+        const bool right_direct = directly_obscured_by(*active, *right);
+        if (left_direct != right_direct) {
+            return left_direct;
+        }
+        if (!left_direct) {
+            return false;
+        }
+        return obscured_fraction(active->visualRect, left->visualRect) >
+            obscured_fraction(active->visualRect, right->visualRect);
+    });
+    for (const auto* peer : peers) {
+        if (managed.size() == maximum_managed) {
+            break;
+        }
+        managed.push_back(peer);
+    }
     result.managedWindowCount = managed.size();
     if (managed.size() < 2) {
         status_ = MvpBatchStatus::Idle;
