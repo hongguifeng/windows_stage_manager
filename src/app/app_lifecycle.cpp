@@ -478,6 +478,9 @@ void AppLifecycle::coordinator_loop()
         const auto z_order_fallback_used = result.zOrderFallbackUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
+        const auto activation_centering_used = result.activationCenteringUsed
+            ? std::string_view{"true"}
+            : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
         const auto queue_depth_text = std::to_string(queue_depth);
         const auto total_batches = std::to_string(metrics.batches);
@@ -502,6 +505,7 @@ void AppLifecycle::coordinator_loop()
              {"required_exposed_edges", required_exposed_edges},
              {"edge_goal_degraded", edge_goal_degraded},
              {"z_order_fallback_used", z_order_fallback_used},
+             {"activation_centering_used", activation_centering_used},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

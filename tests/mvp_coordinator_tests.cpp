@@ -184,6 +184,18 @@ std::vector<stage_manager::window::WindowEvent> foreground_event(std::uintptr_t 
     return {{WindowEventType::Foreground, active, 1, 100, 1}};
 }
 
+std::vector<stage_manager::window::WindowEvent> activation_drag_events(
+    std::uintptr_t active)
+{
+    using stage_manager::window::WindowEventType;
+    return {
+        {WindowEventType::Foreground, active, 1, 100, 1},
+        {WindowEventType::MoveSizeStart, active, 1, 101, 2},
+        {WindowEventType::LocationChange, active, 1, 102, 3},
+        {WindowEventType::MoveSizeEnd, active, 1, 103, 4},
+    };
+}
+
 } // namespace
 
 int main()
@@ -322,6 +334,24 @@ int main()
     CHECK(z_order_dry.desktop.reorderCalls == 0);
     CHECK(z_order_dry.desktop.moveCalls == 0);
 
+    MvpFixture activation_z_order(z_order_settings);
+    activation_z_order.desktop.windows = make_z_order_layout();
+    activation_z_order.desktop.windows[0].placementRect = {0, 300, 900, 400};
+    activation_z_order.desktop.windows[0].visualRect = {0, 300, 900, 400};
+    const auto activation_z_order_result =
+        activation_z_order.coordinator.process(foreground_event(201), true, true);
+    CHECK(activation_z_order_result.status == MvpBatchStatus::DryRun);
+    CHECK(activation_z_order_result.zOrderFallbackUsed);
+    CHECK(activation_z_order_result.activationCenteringUsed);
+    CHECK(activation_z_order_result.reorderedWindowCount == 1);
+    CHECK(activation_z_order_result.solve.status == SolveStatus::Solved);
+    CHECK(activation_z_order_result.solve.moves.size() == 1);
+    CHECK(activation_z_order_result.solve.moves[0].window.hwnd == 201);
+    CHECK((activation_z_order_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{50, 300, 950, 400}));
+    CHECK(activation_z_order.desktop.reorderCalls == 0);
+    CHECK(activation_z_order.desktop.moveCalls == 0);
+
     MvpFixture z_order_live(z_order_settings);
     z_order_live.desktop.windows = make_z_order_layout();
     const auto z_order_live_result =
@@ -424,9 +454,116 @@ int main()
     CHECK(activated_result.transactionId == 1);
     CHECK(activated_result.managedWindowCount == 2);
     CHECK(activated_result.solve.moves.size() == 1);
-    CHECK(activated_result.solve.moves[0].window.hwnd == 151);
+    CHECK(activated_result.solve.moves[0].window.hwnd == 150);
+    CHECK((activated_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{350, 200, 650, 500}));
+    CHECK(activated_result.activationCenteringUsed);
     CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(activated.desktop.moveCalls == 0);
+
+    MvpFixture activation_centering;
+    activation_centering.desktop.windows = {
+        make_window(160, {0, 0, 200, 200}, 0),
+    };
+    const auto centered_result =
+        activation_centering.coordinator.process(foreground_event(160), true, false);
+    CHECK(centered_result.status == MvpBatchStatus::Applied);
+    CHECK(centered_result.activationCenteringUsed);
+    CHECK(centered_result.solve.moves.size() == 1);
+    CHECK(centered_result.solve.moves[0].window.hwnd == 160);
+    CHECK((centered_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{400, 250, 600, 450}));
+    CHECK(activation_centering.desktop.moveCalls == 1);
+
+    const auto duplicate_foreground =
+        activation_centering.coordinator.process(foreground_event(160), true, false);
+    CHECK(duplicate_foreground.transactionId == centered_result.transactionId);
+    CHECK(duplicate_foreground.solve.moves.empty());
+    CHECK(!duplicate_foreground.activationCenteringUsed);
+    CHECK(activation_centering.desktop.moveCalls == 1);
+
+    activation_centering.desktop.windows[0].placementRect = {50, 50, 250, 250};
+    activation_centering.desktop.windows[0].visualRect = {50, 50, 250, 250};
+    const auto manually_moved =
+        activation_centering.coordinator.process(drag_events(160), true, false);
+    CHECK(manually_moved.status == MvpBatchStatus::Idle);
+    CHECK(!manually_moved.activationCenteringUsed);
+    CHECK(activation_centering.desktop.moveCalls == 1);
+    CHECK(activation_centering.desktop.windows[0].placementRect.left == 50);
+    CHECK(activation_centering.desktop.windows[0].placementRect.top == 50);
+    CHECK(activation_centering.desktop.windows[0].placementRect.right == 250);
+    CHECK(activation_centering.desktop.windows[0].placementRect.bottom == 250);
+
+    MvpFixture activated_by_drag;
+    activated_by_drag.desktop.windows = {
+        make_window(164, {50, 50, 250, 250}, 0),
+    };
+    const auto activated_by_drag_result = activated_by_drag.coordinator.process(
+        activation_drag_events(164), true, false);
+    CHECK(activated_by_drag_result.status == MvpBatchStatus::Idle);
+    CHECK(!activated_by_drag_result.activationCenteringUsed);
+    CHECK(activated_by_drag_result.solve.moves.empty());
+    CHECK(activated_by_drag.desktop.moveCalls == 0);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.left == 50);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.top == 50);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.right == 250);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.bottom == 250);
+
+    MvpFixture current_monitor_center;
+    auto offset_frame = make_window(165, {1090, 90, 1310, 310}, 0);
+    offset_frame.visualRect = {1100, 100, 1300, 300};
+    offset_frame.workArea = {1000, 0, 2000, 700};
+    offset_frame.monitor = 2;
+    current_monitor_center.desktop.windows = {offset_frame};
+    const auto current_monitor_result = current_monitor_center.coordinator.process(
+        foreground_event(165), true, true);
+    CHECK(current_monitor_result.status == MvpBatchStatus::DryRun);
+    CHECK(current_monitor_result.activationCenteringUsed);
+    CHECK(current_monitor_result.solve.moves.size() == 1);
+    CHECK((current_monitor_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{1390, 240, 1610, 460}));
+    CHECK(current_monitor_center.desktop.moveCalls == 0);
+
+    MvpFixture already_centered;
+    already_centered.desktop.windows = {
+        make_window(161, {400, 250, 600, 450}, 0),
+    };
+    const auto already_centered_result =
+        already_centered.coordinator.process(foreground_event(161), true, false);
+    CHECK(already_centered_result.status == MvpBatchStatus::Idle);
+    CHECK(already_centered_result.solve.status == SolveStatus::NoViolation);
+    CHECK(already_centered_result.solve.moves.empty());
+    CHECK(!already_centered_result.activationCenteringUsed);
+    CHECK(already_centered.desktop.moveCalls == 0);
+
+    MvpFixture center_and_repair;
+    center_and_repair.desktop.windows = {
+        make_window(162, {0, 0, 300, 300}, 0),
+        make_window(163, {350, 200, 650, 500}, 1),
+    };
+    const auto center_and_repair_result =
+        center_and_repair.coordinator.process(foreground_event(162), true, true);
+    CHECK(center_and_repair_result.status == MvpBatchStatus::DryRun);
+    CHECK(center_and_repair_result.solve.status == SolveStatus::Solved);
+    CHECK(center_and_repair_result.activationCenteringUsed);
+    CHECK(center_and_repair_result.solve.moves.size() == 2);
+    CHECK(center_and_repair_result.solve.moves[0].window.hwnd == 162);
+    CHECK((center_and_repair_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{350, 200, 650, 500}));
+    CHECK(center_and_repair_result.solve.moves[1].window.hwnd == 163);
+    CHECK(center_and_repair_result.movedWindowCount == 2);
+    CHECK(center_and_repair.desktop.moveCalls == 0);
+
+    auto one_move_settings = test_settings();
+    one_move_settings.maxMovesPerBatch = 1;
+    MvpFixture center_budget(one_move_settings);
+    center_budget.desktop.windows = center_and_repair.desktop.windows;
+    const auto center_budget_result =
+        center_budget.coordinator.process(foreground_event(162), true, true);
+    CHECK(center_budget_result.status == MvpBatchStatus::Unsatisfiable);
+    CHECK(!center_budget_result.activationCenteringUsed);
+    CHECK(center_budget_result.solve.moves.size() <= 1);
+    CHECK(center_budget.desktop.moveCalls == 0);
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;

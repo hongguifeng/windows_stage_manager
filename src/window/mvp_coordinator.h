@@ -58,6 +58,7 @@ struct MvpBatchResult {
     std::uint32_t requiredExposedEdges = 1;
     bool edgeGoalDegraded = false;
     bool zOrderFallbackUsed = false;
+    bool activationCenteringUsed = false;
 };
 
 class MvpCoordinator final {
@@ -76,7 +77,9 @@ public:
 
 private:
     std::optional<WindowSnapshotBatch> capture(SnapshotRefreshReason reason);
-    MvpBatchResult settle(bool dry_run, CoalescedBatch events);
+    MvpBatchResult settle(bool dry_run,
+                          CoalescedBatch events,
+                          bool center_activated_window = false);
 
     IWindowProvider& provider_;
     IMoveApplier& applier_;

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <utility>
 #include <unordered_set>
 #include <vector>
@@ -104,6 +105,17 @@ std::optional<geometry::Edge> move_direction(const solver::MovePlan& move) noexc
         return delta_x < 0 ? geometry::Edge::Left : geometry::Edge::Right;
     }
     return delta_y < 0 ? geometry::Edge::Top : geometry::Edge::Bottom;
+}
+
+std::optional<geometry::Rect> centered_placement(
+    const solver::LayoutWindow& window) noexcept
+{
+    const auto window_center_x = std::midpoint(window.visualRect.left, window.visualRect.right);
+    const auto window_center_y = std::midpoint(window.visualRect.top, window.visualRect.bottom);
+    const auto work_center_x = std::midpoint(window.workArea.left, window.workArea.right);
+    const auto work_center_y = std::midpoint(window.workArea.top, window.workArea.bottom);
+    return window.placementRect.translated(
+        work_center_x - window_center_x, work_center_y - window_center_y);
 }
 
 } // namespace
@@ -210,7 +222,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     if (should_settle) {
         return settle(dry_run, std::move(result.events));
     }
-    if (foreground_window && status_ != MvpBatchStatus::Dragging) {
+    if (foreground_window && status_ != MvpBatchStatus::Dragging &&
+        *foreground_window != active_window_) {
         active_window_ = *foreground_window;
         ++next_transaction_id_;
         ++layout_generation_;
@@ -229,7 +242,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
                                          });
         starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
         guard_.activate(next_transaction_id_, layout_generation_);
-        return settle(dry_run, std::move(result.events));
+        return settle(dry_run, std::move(result.events), true);
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
@@ -245,7 +258,9 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     return result;
 }
 
-MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
+MvpBatchResult MvpCoordinator::settle(bool dry_run,
+                                      CoalescedBatch events,
+                                      bool center_activated_window)
 {
     MvpBatchResult result;
     result.events = std::move(events);
@@ -311,7 +326,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         managed.push_back(peer);
     }
     result.managedWindowCount = managed.size();
-    if (managed.size() < 2) {
+    if (managed.size() < 2 && !center_activated_window) {
         status_ = MvpBatchStatus::Idle;
         result.status = status_;
         result.reason = MvpSuspendReason::NoManagedPeer;
@@ -359,6 +374,29 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         return result;
     }
 
+    const auto observed_state = solver::hash_layout(layout);
+    std::optional<solver::MovePlan> activation_move;
+    if (center_activated_window) {
+        auto& active_item = layout.windows[*active_index];
+        const auto centered = centered_placement(active_item);
+        if (centered && *centered != active_item.placementRect) {
+            const auto delta_x = centered->left - active_item.placementRect.left;
+            const auto delta_y = centered->top - active_item.placementRect.top;
+            const auto centered_visual = active_item.visualRect.translated(delta_x, delta_y);
+            if (centered_visual) {
+                solver::MovePlan move;
+                move.window = active_item.key;
+                move.from = active_item.placementRect;
+                move.to = *centered;
+                move.cost.movedWindowCount = 1;
+                move.cost.centerDistance = 0;
+                active_item.placementRect = *centered;
+                active_item.visualRect = *centered_visual;
+                activation_move = move;
+            }
+        }
+    }
+
     std::uint32_t dpi = active->dpi;
     for (const auto* window : managed) {
         dpi = std::max(dpi, window->dpi);
@@ -380,7 +418,13 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         geometry::scale_dip_ceil(settings_.minOnscreenHeightDip, dpi));
     policy.ranking.activeWindowIndex = active_index;
     policy.ranking.preferredEdge = preferred_edge_;
-    policy.limits.maximumMoves = settings_.maxMovesPerBatch;
+    const auto maximum_moves = std::max(settings_.maxMovesPerBatch, 1u);
+    const auto remaining_position_moves = maximum_moves -
+        (activation_move.has_value() ? 1u : 0u);
+    // solve_layout requires a positive search limit even when the centered layout
+    // already satisfies every constraint. Keep its scan enabled, then reject any
+    // peer moves that would exceed the batch budget below.
+    policy.limits.maximumMoves = std::max(remaining_position_moves, 1u);
     policy.limits.maximumStates = settings_.maxSolverStates;
     policy.limits.maximumElapsedMs = settings_.maxSolveTimeMs;
     policy.repairTargetLength = static_cast<std::uint64_t>(
@@ -388,6 +432,16 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
     const auto full_layout = layout;
     const auto full_managed_handles = managed_handles;
     const auto full_managed_count = result.managedWindowCount;
+    const auto include_activation_move = [&] {
+        if (!activation_move) {
+            return;
+        }
+        result.solve.moves.insert(result.solve.moves.begin(), *activation_move);
+        if (result.solve.status == solver::SolveStatus::NoViolation) {
+            result.solve.status = solver::SolveStatus::Solved;
+        }
+        result.activationCenteringUsed = true;
+    };
     const auto attempt_goal = [&](std::uint32_t exposed_edges) {
         layout = full_layout;
         managed_handles = full_managed_handles;
@@ -398,7 +452,14 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         result.solve = solver::solve_layout(layout, policy);
         if (result.solve.status == solver::SolveStatus::Solved ||
             result.solve.status == solver::SolveStatus::NoViolation) {
-            return true;
+            if (result.solve.moves.size() <= remaining_position_moves) {
+                include_activation_move();
+                return true;
+            }
+            result.solve.status = solver::SolveStatus::Unsatisfiable;
+            result.solve.moves.clear();
+            result.solve.finalSnapshot = layout;
+            result.solve.finalState = solver::hash_layout(layout);
         }
 
         const auto targets = directly_obscured_targets(
@@ -411,11 +472,13 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
                 fallback_layout.windows[index].movable = in_fallback;
             }
             const auto fallback = solver::solve_layout(fallback_layout, policy);
-            if (fallback.status != solver::SolveStatus::Solved) {
+            if (fallback.status != solver::SolveStatus::Solved ||
+                fallback.moves.size() > remaining_position_moves) {
                 continue;
             }
             layout = std::move(fallback_layout);
             result.solve = fallback;
+            include_activation_move();
             managed_handles.clear();
             managed_handles.insert(layout.windows[*active_index].key.hwnd);
             managed_handles.insert(layout.windows[target_index].key.hwnd);
@@ -444,7 +507,12 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
             if (result.zOrderSolve.status != solver::SolveStatus::Solved) {
                 return false;
             }
+            if (result.zOrderSolve.positionSolve.moves.size() > remaining_position_moves) {
+                result.zOrderSolve.status = solver::SolveStatus::Unsatisfiable;
+                return false;
+            }
             result.solve = result.zOrderSolve.positionSolve;
+            include_activation_move();
             result.zOrderFallbackUsed = true;
             result.reorderedWindowCount = result.zOrderSolve.reorders.size();
             return true;
@@ -459,7 +527,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         }
     }
     if (transaction_seen_states_.empty()) {
-        transaction_seen_states_.push_back(solver::hash_layout(layout));
+        transaction_seen_states_.push_back(observed_state);
     }
     if (result.solve.status == solver::SolveStatus::NoViolation &&
         !result.zOrderFallbackUsed) {
@@ -483,7 +551,13 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
     }
     transaction_seen_states_.push_back(result.solve.finalState);
     if (!preferred_edge_ && !result.solve.moves.empty()) {
-        preferred_edge_ = move_direction(result.solve.moves.front());
+        const auto peer_move = std::find_if(
+            result.solve.moves.begin(), result.solve.moves.end(), [&active](const auto& move) {
+                return move.window != active->key;
+            });
+        if (peer_move != result.solve.moves.end()) {
+            preferred_edge_ = move_direction(*peer_move);
+        }
     }
     std::unordered_set<NativeWindowHandle> moved_handles;
     for (const auto& move : result.solve.moves) {
