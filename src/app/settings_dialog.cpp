@@ -27,8 +27,16 @@ std::wstring value_text(SettingField field, std::uint32_t value)
         return value == 0 ? L"0 - \u5e94\u7528\u7a97\u53e3\u8c03\u6574"
                           : L"1 - \u4ec5\u9884\u89c8\uff08DryRun\uff09";
     }
-    if (field == SettingField::CenterActivatedWindow) {
+    if (field == SettingField::PlaceActivatedWindow) {
         return value == 0 ? L"0 - \u5173\u95ed" : L"1 - \u5f00\u542f";
+    }
+    if (field == SettingField::AffordancePreset) {
+        switch (static_cast<AffordancePreset>(value)) {
+        case AffordancePreset::Compact: return L"0 - \u7d27\u51d1";
+        case AffordancePreset::Balanced: return L"1 - \u5e73\u8861";
+        case AffordancePreset::Prominent: return L"2 - \u9192\u76ee";
+        case AffordancePreset::Custom: return L"3 - \u81ea\u5b9a\u4e49";
+        }
     }
     return std::to_wstring(value);
 }
@@ -167,9 +175,9 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
     };
     RECT active{
         work.left + width * 3 / 10,
-        work.top + height * 3 / 10,
+        work.top + height * 7 / 20,
         work.right - width / 8,
-        work.bottom - height / 8,
+        work.bottom,
     };
 
     const auto inactive_brush = CreateSolidBrush(RGB(255, 242, 218));
@@ -182,18 +190,32 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
     DeleteObject(active_brush);
 
     const auto metrics = make_dip_preview_metrics(settings, state.dpi);
-    const auto edge_length = std::clamp<int>(
-        static_cast<int>(metrics.exposedEdgePixels), 8, inactive.right - inactive.left);
-    const auto edge_depth = std::clamp<int>(
-        static_cast<int>(metrics.exposedDepthPixels), 3, 36);
+    const auto top_length = std::clamp<int>(
+        static_cast<int>(metrics.topLengthPixels), 8, inactive.right - inactive.left);
+    const auto top_depth = std::clamp<int>(static_cast<int>(metrics.topDepthPixels), 3, 36);
+    const auto left_length = std::clamp<int>(
+        static_cast<int>(metrics.leftLengthPixels), 8, inactive.bottom - inactive.top);
+    const auto left_depth = std::clamp<int>(static_cast<int>(metrics.leftDepthPixels), 3, 36);
+    const auto right_length = std::clamp<int>(
+        static_cast<int>(metrics.rightLengthPixels), 8, inactive.bottom - inactive.top);
+    const auto right_depth = std::clamp<int>(static_cast<int>(metrics.rightDepthPixels), 3, 36);
+    const auto bottom_length = std::clamp<int>(
+        static_cast<int>(metrics.bottomLengthPixels), 8, inactive.right - inactive.left);
+    const auto bottom_depth = std::clamp<int>(
+        static_cast<int>(metrics.bottomDepthPixels), 3, 36);
     const auto exposed_brush = CreateSolidBrush(RGB(41, 176, 106));
-    RECT top_edge{inactive.left, inactive.top, inactive.left + edge_length,
-                  inactive.top + edge_depth};
-    RECT left_edge{inactive.left, inactive.top, inactive.left + edge_depth,
-                   inactive.top + std::min<int>(
-                       edge_length, inactive.bottom - inactive.top)};
+    RECT top_edge{inactive.left, inactive.top, inactive.left + top_length,
+                  inactive.top + top_depth};
+    RECT left_edge{inactive.left, inactive.top, inactive.left + left_depth,
+                   inactive.top + left_length};
+    RECT right_edge{inactive.right - right_depth, inactive.top,
+                    inactive.right, inactive.top + right_length};
+    RECT bottom_edge{inactive.right - bottom_length, inactive.bottom - bottom_depth,
+                     inactive.right, inactive.bottom};
     FillRect(item.hDC, &top_edge, exposed_brush);
     FillRect(item.hDC, &left_edge, exposed_brush);
+    FillRect(item.hDC, &right_edge, exposed_brush);
+    FillRect(item.hDC, &bottom_edge, exposed_brush);
     DeleteObject(exposed_brush);
 
     SetBkMode(item.hDC, TRANSPARENT);
@@ -202,12 +224,8 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
               DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(item.hDC, RGB(45, 45, 45));
     RECT caption{bounds.left + 12, bounds.bottom - 27, bounds.right - 12, bounds.bottom - 6};
-    const auto text = L"\u7eff\u8272 = \u9700\u4fdd\u7559\u7684\u53ef\u4ea4\u4e92\u8fb9\u7f18    " +
-        std::to_wstring(settings.minExposedEdgeDip) + L"\u00d7" +
-        std::to_wstring(settings.minExposedDepthDip) + L" DIP \u2248 " +
-        std::to_wstring(metrics.exposedEdgePixels) + L"\u00d7" +
-        std::to_wstring(metrics.exposedDepthPixels) + L" px";
-    DrawTextW(item.hDC, text.c_str(), -1, &caption, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    const auto text = L"\u7eff\u8272 = \u56db\u8fb9\u72ec\u7acb\u53ef\u8fa8\u8bc6\u533a\uff1b\u9876\u90e8\u6309\u6807\u9898\u680f\u9ad8\u5ea6\uff0c\u53f3/\u4e0b\u9700\u8981\u66f4\u5927\u70b9\u51fb\u533a";
+    DrawTextW(item.hDC, text, -1, &caption, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
 INT_PTR CALLBACK settings_dialog_proc(HWND dialog,
@@ -322,18 +340,26 @@ SettingHelp setting_help(SettingField field) noexcept
     switch (field) {
     case SettingField::DryRun:
         return {L"\u8fd0\u884c\u6a21\u5f0f", L"\u4ec5\u9884\u89c8\u4f1a\u8ba1\u7b97\u5e03\u5c40\u5e76\u5199\u65e5\u5fd7\uff0c\u4f46\u4e0d\u79fb\u52a8\u771f\u5b9e\u7a97\u53e3\u3002", L"\u5f00\u5173", false};
-    case SettingField::CenterActivatedWindow:
-        return {L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5c45\u4e2d", L"\u7a97\u53e3\u4ece\u540e\u53f0\u53d8\u4e3a\u6d3b\u52a8\u65f6\u5c45\u4e2d\uff1b\u7528\u6237\u624b\u52a8\u62d6\u52a8\u5df2\u6d3b\u52a8\u7a97\u53e3\u65f6\u4e0d\u4f1a\u62a2\u56de\u3002", L"\u5f00\u5173", false};
-    case SettingField::MinimumExposedEdgeDip:
-        return {L"\u53ef\u89c1\u8fb9\u7f18\u957f\u5ea6", L"\u4e00\u6761\u7a97\u53e3\u8fb9\u7f18\u81f3\u5c11\u6709\u591a\u957f\u4e0d\u88ab\u906e\u6321\uff0c\u7528\u4e8e\u786e\u4fdd\u53ef\u4ee5\u76f4\u63a5\u70b9\u51fb\u3002", L"DIP", true};
-    case SettingField::MinimumExposedDepthDip:
-        return {L"\u53ef\u89c1\u8fb9\u7f18\u6df1\u5ea6", L"\u9732\u51fa\u8fb9\u7f18\u5411\u7a97\u53e3\u5185\u90e8\u7684\u6700\u5c0f\u539a\u5ea6\uff0c\u503c\u8d8a\u5927\u8d8a\u5bb9\u6613\u70b9\u4e2d\u3002", L"DIP", true};
-    case SettingField::PreferredExposedEdges:
-        return {L"\u9996\u9009\u53ef\u89c1\u8fb9\u7f18\u6570", L"\u6b63\u5e38\u60c5\u51b5\u4e0b\u5e0c\u671b\u6bcf\u4e2a\u975e\u6d3b\u52a8\u7a97\u53e3\u540c\u65f6\u9732\u51fa\u7684\u72ec\u7acb\u8fb9\u7f18\u6570\u3002", L"\u6761\u8fb9\u7f18", false};
-    case SettingField::MinimumExposedEdges:
-        return {L"\u6700\u4f4e\u53ef\u89c1\u8fb9\u7f18\u6570", L"\u9996\u9009\u76ee\u6807\u65e0\u89e3\u65f6\u53ef\u964d\u7ea7\u5230\u7684\u6700\u5c0f\u8fb9\u7f18\u6570\u3002", L"\u6761\u8fb9\u7f18", false};
-    case SettingField::RepairTargetEdgeDip:
-        return {L"\u4fee\u590d\u76ee\u6807\u957f\u5ea6", L"\u79fb\u52a8\u7a97\u53e3\u65f6\u4e3a\u53ef\u89c1\u8fb9\u7f18\u9884\u7559\u7684\u76ee\u6807\u957f\u5ea6\uff0c\u5e94\u4e0d\u5c0f\u4e8e\u53ef\u89c1\u8fb9\u7f18\u957f\u5ea6\u3002", L"DIP", true};
+    case SettingField::PlaceActivatedWindow:
+        return {L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u9760\u4e0b\u5c45\u4e2d", L"\u4ec5\u5728\u7a97\u53e3\u4ece\u540e\u53f0\u53d8\u4e3a\u6d3b\u52a8\u65f6\uff0c\u6c34\u5e73\u5c45\u4e2d\u5e76\u5e95\u90e8\u5bf9\u9f50\uff1b\u624b\u52a8\u62d6\u52a8\u540e\u4e0d\u62a2\u56de\u3002", L"\u5f00\u5173", false};
+    case SettingField::AffordancePreset:
+        return {L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe", L"\u7d27\u51d1\u51cf\u5c11\u79fb\u52a8\uff0c\u5e73\u8861\u9002\u5408\u5927\u591a\u6570\u663e\u793a\u5668\uff0c\u9192\u76ee\u4fdd\u7559\u66f4\u5927\u70b9\u51fb\u533a\u3002\u4fee\u6539\u4efb\u4e00\u5206\u8fb9\u53c2\u6570\u540e\u663e\u793a\u4e3a\u81ea\u5b9a\u4e49\u3002", L"\u9884\u8bbe", false};
+    case SettingField::TopMinimumLengthDip: return {L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6", L"\u6807\u9898\u680f\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\u3002", L"DIP", true};
+    case SettingField::TopMaximumLengthDip: return {L"\u9876\u90e8\u6700\u5927\u957f\u5ea6", L"\u6807\u9898\u680f\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
+    case SettingField::TopDepthDip: return {L"\u9876\u90e8\u56de\u9000\u9ad8\u5ea6", L"\u65e0\u6cd5\u8bfb\u53d6\u6807\u9898\u680f\u65f6\u4f7f\u7528\u7684\u9876\u90e8\u9ad8\u5ea6\uff1b\u6807\u51c6\u7a97\u53e3\u4f18\u5148\u4f7f\u7528\u5b9e\u9645\u6807\u9898\u680f\u3002", L"DIP", true};
+    case SettingField::TopLengthPercent: return {L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b", L"\u9876\u90e8\u957f\u5ea6\u6309\u7a97\u53e3\u5bbd\u5ea6\u7684\u6bd4\u4f8b\u8ba1\u7b97\uff0c\u518d\u9650\u5236\u5728\u4e0a\u4e0b\u9650\u4e4b\u95f4\u3002", L"%", false};
+    case SettingField::LeftMinimumLengthDip: return {L"\u5de6\u4fa7\u6700\u5c0f\u957f\u5ea6", L"\u5de6\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\u3002", L"DIP", true};
+    case SettingField::LeftMaximumLengthDip: return {L"\u5de6\u4fa7\u6700\u5927\u957f\u5ea6", L"\u5de6\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
+    case SettingField::LeftDepthDip: return {L"\u5de6\u4fa7\u6df1\u5ea6", L"\u5de6\u8fb9\u5411\u7a97\u53e3\u5185\u4fdd\u7559\u7684\u53ef\u70b9\u51fb\u5bbd\u5ea6\u3002", L"DIP", true};
+    case SettingField::LeftLengthPercent: return {L"\u5de6\u4fa7\u52a8\u6001\u6bd4\u4f8b", L"\u5de6\u8fb9\u957f\u5ea6\u5360\u7a97\u53e3\u9ad8\u5ea6\u7684\u6bd4\u4f8b\u3002", L"%", false};
+    case SettingField::RightMinimumLengthDip: return {L"\u53f3\u4fa7\u6700\u5c0f\u957f\u5ea6", L"\u53f3\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\uff0c\u9ed8\u8ba4\u5927\u4e8e\u5de6\u8fb9\u3002", L"DIP", true};
+    case SettingField::RightMaximumLengthDip: return {L"\u53f3\u4fa7\u6700\u5927\u957f\u5ea6", L"\u53f3\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
+    case SettingField::RightDepthDip: return {L"\u53f3\u4fa7\u6df1\u5ea6", L"\u53f3\u8fb9\u8f83\u96be\u8fa8\u8bc6\uff0c\u9ed8\u8ba4\u4fdd\u7559\u66f4\u5927\u5bbd\u5ea6\u3002", L"DIP", true};
+    case SettingField::RightLengthPercent: return {L"\u53f3\u4fa7\u52a8\u6001\u6bd4\u4f8b", L"\u53f3\u8fb9\u957f\u5ea6\u5360\u7a97\u53e3\u9ad8\u5ea6\u7684\u6bd4\u4f8b\u3002", L"%", false};
+    case SettingField::BottomMinimumLengthDip: return {L"\u5e95\u90e8\u6700\u5c0f\u957f\u5ea6", L"\u5e95\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\uff0c\u9ed8\u8ba4\u4e3a\u56db\u8fb9\u6700\u5927\u3002", L"DIP", true};
+    case SettingField::BottomMaximumLengthDip: return {L"\u5e95\u90e8\u6700\u5927\u957f\u5ea6", L"\u5e95\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
+    case SettingField::BottomDepthDip: return {L"\u5e95\u90e8\u6df1\u5ea6", L"\u5e95\u8fb9\u8f83\u96be\u8fa8\u8bc6\uff0c\u9700\u8981\u8f83\u5927\u53ef\u70b9\u51fb\u9ad8\u5ea6\u3002", L"DIP", true};
+    case SettingField::BottomLengthPercent: return {L"\u5e95\u90e8\u52a8\u6001\u6bd4\u4f8b", L"\u5e95\u8fb9\u957f\u5ea6\u5360\u7a97\u53e3\u5bbd\u5ea6\u7684\u6bd4\u4f8b\u3002", L"%", false};
     case SettingField::MinimumOnscreenWidthDip:
         return {L"\u6700\u5c0f\u5c4f\u4e0a\u5bbd\u5ea6", L"\u79fb\u52a8\u540e\u81f3\u5c11\u4fdd\u7559\u5728\u5f53\u524d\u5de5\u4f5c\u533a\u5185\u7684\u7a97\u53e3\u5bbd\u5ea6\u3002", L"DIP", true};
     case SettingField::MinimumOnscreenHeightDip:
@@ -363,9 +389,14 @@ DipPreviewMetrics make_dip_preview_metrics(
 {
     return {
         dpi,
-        dip_pixels(settings.minExposedEdgeDip, dpi),
-        dip_pixels(settings.minExposedDepthDip, dpi),
-        dip_pixels(settings.repairTargetEdgeDip, dpi),
+        dip_pixels(settings.topMinimumLengthDip, dpi),
+        dip_pixels(settings.topDepthDip, dpi),
+        dip_pixels(settings.leftMinimumLengthDip, dpi),
+        dip_pixels(settings.leftDepthDip, dpi),
+        dip_pixels(settings.rightMinimumLengthDip, dpi),
+        dip_pixels(settings.rightDepthDip, dpi),
+        dip_pixels(settings.bottomMinimumLengthDip, dpi),
+        dip_pixels(settings.bottomDepthDip, dpi),
         dip_pixels(settings.minOnscreenWidthDip, dpi),
         dip_pixels(settings.minOnscreenHeightDip, dpi),
     };

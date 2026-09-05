@@ -23,24 +23,43 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
         return value == 0 ? L"\u5e94\u7528\u7a97\u53e3\u8c03\u6574"
                           : L"\u4ec5\u9884\u89c8\uff08DryRun\uff09";
     }
-    if (field == SettingField::CenterActivatedWindow) {
+    if (field == SettingField::PlaceActivatedWindow) {
         return value == 0 ? L"\u5173\u95ed" : L"\u5f00\u542f";
+    }
+    if (field == SettingField::AffordancePreset) {
+        switch (static_cast<AffordancePreset>(value)) {
+        case AffordancePreset::Compact: return L"\u7d27\u51d1";
+        case AffordancePreset::Balanced: return L"\u5e73\u8861";
+        case AffordancePreset::Prominent: return L"\u9192\u76ee";
+        case AffordancePreset::Custom: return L"\u81ea\u5b9a\u4e49";
+        }
     }
     auto text = std::to_wstring(value);
     switch (field) {
-    case SettingField::MinimumExposedEdgeDip:
-    case SettingField::MinimumExposedDepthDip:
-    case SettingField::RepairTargetEdgeDip:
+    case SettingField::TopMinimumLengthDip:
+    case SettingField::TopMaximumLengthDip:
+    case SettingField::TopDepthDip:
+    case SettingField::LeftMinimumLengthDip:
+    case SettingField::LeftMaximumLengthDip:
+    case SettingField::LeftDepthDip:
+    case SettingField::RightMinimumLengthDip:
+    case SettingField::RightMaximumLengthDip:
+    case SettingField::RightDepthDip:
+    case SettingField::BottomMinimumLengthDip:
+    case SettingField::BottomMaximumLengthDip:
+    case SettingField::BottomDepthDip:
     case SettingField::MinimumOnscreenWidthDip:
     case SettingField::MinimumOnscreenHeightDip:
         return text + L" DIP";
+    case SettingField::TopLengthPercent:
+    case SettingField::LeftLengthPercent:
+    case SettingField::RightLengthPercent:
+    case SettingField::BottomLengthPercent:
+        return text + L"%";
     case SettingField::EventCoalesceWindowMs:
     case SettingField::ReconcileIntervalMs:
     case SettingField::MaximumSolveTimeMs:
         return text + L" ms";
-    case SettingField::PreferredExposedEdges:
-    case SettingField::MinimumExposedEdges:
-        return text + L" \u6761\u8fb9\u7f18";
     case SettingField::MaximumMovesPerBatch:
         return text + L" \u6b21\u79fb\u52a8";
     case SettingField::MaximumSolverStates:
@@ -50,7 +69,8 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
     case SettingField::MaximumConsecutiveFailures:
         return text + L" \u6b21\u5931\u8d25";
     case SettingField::DryRun:
-    case SettingField::CenterActivatedWindow:
+    case SettingField::PlaceActivatedWindow:
+    case SettingField::AffordancePreset:
     case SettingField::Count:
         return text;
     }
@@ -62,18 +82,24 @@ const wchar_t* field_title(SettingField field) noexcept
     switch (field) {
     case SettingField::DryRun:
         return L"\u8fd0\u884c\u6a21\u5f0f";
-    case SettingField::CenterActivatedWindow:
-        return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5c45\u4e2d";
-    case SettingField::MinimumExposedEdgeDip:
-        return L"\u53ef\u89c1\u8fb9\u7f18\u957f\u5ea6";
-    case SettingField::MinimumExposedDepthDip:
-        return L"\u53ef\u89c1\u8fb9\u7f18\u6df1\u5ea6";
-    case SettingField::PreferredExposedEdges:
-        return L"\u9996\u9009\u53ef\u89c1\u8fb9\u7f18\u6570";
-    case SettingField::MinimumExposedEdges:
-        return L"\u6700\u4f4e\u53ef\u89c1\u8fb9\u7f18\u6570";
-    case SettingField::RepairTargetEdgeDip:
-        return L"\u4fee\u590d\u76ee\u6807\u957f\u5ea6";
+    case SettingField::PlaceActivatedWindow: return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u9760\u4e0b\u5c45\u4e2d";
+    case SettingField::AffordancePreset: return L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe";
+    case SettingField::TopMinimumLengthDip: return L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6";
+    case SettingField::TopMaximumLengthDip: return L"\u9876\u90e8\u6700\u5927\u957f\u5ea6";
+    case SettingField::TopDepthDip: return L"\u9876\u90e8\u56de\u9000\u9ad8\u5ea6";
+    case SettingField::TopLengthPercent: return L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b";
+    case SettingField::LeftMinimumLengthDip: return L"\u5de6\u4fa7\u6700\u5c0f\u957f\u5ea6";
+    case SettingField::LeftMaximumLengthDip: return L"\u5de6\u4fa7\u6700\u5927\u957f\u5ea6";
+    case SettingField::LeftDepthDip: return L"\u5de6\u4fa7\u6df1\u5ea6";
+    case SettingField::LeftLengthPercent: return L"\u5de6\u4fa7\u52a8\u6001\u6bd4\u4f8b";
+    case SettingField::RightMinimumLengthDip: return L"\u53f3\u4fa7\u6700\u5c0f\u957f\u5ea6";
+    case SettingField::RightMaximumLengthDip: return L"\u53f3\u4fa7\u6700\u5927\u957f\u5ea6";
+    case SettingField::RightDepthDip: return L"\u53f3\u4fa7\u6df1\u5ea6";
+    case SettingField::RightLengthPercent: return L"\u53f3\u4fa7\u52a8\u6001\u6bd4\u4f8b";
+    case SettingField::BottomMinimumLengthDip: return L"\u5e95\u90e8\u6700\u5c0f\u957f\u5ea6";
+    case SettingField::BottomMaximumLengthDip: return L"\u5e95\u90e8\u6700\u5927\u957f\u5ea6";
+    case SettingField::BottomDepthDip: return L"\u5e95\u90e8\u6df1\u5ea6";
+    case SettingField::BottomLengthPercent: return L"\u5e95\u90e8\u52a8\u6001\u6bd4\u4f8b";
     case SettingField::MinimumOnscreenWidthDip:
         return L"\u6700\u5c0f\u5c4f\u4e0a\u5bbd\u5ea6";
     case SettingField::MinimumOnscreenHeightDip:

@@ -63,29 +63,79 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_bool(value)) {
             settings.dryRun = *parsed;
         }
-    } else if (key == "center_activated_window") {
+    } else if (key == "place_activated_window") {
         if (const auto parsed = parse_bool(value)) {
-            settings.centerActivatedWindow = *parsed;
+            settings.placeActivatedWindow = *parsed;
         }
-    } else if (key == "min_exposed_edge_dip") {
+    } else if (key == "affordance_preset") {
         if (const auto parsed = parse_uint(value)) {
-            settings.minExposedEdgeDip = *parsed;
+            if (*parsed <= static_cast<std::uint32_t>(AffordancePreset::Custom)) {
+                apply_affordance_preset(settings, static_cast<AffordancePreset>(*parsed));
+            }
         }
-    } else if (key == "min_exposed_depth_dip") {
+    } else if (key == "top_minimum_length_dip") {
         if (const auto parsed = parse_uint(value)) {
-            settings.minExposedDepthDip = *parsed;
+            settings.topMinimumLengthDip = *parsed;
         }
-    } else if (key == "preferred_exposed_edges") {
+    } else if (key == "top_maximum_length_dip") {
         if (const auto parsed = parse_uint(value)) {
-            settings.preferredExposedEdges = *parsed;
+            settings.topMaximumLengthDip = *parsed;
         }
-    } else if (key == "minimum_exposed_edges") {
+    } else if (key == "top_depth_dip") {
         if (const auto parsed = parse_uint(value)) {
-            settings.minimumExposedEdges = *parsed;
+            settings.topDepthDip = *parsed;
         }
-    } else if (key == "repair_target_edge_dip") {
+    } else if (key == "top_length_percent") {
         if (const auto parsed = parse_uint(value)) {
-            settings.repairTargetEdgeDip = *parsed;
+            settings.topLengthPercent = *parsed;
+        }
+    } else if (key == "left_minimum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.leftMinimumLengthDip = *parsed;
+        }
+    } else if (key == "left_maximum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.leftMaximumLengthDip = *parsed;
+        }
+    } else if (key == "left_depth_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.leftDepthDip = *parsed;
+        }
+    } else if (key == "left_length_percent") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.leftLengthPercent = *parsed;
+        }
+    } else if (key == "right_minimum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.rightMinimumLengthDip = *parsed;
+        }
+    } else if (key == "right_maximum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.rightMaximumLengthDip = *parsed;
+        }
+    } else if (key == "right_depth_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.rightDepthDip = *parsed;
+        }
+    } else if (key == "right_length_percent") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.rightLengthPercent = *parsed;
+        }
+    } else if (key == "bottom_minimum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.bottomMinimumLengthDip = *parsed;
+        }
+    } else if (key == "bottom_maximum_length_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.bottomMaximumLengthDip = *parsed;
+        }
+    } else if (key == "bottom_depth_dip") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.bottomDepthDip = *parsed;
+        }
+    } else if (key == "bottom_length_percent") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.bottomLengthPercent = *parsed;
         }
     } else if (key == "min_onscreen_width_dip") {
         if (const auto parsed = parse_uint(value)) {
@@ -147,6 +197,69 @@ std::filesystem::path local_app_data_path()
 
 } // namespace
 
+void apply_affordance_preset(Settings& settings, AffordancePreset preset) noexcept
+{
+    settings.affordancePreset = preset;
+    switch (preset) {
+    case AffordancePreset::Compact:
+        settings.topMinimumLengthDip = 96;
+        settings.topMaximumLengthDip = 180;
+        settings.topDepthDip = 28;
+        settings.topLengthPercent = 20;
+        settings.leftMinimumLengthDip = 96;
+        settings.leftMaximumLengthDip = 180;
+        settings.leftDepthDip = 32;
+        settings.leftLengthPercent = 20;
+        settings.rightMinimumLengthDip = 128;
+        settings.rightMaximumLengthDip = 240;
+        settings.rightDepthDip = 48;
+        settings.rightLengthPercent = 25;
+        settings.bottomMinimumLengthDip = 144;
+        settings.bottomMaximumLengthDip = 280;
+        settings.bottomDepthDip = 48;
+        settings.bottomLengthPercent = 30;
+        break;
+    case AffordancePreset::Balanced:
+        settings.topMinimumLengthDip = 120;
+        settings.topMaximumLengthDip = 240;
+        settings.topDepthDip = 32;
+        settings.topLengthPercent = 25;
+        settings.leftMinimumLengthDip = 120;
+        settings.leftMaximumLengthDip = 240;
+        settings.leftDepthDip = 40;
+        settings.leftLengthPercent = 25;
+        settings.rightMinimumLengthDip = 160;
+        settings.rightMaximumLengthDip = 300;
+        settings.rightDepthDip = 64;
+        settings.rightLengthPercent = 30;
+        settings.bottomMinimumLengthDip = 180;
+        settings.bottomMaximumLengthDip = 360;
+        settings.bottomDepthDip = 64;
+        settings.bottomLengthPercent = 35;
+        break;
+    case AffordancePreset::Prominent:
+        settings.topMinimumLengthDip = 160;
+        settings.topMaximumLengthDip = 300;
+        settings.topDepthDip = 40;
+        settings.topLengthPercent = 30;
+        settings.leftMinimumLengthDip = 160;
+        settings.leftMaximumLengthDip = 300;
+        settings.leftDepthDip = 56;
+        settings.leftLengthPercent = 30;
+        settings.rightMinimumLengthDip = 220;
+        settings.rightMaximumLengthDip = 380;
+        settings.rightDepthDip = 80;
+        settings.rightLengthPercent = 35;
+        settings.bottomMinimumLengthDip = 240;
+        settings.bottomMaximumLengthDip = 420;
+        settings.bottomDepthDip = 88;
+        settings.bottomLengthPercent = 40;
+        break;
+    case AffordancePreset::Custom:
+        break;
+    }
+}
+
 std::filesystem::path default_settings_path()
 {
     return local_app_data_path() / "WindowsStageManager" / "settings.ini";
@@ -203,13 +316,26 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
 
     output << "enabled=" << (settings.enabled ? "true" : "false") << '\n'
            << "dry_run=" << (settings.dryRun ? "true" : "false") << '\n'
-           << "center_activated_window="
-           << (settings.centerActivatedWindow ? "true" : "false") << '\n'
-           << "min_exposed_edge_dip=" << settings.minExposedEdgeDip << '\n'
-           << "min_exposed_depth_dip=" << settings.minExposedDepthDip << '\n'
-           << "preferred_exposed_edges=" << settings.preferredExposedEdges << '\n'
-           << "minimum_exposed_edges=" << settings.minimumExposedEdges << '\n'
-           << "repair_target_edge_dip=" << settings.repairTargetEdgeDip << '\n'
+           << "place_activated_window="
+           << (settings.placeActivatedWindow ? "true" : "false") << '\n'
+           << "affordance_preset=" << static_cast<std::uint32_t>(
+                  settings.affordancePreset) << '\n'
+           << "top_minimum_length_dip=" << settings.topMinimumLengthDip << '\n'
+           << "top_maximum_length_dip=" << settings.topMaximumLengthDip << '\n'
+           << "top_depth_dip=" << settings.topDepthDip << '\n'
+           << "top_length_percent=" << settings.topLengthPercent << '\n'
+           << "left_minimum_length_dip=" << settings.leftMinimumLengthDip << '\n'
+           << "left_maximum_length_dip=" << settings.leftMaximumLengthDip << '\n'
+           << "left_depth_dip=" << settings.leftDepthDip << '\n'
+           << "left_length_percent=" << settings.leftLengthPercent << '\n'
+           << "right_minimum_length_dip=" << settings.rightMinimumLengthDip << '\n'
+           << "right_maximum_length_dip=" << settings.rightMaximumLengthDip << '\n'
+           << "right_depth_dip=" << settings.rightDepthDip << '\n'
+           << "right_length_percent=" << settings.rightLengthPercent << '\n'
+           << "bottom_minimum_length_dip=" << settings.bottomMinimumLengthDip << '\n'
+           << "bottom_maximum_length_dip=" << settings.bottomMaximumLengthDip << '\n'
+           << "bottom_depth_dip=" << settings.bottomDepthDip << '\n'
+           << "bottom_length_percent=" << settings.bottomLengthPercent << '\n'
            << "min_onscreen_width_dip=" << settings.minOnscreenWidthDip << '\n'
            << "min_onscreen_height_dip=" << settings.minOnscreenHeightDip << '\n'
            << "event_coalesce_window_ms=" << settings.eventCoalesceWindowMs << '\n'

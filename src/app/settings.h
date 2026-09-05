@@ -5,16 +5,35 @@
 
 namespace stage_manager::app {
 
+enum class AffordancePreset : std::uint32_t {
+    Compact = 0,
+    Balanced = 1,
+    Prominent = 2,
+    Custom = 3,
+};
+
 struct Settings {
     bool enabled = true;
     bool dryRun = false;
-    bool centerActivatedWindow = true;
+    bool placeActivatedWindow = true;
+    AffordancePreset affordancePreset = AffordancePreset::Balanced;
 
-    std::uint32_t minExposedEdgeDip = 48;
-    std::uint32_t minExposedDepthDip = 24;
-    std::uint32_t preferredExposedEdges = 2;
-    std::uint32_t minimumExposedEdges = 1;
-    std::uint32_t repairTargetEdgeDip = 64;
+    std::uint32_t topMinimumLengthDip = 120;
+    std::uint32_t topMaximumLengthDip = 240;
+    std::uint32_t topDepthDip = 32;
+    std::uint32_t topLengthPercent = 25;
+    std::uint32_t leftMinimumLengthDip = 120;
+    std::uint32_t leftMaximumLengthDip = 240;
+    std::uint32_t leftDepthDip = 40;
+    std::uint32_t leftLengthPercent = 25;
+    std::uint32_t rightMinimumLengthDip = 160;
+    std::uint32_t rightMaximumLengthDip = 300;
+    std::uint32_t rightDepthDip = 64;
+    std::uint32_t rightLengthPercent = 30;
+    std::uint32_t bottomMinimumLengthDip = 180;
+    std::uint32_t bottomMaximumLengthDip = 360;
+    std::uint32_t bottomDepthDip = 64;
+    std::uint32_t bottomLengthPercent = 35;
     std::uint32_t minOnscreenWidthDip = 100;
     std::uint32_t minOnscreenHeightDip = 100;
 
@@ -28,6 +47,8 @@ struct Settings {
 
     constexpr bool operator==(const Settings&) const noexcept = default;
 };
+
+void apply_affordance_preset(Settings& settings, AffordancePreset preset) noexcept;
 
 std::filesystem::path default_settings_path();
 std::filesystem::path default_log_path();

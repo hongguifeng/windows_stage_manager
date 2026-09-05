@@ -220,7 +220,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
         guard_.activate(next_transaction_id_, layout_generation_);
         return settle(
-            dry_run, std::move(result.events), settings_.centerActivatedWindow);
+            dry_run, std::move(result.events), settings_.placeActivatedWindow);
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
@@ -238,7 +238,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
 
 MvpBatchResult MvpCoordinator::settle(bool dry_run,
                                       CoalescedBatch events,
-                                      bool center_activated_window)
+                                      bool place_activated_window)
 {
     MvpBatchResult result;
     result.events = std::move(events);
@@ -304,7 +304,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         managed.push_back(peer);
     }
     result.managedWindowCount = managed.size();
-    if (managed.size() < 2 && !center_activated_window) {
+    if (managed.size() < 2 && !place_activated_window) {
         status_ = MvpBatchStatus::Idle;
         result.status = status_;
         result.reason = MvpSuspendReason::NoManagedPeer;
@@ -356,7 +356,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
 
     const auto observed_state = solver::hash_layout(layout);
     std::optional<solver::MovePlan> activation_move;
-    if (center_activated_window) {
+    if (place_activated_window) {
         auto& active_item = layout.windows[*active_index];
         const auto centered = activated_placement(active_item);
         if (centered && *centered != active_item.placementRect) {
@@ -382,23 +382,20 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         dpi = std::max(dpi, window->dpi);
     }
     solver::SolverPolicy policy;
-    const solver::EdgeAffordanceRule legacy_edge_rule{
-        settings_.minExposedEdgeDip,
-        settings_.minExposedEdgeDip,
-        settings_.minExposedDepthDip,
-        100};
-    policy.ranking.visibility.top = legacy_edge_rule;
-    policy.ranking.visibility.left = legacy_edge_rule;
-    policy.ranking.visibility.right = legacy_edge_rule;
-    policy.ranking.visibility.bottom = legacy_edge_rule;
-    const auto preferred_exposed_edges = std::clamp<std::uint32_t>(
-        settings_.preferredExposedEdges, 1, 4);
-    const auto minimum_exposed_edges = std::clamp<std::uint32_t>(
-        settings_.minimumExposedEdges, 1, preferred_exposed_edges);
-    policy.ranking.visibility.goal = preferred_exposed_edges > 1
-        ? solver::VisibilityGoal::TopAndSide
-        : solver::VisibilityGoal::AnyRecognizableEdge;
-    result.requiredExposedEdges = preferred_exposed_edges;
+    policy.ranking.visibility.top = {
+        settings_.topMinimumLengthDip, settings_.topMaximumLengthDip,
+        settings_.topDepthDip, settings_.topLengthPercent};
+    policy.ranking.visibility.left = {
+        settings_.leftMinimumLengthDip, settings_.leftMaximumLengthDip,
+        settings_.leftDepthDip, settings_.leftLengthPercent};
+    policy.ranking.visibility.right = {
+        settings_.rightMinimumLengthDip, settings_.rightMaximumLengthDip,
+        settings_.rightDepthDip, settings_.rightLengthPercent};
+    policy.ranking.visibility.bottom = {
+        settings_.bottomMinimumLengthDip, settings_.bottomMaximumLengthDip,
+        settings_.bottomDepthDip, settings_.bottomLengthPercent};
+    policy.ranking.visibility.goal = solver::VisibilityGoal::TopAndSide;
+    result.affordanceGoal = solver::VisibilityGoal::TopAndSide;
     policy.ranking.minimumOnscreenWidth = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(settings_.minOnscreenWidthDip, dpi));
     policy.ranking.minimumOnscreenHeight = static_cast<std::uint64_t>(
@@ -425,7 +422,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         if (result.solve.status == solver::SolveStatus::NoViolation) {
             result.solve.status = solver::SolveStatus::Solved;
         }
-        result.activationCenteringUsed = true;
+        result.activationPlacementUsed = true;
     };
     const auto attempt_goal = [&](std::uint32_t exposed_edges) {
         layout = full_layout;
@@ -435,7 +432,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         policy.ranking.visibility.goal = exposed_edges > 1
             ? solver::VisibilityGoal::TopAndSide
             : solver::VisibilityGoal::AnyRecognizableEdge;
-        result.requiredExposedEdges = exposed_edges;
+        result.affordanceGoal = exposed_edges > 1
+            ? solver::VisibilityGoal::TopAndSide
+            : solver::VisibilityGoal::AnyRecognizableEdge;
         result.solve = solver::solve_layout(layout, policy);
         if (result.solve.status == solver::SolveStatus::Solved ||
             result.solve.status == solver::SolveStatus::NoViolation) {
@@ -462,10 +461,10 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         return false;
     };
 
-    auto solved = attempt_goal(preferred_exposed_edges);
-    if (!solved && minimum_exposed_edges < preferred_exposed_edges) {
-        result.edgeGoalDegraded = true;
-        solved = attempt_goal(minimum_exposed_edges);
+    auto solved = attempt_goal(2);
+    if (!solved) {
+        result.affordanceGoalDegraded = true;
+        solved = attempt_goal(1);
     }
     if (!solved && result.solve.status == solver::SolveStatus::Unsatisfiable) {
         result.fallbackUsed = false;
@@ -476,7 +475,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             policy.ranking.visibility.goal = exposed_edges > 1
                 ? solver::VisibilityGoal::TopAndSide
                 : solver::VisibilityGoal::AnyRecognizableEdge;
-            result.requiredExposedEdges = exposed_edges;
+            result.affordanceGoal = exposed_edges > 1
+                ? solver::VisibilityGoal::TopAndSide
+                : solver::VisibilityGoal::AnyRecognizableEdge;
             result.zOrderSolve = solver::solve_z_order_fallback(
                 full_layout, policy, *active_index);
             if (result.zOrderSolve.status != solver::SolveStatus::Solved) {
@@ -493,12 +494,11 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             return true;
         };
 
-        result.edgeGoalDegraded = false;
-        solved = attempt_z_order(preferred_exposed_edges);
-        if (!solved && minimum_exposed_edges < preferred_exposed_edges &&
-            result.zOrderSolve.status == solver::SolveStatus::Unsatisfiable) {
-            result.edgeGoalDegraded = true;
-            solved = attempt_z_order(minimum_exposed_edges);
+        result.affordanceGoalDegraded = false;
+        solved = attempt_z_order(2);
+        if (!solved && result.zOrderSolve.status == solver::SolveStatus::Unsatisfiable) {
+            result.affordanceGoalDegraded = true;
+            solved = attempt_z_order(1);
         }
     }
     if (transaction_seen_states_.empty()) {

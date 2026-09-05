@@ -56,12 +56,14 @@ try {
     }
     $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
     if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
-    if ($settings -notmatch '(?m)^center_activated_window=true$') { throw "activation centering default is missing" }
-    if ($settings -notmatch '(?m)^preferred_exposed_edges=2$') { throw "preferred edge count is missing" }
-    if ($settings -notmatch '(?m)^minimum_exposed_edges=1$') { throw "minimum edge count is missing" }
+    if ($settings -notmatch '(?m)^place_activated_window=true$') { throw "activation placement default is missing" }
+    if ($settings -notmatch '(?m)^affordance_preset=1$') { throw "balanced affordance preset is missing" }
+    if ($settings -notmatch '(?m)^top_depth_dip=32$') { throw "top affordance is missing" }
+    if ($settings -notmatch '(?m)^right_depth_dip=64$') { throw "right affordance is missing" }
     $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json
     if ($manifest.dryRunDefault -ne $false) { throw "release manifest default mismatch" }
-    if ($manifest.centerActivatedWindowDefault -ne $true) { throw "activation centering manifest default mismatch" }
+    if ($manifest.placeActivatedWindowDefault -ne $true) { throw "activation placement manifest default mismatch" }
+    if ($manifest.affordancePresetDefault -ne "balanced") { throw "affordance preset manifest mismatch" }
 } finally {
     $resolved = [IO.Path]::GetFullPath($testRoot)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

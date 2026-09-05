@@ -548,13 +548,17 @@ void AppLifecycle::coordinator_loop()
         const auto applied_reorders = std::to_string(result.apply.appliedReorders.size());
         const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
                                                        : std::string_view{"false"};
-        const auto required_exposed_edges = std::to_string(result.requiredExposedEdges);
-        const auto edge_goal_degraded = result.edgeGoalDegraded ? std::string_view{"true"}
-                                                                : std::string_view{"false"};
+        const auto affordance_goal = result.affordanceGoal ==
+                solver::VisibilityGoal::TopAndSide
+            ? std::string_view{"top_and_side"}
+            : std::string_view{"any_edge"};
+        const auto affordance_goal_degraded = result.affordanceGoalDegraded
+            ? std::string_view{"true"}
+            : std::string_view{"false"};
         const auto z_order_fallback_used = result.zOrderFallbackUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
-        const auto activation_centering_used = result.activationCenteringUsed
+        const auto activation_placement_used = result.activationPlacementUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
@@ -578,10 +582,10 @@ void AppLifecycle::coordinator_loop()
              {"planned_reorders", planned_reorders},
              {"applied_reorders", applied_reorders},
              {"fallback_used", fallback_used},
-             {"required_exposed_edges", required_exposed_edges},
-             {"edge_goal_degraded", edge_goal_degraded},
+             {"affordance_goal", affordance_goal},
+             {"affordance_goal_degraded", affordance_goal_degraded},
              {"z_order_fallback_used", z_order_fallback_used},
-             {"activation_centering_used", activation_centering_used},
+             {"activation_placement_used", activation_placement_used},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

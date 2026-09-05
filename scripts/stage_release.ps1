@@ -33,9 +33,12 @@ try {
     @"
 enabled=true
 dry_run=false
-center_activated_window=true
-preferred_exposed_edges=2
-minimum_exposed_edges=1
+place_activated_window=true
+affordance_preset=1
+top_depth_dip=32
+left_depth_dip=40
+right_depth_dip=64
+bottom_depth_dip=64
 max_managed_windows=20
 max_consecutive_failures=3
 "@ | Set-Content -LiteralPath (Join-Path $stagingRoot "settings.example.ini") -Encoding utf8
@@ -45,7 +48,8 @@ max_consecutive_failures=3
         commit = $Commit
         createdUtc = [DateTime]::UtcNow.ToString("o")
         dryRunDefault = $false
-        centerActivatedWindowDefault = $true
+        placeActivatedWindowDefault = $true
+        affordancePresetDefault = "balanced"
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingRoot "manifest.json") -Encoding utf8
 
     $temporaryPackage = "$packagePath.tmp.zip"

@@ -24,7 +24,7 @@ int main()
 
     stage_manager::app::Settings settings;
     settings.dryRun = false;
-    settings.preferredExposedEdges = 2;
+    settings.affordancePreset = stage_manager::app::AffordancePreset::Balanced;
     controller.set_settings(settings);
     const auto dry_run_command = stage_manager::app::setting_command_id(SettingField::DryRun, 1);
     const auto setting_action = controller.handle_command(dry_run_command);
@@ -35,19 +35,19 @@ int main()
     CHECK(!controller.is_setting_checked(dry_run_command));
     const auto active_command = stage_manager::app::setting_command_id(SettingField::DryRun, 0);
     CHECK(controller.is_setting_checked(active_command));
-    const auto preferred_two =
-        stage_manager::app::setting_command_id(SettingField::PreferredExposedEdges, 1);
-    CHECK(controller.is_setting_checked(preferred_two));
-    const auto centering_on =
-        stage_manager::app::setting_command_id(SettingField::CenterActivatedWindow, 1);
-    CHECK(controller.is_setting_checked(centering_on));
+    const auto balanced =
+        stage_manager::app::setting_command_id(SettingField::AffordancePreset, 1);
+    CHECK(controller.is_setting_checked(balanced));
+    const auto placement_on =
+        stage_manager::app::setting_command_id(SettingField::PlaceActivatedWindow, 1);
+    CHECK(controller.is_setting_checked(placement_on));
     const auto custom_edge_command =
-        stage_manager::app::custom_setting_command_id(SettingField::MinimumExposedEdgeDip);
+        stage_manager::app::custom_setting_command_id(SettingField::TopDepthDip);
     const auto custom_action = controller.handle_command(custom_edge_command);
     CHECK(custom_action.type == TrayActionType::RequestCustomSetting);
     CHECK(custom_action.setting.has_value());
-    CHECK(custom_action.setting->field == SettingField::MinimumExposedEdgeDip);
-    CHECK(custom_action.setting->value == settings.minExposedEdgeDip);
+    CHECK(custom_action.setting->field == SettingField::TopDepthDip);
+    CHECK(custom_action.setting->value == settings.topDepthDip);
 
     const HMENU menu = stage_manager::app::create_tray_context_menu(settings, true);
     CHECK(menu != nullptr);
@@ -70,10 +70,10 @@ int main()
     CHECK(GetMenuItemCount(run_mode_menu) == 2);
     CHECK((GetMenuState(run_mode_menu, active_command, MF_BYCOMMAND) & MF_CHECKED) != 0);
     CHECK((GetMenuState(run_mode_menu, dry_run_command, MF_BYCOMMAND) & MF_CHECKED) == 0);
-    const HMENU edge_length_menu = GetSubMenu(settings_menu, 2);
-    CHECK(edge_length_menu != nullptr);
-    CHECK(GetMenuItemCount(edge_length_menu) == 7);
-    CHECK(GetMenuStringW(edge_length_menu,
+    const HMENU top_depth_menu = GetSubMenu(settings_menu, 5);
+    CHECK(top_depth_menu != nullptr);
+    CHECK(GetMenuItemCount(top_depth_menu) == 8);
+    CHECK(GetMenuStringW(top_depth_menu,
                          custom_edge_command,
                          menu_text,
                          128,

@@ -18,21 +18,31 @@ int main()
             ++dip_fields;
         }
     }
-    CHECK(dip_fields == 5);
-    CHECK(stage_manager::app::setting_help(SettingField::MinimumExposedEdgeDip).dipValue);
+    CHECK(dip_fields == 14);
+    CHECK(stage_manager::app::setting_help(SettingField::TopDepthDip).dipValue);
     CHECK(!stage_manager::app::setting_help(SettingField::MaximumSolveTimeMs).dipValue);
 
     stage_manager::app::Settings settings;
-    settings.minExposedEdgeDip = 96;
-    settings.minExposedDepthDip = 24;
-    settings.repairTargetEdgeDip = 128;
+    settings.topMinimumLengthDip = 96;
+    settings.topDepthDip = 24;
+    settings.leftMinimumLengthDip = 120;
+    settings.leftDepthDip = 32;
+    settings.rightMinimumLengthDip = 160;
+    settings.rightDepthDip = 64;
+    settings.bottomMinimumLengthDip = 180;
+    settings.bottomDepthDip = 72;
     settings.minOnscreenWidthDip = 100;
     settings.minOnscreenHeightDip = 80;
     const auto preview = stage_manager::app::make_dip_preview_metrics(settings, 144);
     CHECK(preview.dpi == 144);
-    CHECK(preview.exposedEdgePixels == 144);
-    CHECK(preview.exposedDepthPixels == 36);
-    CHECK(preview.repairTargetPixels == 192);
+    CHECK(preview.topLengthPixels == 144);
+    CHECK(preview.topDepthPixels == 36);
+    CHECK(preview.leftLengthPixels == 180);
+    CHECK(preview.leftDepthPixels == 48);
+    CHECK(preview.rightLengthPixels == 240);
+    CHECK(preview.rightDepthPixels == 96);
+    CHECK(preview.bottomLengthPixels == 270);
+    CHECK(preview.bottomDepthPixels == 108);
     CHECK(preview.minimumOnscreenWidthPixels == 150);
     CHECK(preview.minimumOnscreenHeightPixels == 120);
 

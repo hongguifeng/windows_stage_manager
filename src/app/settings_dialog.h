@@ -21,9 +21,14 @@ struct SettingHelp {
 
 struct DipPreviewMetrics {
     std::uint32_t dpi = 96;
-    std::uint64_t exposedEdgePixels = 0;
-    std::uint64_t exposedDepthPixels = 0;
-    std::uint64_t repairTargetPixels = 0;
+    std::uint64_t topLengthPixels = 0;
+    std::uint64_t topDepthPixels = 0;
+    std::uint64_t leftLengthPixels = 0;
+    std::uint64_t leftDepthPixels = 0;
+    std::uint64_t rightLengthPixels = 0;
+    std::uint64_t rightDepthPixels = 0;
+    std::uint64_t bottomLengthPixels = 0;
+    std::uint64_t bottomDepthPixels = 0;
     std::uint64_t minimumOnscreenWidthPixels = 0;
     std::uint64_t minimumOnscreenHeightPixels = 0;
 };

@@ -182,9 +182,9 @@ try {
     }
 
     # Open the custom-value dialog for MaximumManagedWindows and enter 7.
-    # Command = base 2000 + field 14 * stride 16 + custom slot 15.
+    # Command = base 2000 + field 26 * stride 16 + custom slot 15.
     if (-not [StageManagerNativeMethods]::PostMessage(
-        $script:window, 0x0111, [IntPtr]2239, [IntPtr]::Zero)) {
+        $script:window, 0x0111, [IntPtr]2431, [IntPtr]::Zero)) {
         throw 'custom setting command could not be posted'
     }
     $dialog = [IntPtr]::Zero
@@ -227,8 +227,8 @@ try {
         throw 'process exited while rebuilding after the custom setting change'
     }
 
-    # Open the visual settings dialog, select the exposed-edge DIP field,
-    # enter 80, and verify both the controls and live persistence path.
+    # Open the visual settings dialog, select the top fallback depth,
+    # choose 64 DIP, and verify both the controls and live persistence path.
     if (-not [StageManagerNativeMethods]::PostMessage(
         $script:window, 0x0111, [IntPtr]1003, [IntPtr]::Zero)) {
         throw 'visual settings command could not be posted'
@@ -247,12 +247,12 @@ try {
     }
     # LB_SETCURSEL = 0x0186; LBN_SELCHANGE = 1 in the high word.
     [StageManagerNativeMethods]::SendMessage(
-        $fields, 0x0186, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+        $fields, 0x0186, [IntPtr]5, [IntPtr]::Zero) | Out-Null
     [StageManagerNativeMethods]::SendMessage(
         $script:settingsDialog, 0x0111, [IntPtr]66637, [IntPtr]::Zero) | Out-Null
-    # CB_SETCURSEL = 0x014E; 80 DIP is preset index 3 for this field.
+    # CB_SETCURSEL = 0x014E; 64 DIP is preset index 4 for this field.
     [StageManagerNativeMethods]::SendMessage(
-        $valueControl, 0x014E, [IntPtr]3, [IntPtr]::Zero) | Out-Null
+        $valueControl, 0x014E, [IntPtr]4, [IntPtr]::Zero) | Out-Null
     [StageManagerNativeMethods]::SendMessage(
         $script:settingsDialog, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
     Wait-Until -FailureMessage 'visual settings dialog did not close' -Condition {
@@ -260,8 +260,8 @@ try {
     }
     Wait-Until -FailureMessage 'visual settings value was not persisted' -Condition {
         $content = Get-Content -Raw -LiteralPath $settingsPath
-        $content -match '(?m)^min_exposed_edge_dip=80\r?$' -and
-            $content -match '(?m)^repair_target_edge_dip=80\r?$'
+        $content -match '(?m)^top_depth_dip=64\r?$' -and
+            $content -match '(?m)^affordance_preset=3\r?$'
     }
     Wait-Until -FailureMessage 'visual settings change was not logged' -Condition {
         (Get-Content -Raw -LiteralPath $logPath) -match 'settings_dialog_applied'

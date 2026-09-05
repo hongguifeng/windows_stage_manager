@@ -19,9 +19,11 @@ int main()
     if (defaults.dryRun) {
         return 1;
     }
-    CHECK(defaults.preferredExposedEdges == 2);
-    CHECK(defaults.minimumExposedEdges == 1);
-    CHECK(defaults.centerActivatedWindow);
+    CHECK(defaults.affordancePreset == stage_manager::app::AffordancePreset::Balanced);
+    CHECK(defaults.placeActivatedWindow);
+    CHECK(defaults.topDepthDip < defaults.leftDepthDip);
+    CHECK(defaults.leftDepthDip < defaults.rightDepthDip);
+    CHECK(defaults.bottomMinimumLengthDip > defaults.topMinimumLengthDip);
 
     for (const auto field : stage_manager::app::setting_fields()) {
         const auto choices = stage_manager::app::setting_choices(field);
@@ -56,25 +58,18 @@ int main()
         menu_settings, SettingSelection{SettingField::DryRun, 1}));
     CHECK(menu_settings.dryRun);
     CHECK(stage_manager::app::apply_setting_selection(
-        menu_settings, SettingSelection{SettingField::CenterActivatedWindow, 0}));
-    CHECK(!menu_settings.centerActivatedWindow);
+        menu_settings, SettingSelection{SettingField::PlaceActivatedWindow, 0}));
+    CHECK(!menu_settings.placeActivatedWindow);
     CHECK(stage_manager::app::apply_setting_selection(
-        menu_settings, SettingSelection{SettingField::MinimumExposedEdges, 4}));
-    CHECK(menu_settings.minimumExposedEdges == 4);
-    CHECK(menu_settings.preferredExposedEdges == 4);
-    CHECK(stage_manager::app::apply_setting_selection(
-        menu_settings, SettingSelection{SettingField::PreferredExposedEdges, 2}));
-    CHECK(menu_settings.preferredExposedEdges == 2);
-    CHECK(menu_settings.minimumExposedEdges == 2);
-    CHECK(stage_manager::app::apply_setting_selection(
-        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 96}));
-    CHECK(menu_settings.repairTargetEdgeDip >= menu_settings.minExposedEdgeDip);
+        menu_settings, SettingSelection{SettingField::AffordancePreset, 2}));
+    CHECK(menu_settings.affordancePreset == stage_manager::app::AffordancePreset::Prominent);
+    CHECK(menu_settings.rightDepthDip == 80);
     CHECK(!stage_manager::app::apply_setting_selection(
         menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 99}));
     CHECK(stage_manager::app::apply_custom_setting_selection(
-        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 97}));
-    CHECK(menu_settings.minExposedEdgeDip == 97);
-    CHECK(menu_settings.repairTargetEdgeDip == 97);
+        menu_settings, SettingSelection{SettingField::TopDepthDip, 97}));
+    CHECK(menu_settings.topDepthDip == 97);
+    CHECK(menu_settings.affordancePreset == stage_manager::app::AffordancePreset::Custom);
     CHECK(stage_manager::app::apply_custom_setting_selection(
         menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 13}));
     CHECK(menu_settings.maxManagedWindows == 13);
@@ -86,18 +81,21 @@ int main()
         menu_settings, SettingSelection{SettingField::DryRun, 0}));
     CHECK(!menu_settings.dryRun);
     CHECK(stage_manager::app::apply_setting_input(
-        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 101}));
-    CHECK(menu_settings.minExposedEdgeDip == 101);
+        menu_settings, SettingSelection{SettingField::TopMinimumLengthDip, 301}));
+    CHECK(menu_settings.topMinimumLengthDip == 301);
+    CHECK(menu_settings.topMaximumLengthDip == 301);
     CHECK(!stage_manager::app::apply_setting_input(
-        menu_settings, SettingSelection{SettingField::PreferredExposedEdges, 5}));
+        menu_settings, SettingSelection{SettingField::TopLengthPercent, 101}));
 
     stage_manager::app::Settings expected;
     expected.enabled = false;
     expected.dryRun = false;
-    expected.centerActivatedWindow = false;
-    expected.minExposedEdgeDip = 56;
-    expected.preferredExposedEdges = 3;
-    expected.minimumExposedEdges = 2;
+    expected.placeActivatedWindow = false;
+    expected.affordancePreset = stage_manager::app::AffordancePreset::Custom;
+    expected.topMinimumLengthDip = 156;
+    expected.topMaximumLengthDip = 256;
+    expected.rightDepthDip = 72;
+    expected.bottomLengthPercent = 42;
     expected.maxSolverStates = 99;
     expected.maxManagedWindows = 12;
     expected.maxConsecutiveFailures = 5;
@@ -107,10 +105,12 @@ int main()
     const auto actual = stage_manager::app::load_settings(settings_path);
     CHECK(actual.enabled == expected.enabled);
     CHECK(actual.dryRun == expected.dryRun);
-    CHECK(actual.centerActivatedWindow == expected.centerActivatedWindow);
-    CHECK(actual.minExposedEdgeDip == expected.minExposedEdgeDip);
-    CHECK(actual.preferredExposedEdges == expected.preferredExposedEdges);
-    CHECK(actual.minimumExposedEdges == expected.minimumExposedEdges);
+    CHECK(actual.placeActivatedWindow == expected.placeActivatedWindow);
+    CHECK(actual.affordancePreset == expected.affordancePreset);
+    CHECK(actual.topMinimumLengthDip == expected.topMinimumLengthDip);
+    CHECK(actual.topMaximumLengthDip == expected.topMaximumLengthDip);
+    CHECK(actual.rightDepthDip == expected.rightDepthDip);
+    CHECK(actual.bottomLengthPercent == expected.bottomLengthPercent);
     CHECK(actual.maxSolverStates == expected.maxSolverStates);
     CHECK(actual.maxManagedWindows == expected.maxManagedWindows);
     CHECK(actual.maxConsecutiveFailures == expected.maxConsecutiveFailures);

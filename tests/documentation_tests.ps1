@@ -17,10 +17,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\feature-overview.
 if ($feature -notmatch '<svg' -or $feature -notmatch 'viewBox="0 0 1400 780"' -or $feature -notmatch '<title') { throw "README feature illustration is invalid" }
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.svg') -PathType Leaf)) { throw "application icon source is missing" }
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.ico') -PathType Leaf)) { throw "application icon file is missing" }
-if ($guide -notmatch 'preferred_exposed_edges=2') { throw "preferred edge behavior is missing" }
-if ($guide -notmatch 'center_activated_window=true') { throw "activation centering default is missing" }
-if ($guide -notmatch 'edge_goal_degraded') { throw "edge degradation diagnostics are missing" }
-if ($guide -notmatch 'activation_centering_used') { throw "activation centering diagnostics are missing" }
+if ($guide -notmatch 'affordance_preset=1') { throw "balanced affordance preset is missing" }
+if ($guide -notmatch 'place_activated_window=true') { throw "activation placement default is missing" }
+if ($guide -notmatch 'affordance_goal_degraded') { throw "affordance degradation diagnostics are missing" }
+if ($guide -notmatch 'activation_placement_used') { throw "activation placement diagnostics are missing" }
 if ($guide -match 'left\+top > right\+bottom > top-only > unranked') { throw "obsolete edge preference order remains" }
 if ($allDocuments -notmatch 'distanceFromWorkAreaCenter') { throw "center-first repair ranking is missing" }
 if ($allDocuments -notmatch 'M12') { throw "center-oriented layout plan is missing" }
@@ -30,13 +30,15 @@ if ($guide -notmatch 'top-prefix') { throw "top-prefix Z-order policy is missing
 if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
 if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }
 if ($readme -notmatch '\u53c2\u6570\u8bbe\u7f6e > \u8fd0\u884c\u6a21\u5f0f') { throw "README Chinese tray setting instructions are missing" }
-if ($guide -notmatch 'minimum_exposed_edges <= preferred_exposed_edges') { throw "setting dependency behavior is missing" }
+if ($guide -notmatch '\u6700\u5c0f\u957f\u5ea6\u8d85\u8fc7\u5f53\u524d\u6700\u5927\u957f\u5ea6') { throw "setting dependency behavior is missing" }
 if ($allDocuments -notmatch 'FR-11') { throw "tray settings requirement is missing" }
 if ($allDocuments -notmatch '\u5f53\u524d\u81ea\u5b9a\u4e49\u503c' -or $allDocuments -notmatch 'setting_changed') { throw "tray settings design is missing" }
 if ($allDocuments -notmatch 'M13') { throw "independent edge and localized settings plan is missing" }
 if ($guide -notmatch '\u81ea\u5b9a\u4e49\u2026') { throw "custom numeric setting instructions are missing" }
-if ($guide -notmatch '\u6263\u9664\u89d2\u90e8') { throw "independent edge behavior is missing" }
-if ($guide -notmatch '\u5173\u95ed\u8be5\u5f00\u5173\u65f6\u4ecd\u4f1a\u4fee\u590d\u88ab\u906e\u6321\u7a97\u53e3') { throw "disabled centering behavior is missing" }
+if ($guide -notmatch '\u6263\u9664\u5171\u4eab\u89d2\u90e8') { throw "independent edge behavior is missing" }
+if ($guide -notmatch '\u5173\u95ed\u8be5\u5f00\u5173\u65f6\u4ecd\u4f1a\u4fee\u590d\u88ab\u906e\u6321\u7a97\u53e3') { throw "disabled placement behavior is missing" }
+if ($guide -notmatch '\u5b9e\u9645\u6807\u9898\u680f\u9ad8\u5ea6') { throw "title bar affordance behavior is missing" }
+if ($guide -notmatch '\u5de6\u4e0a\u6216\u53f3\u4e0a' -or $guide -notmatch '\u901a\u9053\u8d1f\u8f7d') { throw "balanced top channel behavior is missing" }
 if ($allDocuments -notmatch 'stage_manager_tray_settings_integration') { throw "tray settings acceptance coverage is missing" }
 if ($limits -notmatch 'UAC') { throw "privilege limitation is missing" }
 if ($limits -notmatch 'owned window') { throw "window classification limitations are missing" }

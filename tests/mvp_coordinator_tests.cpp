@@ -138,6 +138,23 @@ public:
 stage_manager::app::Settings test_settings()
 {
     stage_manager::app::Settings settings;
+    settings.affordancePreset = stage_manager::app::AffordancePreset::Custom;
+    settings.topMinimumLengthDip = 48;
+    settings.topMaximumLengthDip = 48;
+    settings.topDepthDip = 24;
+    settings.topLengthPercent = 100;
+    settings.leftMinimumLengthDip = 48;
+    settings.leftMaximumLengthDip = 48;
+    settings.leftDepthDip = 24;
+    settings.leftLengthPercent = 100;
+    settings.rightMinimumLengthDip = 48;
+    settings.rightMaximumLengthDip = 48;
+    settings.rightDepthDip = 24;
+    settings.rightLengthPercent = 100;
+    settings.bottomMinimumLengthDip = 48;
+    settings.bottomMaximumLengthDip = 48;
+    settings.bottomDepthDip = 24;
+    settings.bottomLengthPercent = 100;
     settings.maxSolveTimeMs = 1000;
     return settings;
 }
@@ -214,6 +231,7 @@ std::vector<stage_manager::window::WindowEvent> activation_drag_events(
 int main()
 {
     using stage_manager::solver::SolveStatus;
+    using stage_manager::solver::VisibilityGoal;
     using stage_manager::window::MvpBatchStatus;
     using stage_manager::window::MvpSuspendReason;
     using stage_manager::window::WindowEvent;
@@ -316,8 +334,8 @@ int main()
     const auto two_edge_result =
         two_edge_goal.coordinator.process(drag_events(14), true, true);
     CHECK(two_edge_result.status == MvpBatchStatus::DryRun);
-    CHECK(!two_edge_result.edgeGoalDegraded);
-    CHECK(two_edge_result.requiredExposedEdges == 2);
+    CHECK(!two_edge_result.affordanceGoalDegraded);
+    CHECK(two_edge_result.affordanceGoal == VisibilityGoal::TopAndSide);
     CHECK(two_edge_result.solve.status == SolveStatus::Solved);
     CHECK(two_edge_result.solve.moves.size() == 1);
     CHECK(two_edge_result.solve.moves[0].window.hwnd == 15);
@@ -338,8 +356,8 @@ int main()
     const auto one_edge_result =
         one_edge_fallback.coordinator.process(drag_events(18), true, true);
     CHECK(one_edge_result.status == MvpBatchStatus::Idle);
-    CHECK(one_edge_result.edgeGoalDegraded);
-    CHECK(one_edge_result.requiredExposedEdges == 1);
+    CHECK(one_edge_result.affordanceGoalDegraded);
+    CHECK(one_edge_result.affordanceGoal == VisibilityGoal::AnyRecognizableEdge);
     CHECK(one_edge_result.solve.status == SolveStatus::NoViolation);
     CHECK(one_edge_result.solve.moves.empty());
 
@@ -364,8 +382,8 @@ int main()
         z_order_dry.coordinator.process(drag_events(201), true, true);
     CHECK(z_order_dry_result.status == MvpBatchStatus::DryRun);
     CHECK(z_order_dry_result.zOrderFallbackUsed);
-    CHECK(!z_order_dry_result.edgeGoalDegraded);
-    CHECK(z_order_dry_result.requiredExposedEdges == 2);
+    CHECK(!z_order_dry_result.affordanceGoalDegraded);
+    CHECK(z_order_dry_result.affordanceGoal == VisibilityGoal::TopAndSide);
     CHECK(z_order_dry_result.reorderedWindowCount == 1);
     CHECK(z_order_dry_result.zOrderSolve.candidatesTried == 1);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].window.hwnd == 203);
@@ -387,7 +405,7 @@ int main()
         activation_z_order.coordinator.process(foreground_event(201), true, true);
     CHECK(activation_z_order_result.status == MvpBatchStatus::DryRun);
     CHECK(activation_z_order_result.zOrderFallbackUsed);
-    CHECK(activation_z_order_result.activationCenteringUsed);
+    CHECK(activation_z_order_result.activationPlacementUsed);
     CHECK(activation_z_order_result.reorderedWindowCount == 1);
     CHECK(activation_z_order_result.solve.status == SolveStatus::Solved);
     CHECK(activation_z_order_result.solve.moves.size() == 2);
@@ -503,12 +521,12 @@ int main()
     CHECK(activated_result.solve.moves[0].window.hwnd == 150);
     CHECK((activated_result.solve.moves[0].to ==
            stage_manager::geometry::Rect{350, 400, 650, 700}));
-    CHECK(activated_result.activationCenteringUsed);
+    CHECK(activated_result.activationPlacementUsed);
     CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(activated.desktop.moveCalls == 0);
 
     auto centering_disabled_settings = test_settings();
-    centering_disabled_settings.centerActivatedWindow = false;
+    centering_disabled_settings.placeActivatedWindow = false;
     MvpFixture centering_disabled(centering_disabled_settings);
     centering_disabled.desktop.windows = {
         make_window(152, {100, 100, 400, 400}, 0),
@@ -517,7 +535,7 @@ int main()
     const auto centering_disabled_result =
         centering_disabled.coordinator.process(foreground_event(152), true, true);
     CHECK(centering_disabled_result.status == MvpBatchStatus::DryRun);
-    CHECK(!centering_disabled_result.activationCenteringUsed);
+    CHECK(!centering_disabled_result.activationPlacementUsed);
     CHECK(!centering_disabled_result.solve.moves.empty());
     CHECK(std::none_of(centering_disabled_result.solve.moves.begin(),
                        centering_disabled_result.solve.moves.end(),
@@ -532,7 +550,7 @@ int main()
     const auto centered_result =
         activation_centering.coordinator.process(foreground_event(160), true, false);
     CHECK(centered_result.status == MvpBatchStatus::Applied);
-    CHECK(centered_result.activationCenteringUsed);
+    CHECK(centered_result.activationPlacementUsed);
     CHECK(centered_result.solve.moves.size() == 1);
     CHECK(centered_result.solve.moves[0].window.hwnd == 160);
     CHECK((centered_result.solve.moves[0].to ==
@@ -543,7 +561,7 @@ int main()
         activation_centering.coordinator.process(foreground_event(160), true, false);
     CHECK(duplicate_foreground.transactionId == centered_result.transactionId);
     CHECK(duplicate_foreground.solve.moves.empty());
-    CHECK(!duplicate_foreground.activationCenteringUsed);
+    CHECK(!duplicate_foreground.activationPlacementUsed);
     CHECK(activation_centering.desktop.moveCalls == 1);
 
     activation_centering.desktop.windows[0].placementRect = {50, 50, 250, 250};
@@ -551,7 +569,7 @@ int main()
     const auto manually_moved =
         activation_centering.coordinator.process(drag_events(160), true, false);
     CHECK(manually_moved.status == MvpBatchStatus::Idle);
-    CHECK(!manually_moved.activationCenteringUsed);
+    CHECK(!manually_moved.activationPlacementUsed);
     CHECK(activation_centering.desktop.moveCalls == 1);
     CHECK(activation_centering.desktop.windows[0].placementRect.left == 50);
     CHECK(activation_centering.desktop.windows[0].placementRect.top == 50);
@@ -565,7 +583,7 @@ int main()
     const auto activated_by_drag_result = activated_by_drag.coordinator.process(
         activation_drag_events(164), true, false);
     CHECK(activated_by_drag_result.status == MvpBatchStatus::Idle);
-    CHECK(!activated_by_drag_result.activationCenteringUsed);
+    CHECK(!activated_by_drag_result.activationPlacementUsed);
     CHECK(activated_by_drag_result.solve.moves.empty());
     CHECK(activated_by_drag.desktop.moveCalls == 0);
     CHECK(activated_by_drag.desktop.windows[0].placementRect.left == 50);
@@ -582,7 +600,7 @@ int main()
     const auto current_monitor_result = current_monitor_center.coordinator.process(
         foreground_event(165), true, true);
     CHECK(current_monitor_result.status == MvpBatchStatus::DryRun);
-    CHECK(current_monitor_result.activationCenteringUsed);
+    CHECK(current_monitor_result.activationPlacementUsed);
     CHECK(current_monitor_result.solve.moves.size() == 1);
     CHECK((current_monitor_result.solve.moves[0].to ==
            stage_manager::geometry::Rect{1390, 490, 1610, 710}));
@@ -597,7 +615,7 @@ int main()
     CHECK(already_centered_result.status == MvpBatchStatus::Idle);
     CHECK(already_centered_result.solve.status == SolveStatus::NoViolation);
     CHECK(already_centered_result.solve.moves.empty());
-    CHECK(!already_centered_result.activationCenteringUsed);
+    CHECK(!already_centered_result.activationPlacementUsed);
     CHECK(already_centered.desktop.moveCalls == 0);
 
     MvpFixture over_tall_activation;
@@ -607,7 +625,7 @@ int main()
     const auto over_tall_result = over_tall_activation.coordinator.process(
         foreground_event(166), true, true);
     CHECK(over_tall_result.status == MvpBatchStatus::DryRun);
-    CHECK(over_tall_result.activationCenteringUsed);
+    CHECK(over_tall_result.activationPlacementUsed);
     CHECK(over_tall_result.solve.moves.size() == 1);
     CHECK((over_tall_result.solve.moves[0].to ==
            stage_manager::geometry::Rect{400, 0, 600, 800}));
@@ -621,7 +639,7 @@ int main()
         center_and_repair.coordinator.process(foreground_event(162), true, true);
     CHECK(center_and_repair_result.status == MvpBatchStatus::DryRun);
     CHECK(center_and_repair_result.solve.status == SolveStatus::Solved);
-    CHECK(center_and_repair_result.activationCenteringUsed);
+    CHECK(center_and_repair_result.activationPlacementUsed);
     CHECK(center_and_repair_result.solve.moves.size() == 1);
     CHECK(center_and_repair_result.solve.moves[0].window.hwnd == 162);
     CHECK((center_and_repair_result.solve.moves[0].to ==
@@ -636,9 +654,26 @@ int main()
     const auto center_budget_result =
         center_budget.coordinator.process(foreground_event(162), true, true);
     CHECK(center_budget_result.status == MvpBatchStatus::DryRun);
-    CHECK(center_budget_result.activationCenteringUsed);
+    CHECK(center_budget_result.activationPlacementUsed);
     CHECK(center_budget_result.solve.moves.size() == 1);
     CHECK(center_budget.desktop.moveCalls == 0);
+
+    auto default_profile_settings = stage_manager::app::Settings{};
+    default_profile_settings.maxSolveTimeMs = 1000;
+    MvpFixture default_profile(default_profile_settings);
+    default_profile.desktop.windows = {
+        make_window(170, {200, 100, 800, 600}, 0),
+        make_window(171, {200, 100, 800, 600}, 1),
+    };
+    const auto default_profile_result = default_profile.coordinator.process(
+        drag_events(170), true, true);
+    CHECK(default_profile_result.status == MvpBatchStatus::DryRun);
+    CHECK(default_profile_result.affordanceGoal == VisibilityGoal::TopAndSide);
+    CHECK(!default_profile_result.affordanceGoalDegraded);
+    CHECK(default_profile_result.solve.moves.size() == 1);
+    CHECK(default_profile_result.solve.moves[0].window.hwnd == 171);
+    CHECK((default_profile_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{160, 68, 760, 568}));
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;
