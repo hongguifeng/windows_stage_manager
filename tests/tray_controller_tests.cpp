@@ -1,5 +1,7 @@
 #include "app/tray_controller.h"
 
+#include <string>
+
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (false)
 
 int main()
@@ -37,10 +39,24 @@ int main()
     const auto centering_on =
         stage_manager::app::setting_command_id(SettingField::CenterActivatedWindow, 1);
     CHECK(controller.is_setting_checked(centering_on));
+    const auto custom_edge_command =
+        stage_manager::app::custom_setting_command_id(SettingField::MinimumExposedEdgeDip);
+    const auto custom_action = controller.handle_command(custom_edge_command);
+    CHECK(custom_action.type == TrayActionType::RequestCustomSetting);
+    CHECK(custom_action.setting.has_value());
+    CHECK(custom_action.setting->field == SettingField::MinimumExposedEdgeDip);
+    CHECK(custom_action.setting->value == settings.minExposedEdgeDip);
 
     const HMENU menu = stage_manager::app::create_tray_context_menu(settings, true);
     CHECK(menu != nullptr);
     CHECK(GetMenuItemCount(menu) == 5);
+    wchar_t menu_text[128]{};
+    CHECK(GetMenuStringW(menu, 0, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"\u6682\u505c\u7ba1\u7406");
+    CHECK(GetMenuStringW(menu, 2, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"\u53c2\u6570\u8bbe\u7f6e");
+    CHECK(GetMenuStringW(menu, 4, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"\u9000\u51fa");
     const HMENU settings_menu = GetSubMenu(menu, 2);
     CHECK(settings_menu != nullptr);
     CHECK(GetMenuItemCount(settings_menu) ==
@@ -50,6 +66,15 @@ int main()
     CHECK(GetMenuItemCount(run_mode_menu) == 2);
     CHECK((GetMenuState(run_mode_menu, active_command, MF_BYCOMMAND) & MF_CHECKED) != 0);
     CHECK((GetMenuState(run_mode_menu, dry_run_command, MF_BYCOMMAND) & MF_CHECKED) == 0);
+    const HMENU edge_length_menu = GetSubMenu(settings_menu, 2);
+    CHECK(edge_length_menu != nullptr);
+    CHECK(GetMenuItemCount(edge_length_menu) == 7);
+    CHECK(GetMenuStringW(edge_length_menu,
+                         custom_edge_command,
+                         menu_text,
+                         128,
+                         MF_BYCOMMAND) > 0);
+    CHECK(std::wstring(menu_text) == L"\u81ea\u5b9a\u4e49\u2026");
     CHECK(DestroyMenu(menu) != FALSE);
 
     CHECK(controller.status() == TrayStatus::Running);

@@ -19,12 +19,33 @@ public static class StageManagerNativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr window, StringBuilder className, int length);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr window, StringBuilder text, int length);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDlgItem(IntPtr dialog, int itemId);
+
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr SendMessage(
         IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool PostMessage(
+        IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr window);
+
+    private delegate bool EnumWindowsProc(IntPtr window, IntPtr lParam);
 
     public static IntPtr FindMessageWindow(uint expectedProcessId)
     {
@@ -43,6 +64,29 @@ public static class StageManagerNativeMethods
             }
         }
         return IntPtr.Zero;
+    }
+
+    public static IntPtr FindDialog(uint expectedProcessId)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows(delegate(IntPtr window, IntPtr ignored)
+        {
+            var className = new StringBuilder(256);
+            var windowText = new StringBuilder(256);
+            uint processId;
+            GetClassName(window, className, className.Capacity);
+            GetWindowText(window, windowText, windowText.Capacity);
+            GetWindowThreadProcessId(window, out processId);
+            if (processId == expectedProcessId && IsWindowVisible(window) &&
+                className.ToString() == "#32770" &&
+                windowText.ToString() == "\u81ea\u5b9a\u4e49\u53c2\u6570")
+            {
+                found = window;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 }
 '@
@@ -111,6 +155,52 @@ try {
         (Get-Content -Raw -LiteralPath $settingsPath) -match '(?m)^dry_run=false\r?$'
     }
 
+    # Open the custom-value dialog for MaximumManagedWindows and enter 7.
+    # Command = base 2000 + field 14 * stride 16 + custom slot 15.
+    if (-not [StageManagerNativeMethods]::PostMessage(
+        $script:window, 0x0111, [IntPtr]2239, [IntPtr]::Zero)) {
+        throw 'custom setting command could not be posted'
+    }
+    $dialog = [IntPtr]::Zero
+    Wait-Until -FailureMessage 'custom setting dialog was not created' -Condition {
+        $script:dialog = [StageManagerNativeMethods]::FindDialog($process.Id)
+        $script:dialog -ne [IntPtr]::Zero
+    }
+    $edit = [StageManagerNativeMethods]::GetDlgItem($script:dialog, 1002)
+    if ($edit -eq [IntPtr]::Zero) {
+        throw 'custom setting edit control was not created'
+    }
+    # Avoid cross-process text buffers here. The initial value 20 has two characters,
+    # while the submitted value 7 has one, so WM_GETTEXTLENGTH provides a safe sync point.
+    Wait-Until -FailureMessage 'custom setting dialog was not initialized' -Condition {
+        [StageManagerNativeMethods]::SendMessage(
+            $edit, 0x000E, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 2
+    }
+    # WM_CHAR '7' exercises the same edit-control path as real keyboard input.
+    [StageManagerNativeMethods]::SendMessage(
+        $edit, 0x0102, [IntPtr]55, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'custom setting edit did not retain 7' -Condition {
+        [StageManagerNativeMethods]::SendMessage(
+            $edit, 0x000E, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 1
+    }
+    [StageManagerNativeMethods]::SendMessage(
+        $script:dialog, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+    Start-Sleep -Milliseconds 100
+    if ([StageManagerNativeMethods]::IsWindow($script:dialog)) {
+        throw 'custom setting dialog did not accept the entered value'
+    }
+    Wait-Until -FailureMessage 'custom setting was not persisted' -Condition {
+        (Get-Content -Raw -LiteralPath $settingsPath) -match
+            '(?m)^max_managed_windows=7\r?$'
+    }
+    Wait-Until -FailureMessage 'custom setting change was not logged' -Condition {
+        (Get-Content -Raw -LiteralPath $logPath) -match
+            'setting_changed.*field="max_managed_windows".*value="7"'
+    }
+    if ($process.HasExited) {
+        throw 'process exited while rebuilding after the custom setting change'
+    }
+
     # Tray Exit command.
     [StageManagerNativeMethods]::SendMessage(
         $script:window, 0x0111, [IntPtr]1002, [IntPtr]::Zero) | Out-Null
@@ -120,6 +210,19 @@ try {
     if ($process.ExitCode -ne 0) {
         throw "process returned exit code $($process.ExitCode)"
     }
+}
+catch {
+    if (Test-Path -LiteralPath $settingsPath) {
+        Write-Host 'settings at failure:'
+        Get-Content -LiteralPath $settingsPath
+    }
+    if (Test-Path -LiteralPath $logPath) {
+        Write-Host 'log tail at failure:'
+        Select-String -LiteralPath $logPath -Pattern 'custom_setting' |
+            ForEach-Object { Write-Host $_.Line }
+        Get-Content -LiteralPath $logPath -Tail 10
+    }
+    throw
 }
 finally {
     $env:LOCALAPPDATA = $previousLocalAppData

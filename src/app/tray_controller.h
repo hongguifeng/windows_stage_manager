@@ -17,6 +17,8 @@ enum class TrayActionType {
     None,
     ToggleEnabled,
     ApplySetting,
+    RequestCustomSetting,
+    ApplyCustomSetting,
     Exit,
 };
 
@@ -29,6 +31,8 @@ struct TrayAction {
 
 // The caller owns the returned menu and must destroy it with DestroyMenu.
 HMENU create_tray_context_menu(const Settings& settings, bool enabled);
+std::optional<std::uint32_t> prompt_custom_setting_value(
+    HWND owner, SettingField field, std::uint32_t current_value);
 
 enum class TrayStatus {
     Running,

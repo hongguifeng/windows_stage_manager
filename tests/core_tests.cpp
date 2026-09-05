@@ -33,6 +33,15 @@ int main()
             CHECK(decoded->field == field);
             CHECK(decoded->value == choices[index]);
         }
+        const auto custom_range = stage_manager::app::custom_setting_range(field);
+        const auto custom_command = stage_manager::app::custom_setting_command_id(field);
+        const auto custom_field =
+            stage_manager::app::decode_custom_setting_command(custom_command);
+        CHECK(custom_field.has_value() == custom_range.has_value());
+        if (custom_field) {
+            CHECK(*custom_field == field);
+            CHECK(custom_range->minimum <= custom_range->maximum);
+        }
     }
     CHECK(!stage_manager::app::decode_setting_command(1999));
     CHECK(!stage_manager::app::decode_setting_command(
@@ -62,6 +71,17 @@ int main()
     CHECK(menu_settings.repairTargetEdgeDip >= menu_settings.minExposedEdgeDip);
     CHECK(!stage_manager::app::apply_setting_selection(
         menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 99}));
+    CHECK(stage_manager::app::apply_custom_setting_selection(
+        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 97}));
+    CHECK(menu_settings.minExposedEdgeDip == 97);
+    CHECK(menu_settings.repairTargetEdgeDip == 97);
+    CHECK(stage_manager::app::apply_custom_setting_selection(
+        menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 13}));
+    CHECK(menu_settings.maxManagedWindows == 13);
+    CHECK(!stage_manager::app::apply_custom_setting_selection(
+        menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 21}));
+    CHECK(!stage_manager::app::apply_custom_setting_selection(
+        menu_settings, SettingSelection{SettingField::DryRun, 1}));
 
     stage_manager::app::Settings expected;
     expected.enabled = false;

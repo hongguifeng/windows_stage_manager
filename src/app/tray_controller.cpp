@@ -1,4 +1,5 @@
 #include "app/tray_controller.h"
+#include "app/resource.h"
 
 #ifdef _WIN32
 
@@ -10,13 +11,20 @@
 namespace stage_manager::app {
 namespace {
 
+struct CustomSettingDialogState {
+    SettingField field = SettingField::Count;
+    std::uint32_t currentValue = 0;
+    std::optional<std::uint32_t> result;
+};
+
 std::wstring choice_text(SettingField field, std::uint32_t value)
 {
     if (field == SettingField::DryRun) {
-        return value == 0 ? L"Apply window changes" : L"Preview only (DryRun)";
+        return value == 0 ? L"\u5e94\u7528\u7a97\u53e3\u8c03\u6574"
+                          : L"\u4ec5\u9884\u89c8\uff08DryRun\uff09";
     }
     if (field == SettingField::CenterActivatedWindow) {
-        return value == 0 ? L"Off" : L"On";
+        return value == 0 ? L"\u5173\u95ed" : L"\u5f00\u542f";
     }
     auto text = std::to_wstring(value);
     switch (field) {
@@ -32,15 +40,15 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
         return text + L" ms";
     case SettingField::PreferredExposedEdges:
     case SettingField::MinimumExposedEdges:
-        return text + (value == 1 ? L" edge" : L" edges");
+        return text + L" \u6761\u8fb9\u7f18";
     case SettingField::MaximumMovesPerBatch:
-        return text + L" moves";
+        return text + L" \u6b21\u79fb\u52a8";
     case SettingField::MaximumSolverStates:
-        return text + L" states";
+        return text + L" \u4e2a\u72b6\u6001";
     case SettingField::MaximumManagedWindows:
-        return text + L" windows";
+        return text + L" \u4e2a\u7a97\u53e3";
     case SettingField::MaximumConsecutiveFailures:
-        return text + L" failures";
+        return text + L" \u6b21\u5931\u8d25";
     case SettingField::DryRun:
     case SettingField::CenterActivatedWindow:
     case SettingField::Count:
@@ -53,41 +61,93 @@ const wchar_t* field_title(SettingField field) noexcept
 {
     switch (field) {
     case SettingField::DryRun:
-        return L"Run mode";
+        return L"\u8fd0\u884c\u6a21\u5f0f";
     case SettingField::CenterActivatedWindow:
-        return L"Center newly activated window";
+        return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5c45\u4e2d";
     case SettingField::MinimumExposedEdgeDip:
-        return L"Exposed edge length";
+        return L"\u53ef\u89c1\u8fb9\u7f18\u957f\u5ea6";
     case SettingField::MinimumExposedDepthDip:
-        return L"Exposed edge depth";
+        return L"\u53ef\u89c1\u8fb9\u7f18\u6df1\u5ea6";
     case SettingField::PreferredExposedEdges:
-        return L"Preferred exposed edges";
+        return L"\u9996\u9009\u53ef\u89c1\u8fb9\u7f18\u6570";
     case SettingField::MinimumExposedEdges:
-        return L"Minimum exposed edges";
+        return L"\u6700\u4f4e\u53ef\u89c1\u8fb9\u7f18\u6570";
     case SettingField::RepairTargetEdgeDip:
-        return L"Repair target length";
+        return L"\u4fee\u590d\u76ee\u6807\u957f\u5ea6";
     case SettingField::MinimumOnscreenWidthDip:
-        return L"Minimum onscreen width";
+        return L"\u6700\u5c0f\u5c4f\u4e0a\u5bbd\u5ea6";
     case SettingField::MinimumOnscreenHeightDip:
-        return L"Minimum onscreen height";
+        return L"\u6700\u5c0f\u5c4f\u4e0a\u9ad8\u5ea6";
     case SettingField::EventCoalesceWindowMs:
-        return L"Event coalesce window";
+        return L"\u4e8b\u4ef6\u5408\u5e76\u7a97\u53e3";
     case SettingField::ReconcileIntervalMs:
-        return L"Reconciliation interval";
+        return L"\u72b6\u6001\u5237\u65b0\u95f4\u9694";
     case SettingField::MaximumMovesPerBatch:
-        return L"Maximum moves per batch";
+        return L"\u6bcf\u6279\u6700\u5927\u79fb\u52a8\u6570";
     case SettingField::MaximumSolverStates:
-        return L"Maximum solver states";
+        return L"\u6700\u5927\u6c42\u89e3\u72b6\u6001\u6570";
     case SettingField::MaximumSolveTimeMs:
-        return L"Maximum solve time";
+        return L"\u6700\u5927\u6c42\u89e3\u65f6\u95f4";
     case SettingField::MaximumManagedWindows:
-        return L"Maximum managed windows";
+        return L"\u6700\u5927\u7ba1\u7406\u7a97\u53e3\u6570";
     case SettingField::MaximumConsecutiveFailures:
-        return L"Failure safety threshold";
+        return L"\u8fde\u7eed\u5931\u8d25\u9608\u503c";
     case SettingField::Count:
-        return L"Unknown setting";
+        return L"\u672a\u77e5\u8bbe\u7f6e";
     }
-    return L"Unknown setting";
+    return L"\u672a\u77e5\u8bbe\u7f6e";
+}
+
+INT_PTR CALLBACK custom_setting_dialog_proc(
+    HWND dialog, UINT message, WPARAM w_param, LPARAM l_param)
+{
+    auto* state = reinterpret_cast<CustomSettingDialogState*>(
+        GetWindowLongPtrW(dialog, DWLP_USER));
+    if (message == WM_INITDIALOG) {
+        state = reinterpret_cast<CustomSettingDialogState*>(l_param);
+        SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(state));
+        const auto range = custom_setting_range(state->field);
+        if (!range) {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+        const auto prompt = std::wstring(field_title(state->field)) +
+            L"\uff1a\u8bf7\u8f93\u5165 " + std::to_wstring(range->minimum) + L" - " +
+            std::to_wstring(range->maximum) + L" \u4e4b\u95f4\u7684\u6574\u6570";
+        SetDlgItemTextW(dialog, IDC_CUSTOM_SETTING_PROMPT, prompt.c_str());
+        SetDlgItemInt(dialog, IDC_CUSTOM_SETTING_VALUE, state->currentValue, FALSE);
+        const auto edit = GetDlgItem(dialog, IDC_CUSTOM_SETTING_VALUE);
+        SendMessageW(edit, EM_SETSEL, 0, -1);
+        SetFocus(edit);
+        return FALSE;
+    }
+    if (message != WM_COMMAND || state == nullptr) {
+        return FALSE;
+    }
+    switch (LOWORD(w_param)) {
+    case IDOK: {
+        BOOL translated = FALSE;
+        const auto value = GetDlgItemInt(
+            dialog, IDC_CUSTOM_SETTING_VALUE, &translated, FALSE);
+        const auto range = custom_setting_range(state->field);
+        if (translated == FALSE || !range || value < range->minimum ||
+            value > range->maximum) {
+            MessageBoxW(dialog,
+                        L"\u8bf7\u8f93\u5165\u63d0\u793a\u8303\u56f4\u5185\u7684\u6574\u6570\u3002",
+                        L"\u6570\u503c\u65e0\u6548",
+                        MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+        state->result = value;
+        EndDialog(dialog, IDOK);
+        return TRUE;
+    }
+    case IDCANCEL:
+        EndDialog(dialog, IDCANCEL);
+        return TRUE;
+    default:
+        return FALSE;
+    }
 }
 
 std::wstring field_menu_text(const Settings& settings, SettingField field)
@@ -108,7 +168,8 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
     const bool current_is_preset =
         std::find(choices.begin(), choices.end(), current) != choices.end();
     if (!current_is_preset) {
-        const auto custom_text = L"Current custom value: " + choice_text(field, current);
+        const auto custom_text = L"\u5f53\u524d\u81ea\u5b9a\u4e49\u503c\uff1a" +
+            choice_text(field, current);
         AppendMenuW(choices_menu, MF_STRING | MF_DISABLED | MF_CHECKED, 0, custom_text.c_str());
         AppendMenuW(choices_menu, MF_SEPARATOR, 0, nullptr);
     }
@@ -121,6 +182,14 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
                     flags,
                     setting_command_id(field, index),
                     text.c_str());
+    }
+
+    if (custom_setting_range(field)) {
+        AppendMenuW(choices_menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(choices_menu,
+                    MF_STRING,
+                    custom_setting_command_id(field),
+                    L"\u81ea\u5b9a\u4e49\u2026");
     }
 
     const auto title = field_menu_text(settings, field);
@@ -136,6 +205,21 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
 
 } // namespace
 
+std::optional<std::uint32_t> prompt_custom_setting_value(
+    HWND owner, SettingField field, std::uint32_t current_value)
+{
+    if (!custom_setting_range(field)) {
+        return std::nullopt;
+    }
+    CustomSettingDialogState state{field, current_value, std::nullopt};
+    const auto result = DialogBoxParamW(GetModuleHandleW(nullptr),
+                                        MAKEINTRESOURCEW(IDD_CUSTOM_SETTING),
+                                        owner,
+                                        custom_setting_dialog_proc,
+                                        reinterpret_cast<LPARAM>(&state));
+    return result == IDOK ? state.result : std::nullopt;
+}
+
 HMENU create_tray_context_menu(const Settings& settings, bool enabled)
 {
     const HMENU menu = CreatePopupMenu();
@@ -143,7 +227,8 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
         return nullptr;
     }
 
-    const wchar_t* toggle_text = enabled ? L"Pause manager" : L"Enable manager";
+    const wchar_t* toggle_text = enabled ? L"\u6682\u505c\u7ba1\u7406"
+                                         : L"\u542f\u7528\u7ba1\u7406";
     AppendMenuW(menu, MF_STRING, TrayController::kCommandToggle, toggle_text);
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
@@ -155,13 +240,13 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
         if (!AppendMenuW(menu,
                          MF_POPUP | MF_STRING,
                          reinterpret_cast<UINT_PTR>(settings_menu),
-                         L"Settings")) {
+                         L"\u53c2\u6570\u8bbe\u7f6e")) {
             DestroyMenu(settings_menu);
         }
     }
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, TrayController::kCommandExit, L"Exit");
+    AppendMenuW(menu, MF_STRING, TrayController::kCommandExit, L"\u9000\u51fa");
     return menu;
 }
 
@@ -276,6 +361,10 @@ TrayAction TrayController::handle_command(WPARAM command)
         if (const auto selection = decode_setting_command(LOWORD(command))) {
             return {TrayActionType::ApplySetting, selection};
         }
+        if (const auto field = decode_custom_setting_command(LOWORD(command))) {
+            return {TrayActionType::RequestCustomSetting,
+                    SettingSelection{*field, current_setting_value(settings_, *field)}};
+        }
         return {};
     }
 }
@@ -303,19 +392,19 @@ void TrayController::update_tooltip()
 {
     switch (status_) {
     case TrayStatus::Running:
-        tooltip_ = L"Windows Stage Manager (running)";
+        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u8fd0\u884c\u4e2d\uff09";
         break;
     case TrayStatus::Paused:
-        tooltip_ = L"Windows Stage Manager (paused)";
+        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u5df2\u6682\u505c\uff09";
         break;
     case TrayStatus::Unsatisfiable:
-        tooltip_ = L"Windows Stage Manager (no layout)";
+        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u65e0\u53ef\u7528\u5e03\u5c40\uff09";
         break;
     case TrayStatus::ApiError:
-        tooltip_ = L"Windows Stage Manager (API error)";
+        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08API \u9519\u8bef\uff09";
         break;
     case TrayStatus::Rebuilding:
-        tooltip_ = L"Windows Stage Manager (rebuilding)";
+        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u6b63\u5728\u91cd\u5efa\uff09";
         break;
     }
     wcsncpy_s(icon_data_.szTip, tooltip_.c_str(), _TRUNCATE);

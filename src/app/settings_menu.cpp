@@ -45,6 +45,71 @@ bool contains_choice(SettingField field, std::uint32_t value) noexcept
     return std::find(choices.begin(), choices.end(), value) != choices.end();
 }
 
+bool apply_setting_value(Settings& settings, const SettingSelection& selection) noexcept
+{
+    switch (selection.field) {
+    case SettingField::DryRun:
+        settings.dryRun = selection.value != 0;
+        break;
+    case SettingField::CenterActivatedWindow:
+        settings.centerActivatedWindow = selection.value != 0;
+        break;
+    case SettingField::MinimumExposedEdgeDip:
+        settings.minExposedEdgeDip = selection.value;
+        settings.repairTargetEdgeDip = std::max(
+            settings.repairTargetEdgeDip, settings.minExposedEdgeDip);
+        break;
+    case SettingField::MinimumExposedDepthDip:
+        settings.minExposedDepthDip = selection.value;
+        break;
+    case SettingField::PreferredExposedEdges:
+        settings.preferredExposedEdges = selection.value;
+        settings.minimumExposedEdges = std::min(
+            settings.minimumExposedEdges, settings.preferredExposedEdges);
+        break;
+    case SettingField::MinimumExposedEdges:
+        settings.minimumExposedEdges = selection.value;
+        settings.preferredExposedEdges = std::max(
+            settings.preferredExposedEdges, settings.minimumExposedEdges);
+        break;
+    case SettingField::RepairTargetEdgeDip:
+        settings.repairTargetEdgeDip = selection.value;
+        settings.minExposedEdgeDip = std::min(
+            settings.minExposedEdgeDip, settings.repairTargetEdgeDip);
+        break;
+    case SettingField::MinimumOnscreenWidthDip:
+        settings.minOnscreenWidthDip = selection.value;
+        break;
+    case SettingField::MinimumOnscreenHeightDip:
+        settings.minOnscreenHeightDip = selection.value;
+        break;
+    case SettingField::EventCoalesceWindowMs:
+        settings.eventCoalesceWindowMs = selection.value;
+        break;
+    case SettingField::ReconcileIntervalMs:
+        settings.reconcileIntervalMs = selection.value;
+        break;
+    case SettingField::MaximumMovesPerBatch:
+        settings.maxMovesPerBatch = selection.value;
+        break;
+    case SettingField::MaximumSolverStates:
+        settings.maxSolverStates = selection.value;
+        break;
+    case SettingField::MaximumSolveTimeMs:
+        settings.maxSolveTimeMs = selection.value;
+        break;
+    case SettingField::MaximumManagedWindows:
+        settings.maxManagedWindows = selection.value;
+        break;
+    case SettingField::MaximumConsecutiveFailures:
+        settings.maxConsecutiveFailures = selection.value;
+        break;
+    case SettingField::Count:
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 std::span<const SettingField> setting_fields() noexcept
@@ -198,72 +263,77 @@ std::optional<SettingSelection> decode_setting_command(std::uint32_t command) no
     return SettingSelection{field, choices[choice_index]};
 }
 
+std::optional<SettingValueRange> custom_setting_range(SettingField field) noexcept
+{
+    switch (field) {
+    case SettingField::MinimumExposedEdgeDip:
+    case SettingField::MinimumExposedDepthDip:
+    case SettingField::RepairTargetEdgeDip:
+    case SettingField::MinimumOnscreenWidthDip:
+    case SettingField::MinimumOnscreenHeightDip:
+        return SettingValueRange{1, 8192};
+    case SettingField::EventCoalesceWindowMs:
+        return SettingValueRange{1, 1000};
+    case SettingField::ReconcileIntervalMs:
+        return SettingValueRange{10, 60000};
+    case SettingField::MaximumMovesPerBatch:
+        return SettingValueRange{1, 256};
+    case SettingField::MaximumSolverStates:
+        return SettingValueRange{1, 100000};
+    case SettingField::MaximumSolveTimeMs:
+        return SettingValueRange{1, 10000};
+    case SettingField::MaximumManagedWindows:
+        return SettingValueRange{2, 20};
+    case SettingField::MaximumConsecutiveFailures:
+        return SettingValueRange{1, 100};
+    case SettingField::DryRun:
+    case SettingField::CenterActivatedWindow:
+    case SettingField::PreferredExposedEdges:
+    case SettingField::MinimumExposedEdges:
+    case SettingField::Count:
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::uint32_t custom_setting_command_id(SettingField field) noexcept
+{
+    return setting_command_id(field, kSettingCommandStride - 1);
+}
+
+std::optional<SettingField> decode_custom_setting_command(std::uint32_t command) noexcept
+{
+    if (command < kSettingCommandBase) {
+        return std::nullopt;
+    }
+    const auto offset = command - kSettingCommandBase;
+    if (offset % kSettingCommandStride != kSettingCommandStride - 1) {
+        return std::nullopt;
+    }
+    const auto field_value = offset / kSettingCommandStride;
+    if (field_value >= static_cast<std::uint32_t>(SettingField::Count)) {
+        return std::nullopt;
+    }
+    const auto field = static_cast<SettingField>(field_value);
+    return custom_setting_range(field) ? std::optional{field} : std::nullopt;
+}
+
 bool apply_setting_selection(Settings& settings, const SettingSelection& selection) noexcept
 {
     if (!contains_choice(selection.field, selection.value)) {
         return false;
     }
-    switch (selection.field) {
-    case SettingField::DryRun:
-        settings.dryRun = selection.value != 0;
-        break;
-    case SettingField::CenterActivatedWindow:
-        settings.centerActivatedWindow = selection.value != 0;
-        break;
-    case SettingField::MinimumExposedEdgeDip:
-        settings.minExposedEdgeDip = selection.value;
-        settings.repairTargetEdgeDip = std::max(
-            settings.repairTargetEdgeDip, settings.minExposedEdgeDip);
-        break;
-    case SettingField::MinimumExposedDepthDip:
-        settings.minExposedDepthDip = selection.value;
-        break;
-    case SettingField::PreferredExposedEdges:
-        settings.preferredExposedEdges = selection.value;
-        settings.minimumExposedEdges = std::min(
-            settings.minimumExposedEdges, settings.preferredExposedEdges);
-        break;
-    case SettingField::MinimumExposedEdges:
-        settings.minimumExposedEdges = selection.value;
-        settings.preferredExposedEdges = std::max(
-            settings.preferredExposedEdges, settings.minimumExposedEdges);
-        break;
-    case SettingField::RepairTargetEdgeDip:
-        settings.repairTargetEdgeDip = selection.value;
-        settings.minExposedEdgeDip = std::min(
-            settings.minExposedEdgeDip, settings.repairTargetEdgeDip);
-        break;
-    case SettingField::MinimumOnscreenWidthDip:
-        settings.minOnscreenWidthDip = selection.value;
-        break;
-    case SettingField::MinimumOnscreenHeightDip:
-        settings.minOnscreenHeightDip = selection.value;
-        break;
-    case SettingField::EventCoalesceWindowMs:
-        settings.eventCoalesceWindowMs = selection.value;
-        break;
-    case SettingField::ReconcileIntervalMs:
-        settings.reconcileIntervalMs = selection.value;
-        break;
-    case SettingField::MaximumMovesPerBatch:
-        settings.maxMovesPerBatch = selection.value;
-        break;
-    case SettingField::MaximumSolverStates:
-        settings.maxSolverStates = selection.value;
-        break;
-    case SettingField::MaximumSolveTimeMs:
-        settings.maxSolveTimeMs = selection.value;
-        break;
-    case SettingField::MaximumManagedWindows:
-        settings.maxManagedWindows = selection.value;
-        break;
-    case SettingField::MaximumConsecutiveFailures:
-        settings.maxConsecutiveFailures = selection.value;
-        break;
-    case SettingField::Count:
+    return apply_setting_value(settings, selection);
+}
+
+bool apply_custom_setting_selection(
+    Settings& settings, const SettingSelection& selection) noexcept
+{
+    const auto range = custom_setting_range(selection.field);
+    if (!range || selection.value < range->minimum || selection.value > range->maximum) {
         return false;
     }
-    return true;
+    return apply_setting_value(settings, selection);
 }
 
 } // namespace stage_manager::app

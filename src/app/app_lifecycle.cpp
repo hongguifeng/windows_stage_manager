@@ -266,7 +266,31 @@ void AppLifecycle::handle_tray_action(TrayAction action)
         tray_.set_enabled(enabled_.load());
         persist_settings();
         return;
-    case TrayActionType::ApplySetting: {
+    case TrayActionType::RequestCustomSetting: {
+        if (!action.setting.has_value()) {
+            return;
+        }
+        const auto value = prompt_custom_setting_value(
+            message_window_, action.setting->field, action.setting->value);
+        if (value) {
+            diagnostics::Logger::instance().log(
+                diagnostics::LogLevel::Info,
+                "custom_setting_submitted",
+                {{"field", setting_field_name(action.setting->field)},
+                 {"value", std::to_string(*value)}});
+            handle_tray_action({
+                TrayActionType::ApplyCustomSetting,
+                SettingSelection{action.setting->field, *value}});
+        } else {
+            diagnostics::Logger::instance().log(
+                diagnostics::LogLevel::Info,
+                "custom_setting_cancelled",
+                {{"field", setting_field_name(action.setting->field)}});
+        }
+        return;
+    }
+    case TrayActionType::ApplySetting:
+    case TrayActionType::ApplyCustomSetting: {
         if (!action.setting.has_value()) {
             return;
         }
@@ -278,7 +302,10 @@ void AppLifecycle::handle_tray_action(TrayAction action)
             move_guard_->cancel();
         }
         stop_window_manager();
-        if (!apply_setting_selection(settings_, *action.setting)) {
+        const bool applied = action.type == TrayActionType::ApplyCustomSetting
+            ? apply_custom_setting_selection(settings_, *action.setting)
+            : apply_setting_selection(settings_, *action.setting);
+        if (!applied) {
             start_window_manager();
             tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
             return;
