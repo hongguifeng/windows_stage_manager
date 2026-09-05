@@ -290,6 +290,22 @@ int main()
     CHECK(capped_result.solve.status == SolveStatus::NoViolation);
     CHECK(capped_result.managedWindowCount == 20);
 
+    auto prioritized_settings = test_settings();
+    prioritized_settings.maxManagedWindows = 2;
+    MvpFixture prioritized(prioritized_settings);
+    prioritized.desktop.windows = {
+        make_window(130, {700, 100, 950, 350}, 0),
+        make_window(131, {100, 100, 400, 400}, 1),
+        make_window(132, {100, 100, 400, 400}, 2),
+    };
+    const auto prioritized_result =
+        prioritized.coordinator.process(drag_events(131), true, true);
+    CHECK(prioritized_result.status == MvpBatchStatus::DryRun);
+    CHECK(prioritized_result.solve.status == SolveStatus::Solved);
+    CHECK(prioritized_result.managedWindowCount == 2);
+    CHECK(prioritized_result.solve.moves.size() == 1);
+    CHECK(prioritized_result.solve.moves[0].window.hwnd == 132);
+
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;
     const auto live_result = live.coordinator.process(drag_events(1), true, false);

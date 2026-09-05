@@ -25,6 +25,20 @@ bool valid_for_layout(const WindowSnapshot& window) noexcept
         window.workArea.valid();
 }
 
+bool rectangles_intersect(const PixelRect& left, const PixelRect& right) noexcept
+{
+    return left.left < right.right && left.right > right.left &&
+        left.top < right.bottom && left.bottom > right.top;
+}
+
+bool directly_obscured_by(const WindowSnapshot& blocker,
+                          const WindowSnapshot& target) noexcept
+{
+    return blocker.zOrderKnown && target.zOrderKnown &&
+        blocker.zIndex < target.zIndex &&
+        rectangles_intersect(blocker.visualRect, target.visualRect);
+}
+
 bool contains_hash(std::span<const solver::LayoutHash> hashes,
                    const solver::LayoutHash& value)
 {
@@ -222,15 +236,23 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
     std::vector<const WindowSnapshot*> managed;
     managed.reserve(maximum_managed);
     managed.push_back(&*active);
-    for (const auto& window : captured->windows) {
-        if (managed.size() == maximum_managed) {
-            break;
+    const auto eligible_peer = [&active](const WindowSnapshot& window) {
+        return window.key.hwnd != active->key.hwnd && window.managed &&
+            window.monitor == active->monitor;
+    };
+    const auto append_peers = [&](bool directly_obscured) {
+        for (const auto& window : captured->windows) {
+            if (managed.size() == maximum_managed) {
+                return;
+            }
+            if (eligible_peer(window) &&
+                directly_obscured_by(*active, window) == directly_obscured) {
+                managed.push_back(&window);
+            }
         }
-        if (window.key.hwnd != active->key.hwnd && window.managed &&
-            window.monitor == active->monitor) {
-            managed.push_back(&window);
-        }
-    }
+    };
+    append_peers(true);
+    append_peers(false);
     result.managedWindowCount = managed.size();
     if (managed.size() < 2) {
         status_ = MvpBatchStatus::Idle;
