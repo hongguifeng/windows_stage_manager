@@ -2,10 +2,18 @@
 #include "window/internal_move_tracker.h"
 #include "window/reconcile_scheduler.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <span>
 #include <vector>
+
+#define CHECK(condition)                                                                  \
+    do {                                                                                  \
+        if (!(condition)) {                                                               \
+            return 1;                                                                     \
+        }                                                                                 \
+    } while (false)
 
 int main()
 {
@@ -93,6 +101,47 @@ int main()
     tracker.begin(30, 300);
     tracker.clear();
     assert(!tracker.matches({WindowEventType::LocationChange, 30, 0, 0, 0}));
+
+    constexpr std::uint64_t kStormSize = 100'000;
+    constexpr std::uintptr_t kStormWindows = 20;
+    std::vector<WindowEvent> storm;
+    storm.reserve(kStormSize + 3);
+    storm.push_back({WindowEventType::MoveSizeStart, 1, 1, 1, 1});
+    for (std::uint64_t index = 0; index < kStormSize; ++index) {
+        storm.push_back({WindowEventType::LocationChange,
+                         static_cast<std::uintptr_t>(index % kStormWindows + 1),
+                         1,
+                         index + 2,
+                         index + 2});
+    }
+    storm.push_back({WindowEventType::MoveSizeEnd,
+                     1,
+                     1,
+                     kStormSize + 2,
+                     kStormSize + 2});
+    storm.push_back({WindowEventType::Reconcile,
+                     0,
+                     0,
+                     kStormSize + 3,
+                     kStormSize + 3});
+
+    EventCoalescer storm_coalescer;
+    const auto storm_batch = storm_coalescer.coalesce(storm);
+    CHECK(storm_batch.inputCount == storm.size());
+    CHECK(storm_batch.coalescedLocationCount == kStormWindows);
+    CHECK(storm_batch.events.size() == kStormWindows + 3);
+    CHECK(storm_batch.requiresFullReconcile);
+    CHECK(storm_batch.events.front().type == WindowEventType::MoveSizeStart);
+    CHECK(storm_batch.events[kStormWindows + 1].type == WindowEventType::MoveSizeEnd);
+    CHECK(storm_batch.events.back().type == WindowEventType::Reconcile);
+    for (std::uintptr_t hwnd = 1; hwnd <= kStormWindows; ++hwnd) {
+        const auto found = std::find_if(
+            storm_batch.events.begin(), storm_batch.events.end(), [hwnd](const auto& event) {
+                return event.type == WindowEventType::LocationChange && event.hwnd == hwnd;
+            });
+        CHECK(found != storm_batch.events.end());
+        CHECK(found->sequence == kStormSize - kStormWindows + hwnd + 1);
+    }
 
     return 0;
 }

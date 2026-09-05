@@ -298,5 +298,43 @@ int main()
     const auto identity_after_destroy = recreated_during_flow.provider.capture(
         stage_manager::window::SnapshotRefreshReason::Event);
     CHECK(identity_after_destroy.windows[1].key.instanceGeneration != 0);
+
+    MvpFixture soak;
+    for (std::uintptr_t index = 0; index < 20; ++index) {
+        const auto column = static_cast<std::int32_t>(index % 5);
+        const auto row = static_cast<std::int32_t>(index / 5);
+        const auto left = 10 + column * 195;
+        const auto top = 10 + row * 165;
+        soak.desktop.windows.push_back(make_window(
+            100 + index, {left, top, left + 180, top + 140},
+            static_cast<std::int32_t>(index)));
+    }
+    constexpr std::uint64_t kSoakTransactions = 5'000;
+    constexpr std::uint64_t kLocationsPerTransaction = 100;
+    std::uint64_t sequence = 1;
+    for (std::uint64_t transaction = 0; transaction < kSoakTransactions; ++transaction) {
+        const auto active = static_cast<std::uintptr_t>(100 + transaction % 20);
+        std::vector<WindowEvent> storm = {
+            {WindowEventType::MoveSizeStart, active, 1, sequence, sequence},
+        };
+        ++sequence;
+        storm.reserve(kLocationsPerTransaction + 2);
+        for (std::uint64_t index = 0; index < kLocationsPerTransaction; ++index) {
+            const auto hwnd = static_cast<std::uintptr_t>(100 + index % 20);
+            storm.push_back({WindowEventType::LocationChange, hwnd, 1, sequence, sequence});
+            ++sequence;
+        }
+        storm.push_back({WindowEventType::MoveSizeEnd, active, 1, sequence, sequence});
+        ++sequence;
+        const auto result = soak.coordinator.process(storm, true, true);
+        CHECK(result.status == MvpBatchStatus::Idle);
+        CHECK(result.solve.status == SolveStatus::NoViolation);
+        CHECK(result.events.inputCount == kLocationsPerTransaction + 2);
+        CHECK(result.events.coalescedLocationCount == 20);
+        CHECK(result.managedWindowCount == 20);
+        CHECK(result.transactionId == transaction + 1);
+    }
+    CHECK(soak.desktop.moveCalls == 0);
+    CHECK(soak.desktop.captureCalls == kSoakTransactions * 2);
     return 0;
 }

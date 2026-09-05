@@ -224,6 +224,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     target_link_libraries(stage_manager_layout_solver_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_layout_solver COMMAND stage_manager_layout_solver_tests)
 
+    add_executable(stage_manager_solver_property_tests
+        tests/solver_property_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_solver_property_tests)
+    target_link_libraries(stage_manager_solver_property_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_solver_property COMMAND stage_manager_solver_property_tests)
+
     add_executable(stage_manager_move_applier_tests
         tests/move_applier_tests.cpp
         tests/move_transaction_tests.cpp
