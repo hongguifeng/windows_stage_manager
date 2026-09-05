@@ -17,11 +17,15 @@ int main()
     if (defaults.dryRun) {
         return 1;
     }
+    assert(defaults.preferredExposedEdges == 2);
+    assert(defaults.minimumExposedEdges == 1);
 
     stage_manager::app::Settings expected;
     expected.enabled = false;
     expected.dryRun = false;
     expected.minExposedEdgeDip = 56;
+    expected.preferredExposedEdges = 3;
+    expected.minimumExposedEdges = 2;
     expected.maxSolverStates = 99;
     expected.maxManagedWindows = 12;
     expected.maxConsecutiveFailures = 5;
@@ -32,6 +36,8 @@ int main()
     assert(actual.enabled == expected.enabled);
     assert(actual.dryRun == expected.dryRun);
     assert(actual.minExposedEdgeDip == expected.minExposedEdgeDip);
+    assert(actual.preferredExposedEdges == expected.preferredExposedEdges);
+    assert(actual.minimumExposedEdges == expected.minimumExposedEdges);
     assert(actual.maxSolverStates == expected.maxSolverStates);
     assert(actual.maxManagedWindows == expected.maxManagedWindows);
     assert(actual.maxConsecutiveFailures == expected.maxConsecutiveFailures);

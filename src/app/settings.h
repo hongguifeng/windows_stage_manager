@@ -11,6 +11,8 @@ struct Settings {
 
     std::uint32_t minExposedEdgeDip = 48;
     std::uint32_t minExposedDepthDip = 24;
+    std::uint32_t preferredExposedEdges = 2;
+    std::uint32_t minimumExposedEdges = 1;
     std::uint32_t repairTargetEdgeDip = 64;
     std::uint32_t minOnscreenWidthDip = 100;
     std::uint32_t minOnscreenHeightDip = 100;

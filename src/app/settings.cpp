@@ -71,6 +71,14 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_uint(value)) {
             settings.minExposedDepthDip = *parsed;
         }
+    } else if (key == "preferred_exposed_edges") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.preferredExposedEdges = *parsed;
+        }
+    } else if (key == "minimum_exposed_edges") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.minimumExposedEdges = *parsed;
+        }
     } else if (key == "repair_target_edge_dip") {
         if (const auto parsed = parse_uint(value)) {
             settings.repairTargetEdgeDip = *parsed;
@@ -193,6 +201,8 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
            << "dry_run=" << (settings.dryRun ? "true" : "false") << '\n'
            << "min_exposed_edge_dip=" << settings.minExposedEdgeDip << '\n'
            << "min_exposed_depth_dip=" << settings.minExposedDepthDip << '\n'
+           << "preferred_exposed_edges=" << settings.preferredExposedEdges << '\n'
+           << "minimum_exposed_edges=" << settings.minimumExposedEdges << '\n'
            << "repair_target_edge_dip=" << settings.repairTargetEdgeDip << '\n'
            << "min_onscreen_width_dip=" << settings.minOnscreenWidthDip << '\n'
            << "min_onscreen_height_dip=" << settings.minOnscreenHeightDip << '\n'
