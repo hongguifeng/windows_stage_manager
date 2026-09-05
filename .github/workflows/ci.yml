@@ -7,7 +7,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
