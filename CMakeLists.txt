@@ -146,6 +146,11 @@ if(STAGE_MANAGER_BUILD_TESTS)
         target_link_libraries(stage_manager_tray_tests PRIVATE stage_manager_core user32 shell32)
         add_test(NAME stage_manager_tray COMMAND stage_manager_tray_tests)
 
+        add_test(NAME stage_manager_tray_settings_integration
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/tray_settings_integration_tests.ps1
+                -Executable $<TARGET_FILE:stage_manager>)
+
         add_executable(stage_manager_win_event_tests
             tests/win_event_hook_tests.cpp
         )
