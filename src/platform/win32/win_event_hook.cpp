@@ -13,8 +13,31 @@ bool suppress_layout_for_right_button(DWORD event, SHORT right_button_state) noe
         (right_button_state & static_cast<SHORT>(0x8000)) != 0;
 }
 
+void RightClickActivationTracker::observe_button_down(
+    std::uintptr_t root_window, std::uint64_t timestamp_ms) noexcept
+{
+    root_window_ = root_window;
+    timestamp_ms_ = root_window == 0 ? 0 : timestamp_ms;
+}
+
+void RightClickActivationTracker::observe_button_up(std::uint64_t timestamp_ms) noexcept
+{
+    if (root_window_ != 0) {
+        timestamp_ms_ = timestamp_ms;
+    }
+}
+
+bool RightClickActivationTracker::matches(
+    std::uintptr_t foreground_root, std::uint64_t timestamp_ms) const noexcept
+{
+    return root_window_ != 0 && foreground_root == root_window_ &&
+        timestamp_ms >= timestamp_ms_ &&
+        timestamp_ms - timestamp_ms_ <= maximumDelayMs;
+}
+
 std::mutex WinEventHook::registry_mutex_;
 std::unordered_map<HWINEVENTHOOK, WinEventHook*> WinEventHook::registry_;
+WinEventHook* WinEventHook::mouse_hook_owner_ = nullptr;
 
 WinEventHook::WinEventHook(window::EventQueue& queue)
     : queue_(&queue)
@@ -136,11 +159,31 @@ bool WinEventHook::install_hooks()
         }
         hooks_.push_back(hook);
     }
+    mouse_hook_ = SetWindowsHookExW(
+        WH_MOUSE_LL, &WinEventHook::mouse_proc, GetModuleHandleW(nullptr), 0);
+    if (mouse_hook_ == nullptr) {
+        uninstall_hooks();
+        return false;
+    }
+    {
+        std::scoped_lock lock(registry_mutex_);
+        mouse_hook_owner_ = this;
+    }
     return true;
 }
 
 void WinEventHook::uninstall_hooks()
 {
+    if (mouse_hook_ != nullptr) {
+        {
+            std::scoped_lock lock(registry_mutex_);
+            if (mouse_hook_owner_ == this) {
+                mouse_hook_owner_ = nullptr;
+            }
+        }
+        UnhookWindowsHookEx(mouse_hook_);
+        mouse_hook_ = nullptr;
+    }
     for (const auto hook : hooks_) {
         {
             std::scoped_lock lock(registry_mutex_);
@@ -149,6 +192,34 @@ void WinEventHook::uninstall_hooks()
         UnhookWinEvent(hook);
     }
     hooks_.clear();
+}
+
+LRESULT CALLBACK WinEventHook::mouse_proc(int code, WPARAM message, LPARAM data)
+{
+    WinEventHook* owner = nullptr;
+    {
+        std::scoped_lock lock(registry_mutex_);
+        owner = mouse_hook_owner_;
+    }
+    if (code == HC_ACTION && owner != nullptr && data != 0) {
+        owner->accept_mouse_event(
+            message, *reinterpret_cast<const MSLLHOOKSTRUCT*>(data));
+    }
+    return CallNextHookEx(nullptr, code, message, data);
+}
+
+void WinEventHook::accept_mouse_event(WPARAM message, const MSLLHOOKSTRUCT& event)
+{
+    if (message == WM_RBUTTONDOWN) {
+        const auto pointed_window = WindowFromPoint(event.pt);
+        const auto root_window = pointed_window == nullptr
+            ? nullptr
+            : GetAncestor(pointed_window, GA_ROOT);
+        right_clicks_.observe_button_down(
+            reinterpret_cast<std::uintptr_t>(root_window), GetTickCount64());
+    } else if (message == WM_RBUTTONUP) {
+        right_clicks_.observe_button_up(GetTickCount64());
+    }
 }
 
 void CALLBACK WinEventHook::event_proc(
@@ -201,8 +272,13 @@ void WinEventHook::accept_event(
     window_event.eventThreadId = event_thread;
     window_event.timestampMs = GetTickCount64();
     window_event.sequence = sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto foreground_root = GetAncestor(hwnd, GA_ROOT);
     window_event.suppressLayout = suppress_layout_for_right_button(
-        event, GetAsyncKeyState(VK_RBUTTON));
+        event, GetAsyncKeyState(VK_RBUTTON)) ||
+        (event == EVENT_SYSTEM_FOREGROUND && right_clicks_.matches(
+            reinterpret_cast<std::uintptr_t>(
+                foreground_root == nullptr ? hwnd : foreground_root),
+            window_event.timestampMs));
     queue_->try_push(window_event);
 }
 
