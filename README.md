@@ -1,6 +1,6 @@
 # Windows 11 台前调度式窗口管理器
 
-这是一个 Windows 11 后台窗口管理器：用户结束拖动后，它检查同一显示器上的 2–20 个普通窗口，优先为被遮挡窗口保留两个可点击边缘，确实无解时降级为一个。程序不会调整窗口尺寸、Z-order 或活动窗口。
+这是一个 Windows 11 后台窗口管理器：用户结束拖动或点击切换前台窗口后，它检查同一显示器上的 2–20 个普通窗口，优先为被遮挡窗口保留两个可点击边缘，确实无解时降级为一个。程序不会调整窗口尺寸、Z-order 或活动窗口。
 
 > 开箱默认值：`dry_run=false`。启动后会在拖动结束时自动移动符合条件的非活动窗口。若只想观察计划，请先在配置中设置 `dry_run=true`。
 
@@ -27,7 +27,7 @@ ctest --preset windows-debug --output-on-failure
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.1.0-rc6 -Commit (git rev-parse --short HEAD)
+  -Version 0.1.0-rc7 -Commit (git rev-parse --short HEAD)
 ```
 
 脚本生成版本化 ZIP、`current.json`，并在提升下一版本时把上一版本记录保存为 `rollback.json`。

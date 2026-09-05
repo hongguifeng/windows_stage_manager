@@ -263,6 +263,7 @@ exposed(zone) = zone - union(visualRect of higher blockers)
 所有硬约束通过后，软代价按以下顺序比较：
 
 ```text
+visibilityPreferenceRank
 numberOfMovedWindows
 totalManhattanDistance
 distanceFromLastStableLayout
@@ -270,6 +271,8 @@ boundaryPenalty
 edgeChangePenalty
 stableWindowKeyTieBreak
 ```
+
+`visibilityPreferenceRank` 的顺序为：左+上、右+下、仅上、无方向偏好。前三档严格优先于移动距离；“仅上”只表示恰好一条合格边且为上边缘，不提升其他含上边缘的组合。
 
 ### 7.2 候选生成
 
