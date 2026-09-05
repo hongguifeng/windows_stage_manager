@@ -314,7 +314,8 @@ void AppLifecycle::handle_tray_action(TrayAction action)
             return;
         }
         const auto value = prompt_custom_setting_value(
-            message_window_, action.setting->field, action.setting->value);
+            message_window_, action.setting->field, action.setting->value,
+            settings_.uiLanguage);
         if (value) {
             diagnostics::Logger::instance().log(
                 diagnostics::LogLevel::Info,

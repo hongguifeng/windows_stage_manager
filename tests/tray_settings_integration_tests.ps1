@@ -82,7 +82,8 @@ public static class StageManagerNativeMethods
             GetWindowThreadProcessId(window, out processId);
             if (processId == expectedProcessId && IsWindowVisible(window) &&
                 className.ToString() == "#32770" &&
-                windowText.ToString() == "\u81ea\u5b9a\u4e49\u53c2\u6570")
+                (windowText.ToString() == "\u81ea\u5b9a\u4e49\u53c2\u6570" ||
+                 windowText.ToString() == "Custom setting"))
             {
                 found = window;
                 return false;
@@ -105,7 +106,8 @@ public static class StageManagerNativeMethods
             GetWindowThreadProcessId(window, out processId);
             if (processId == expectedProcessId && IsWindowVisible(window) &&
                 className.ToString() == "#32770" &&
-                windowText.ToString() == "\u7a97\u53e3\u7ba1\u7406\u5668\u8bbe\u7f6e")
+                (windowText.ToString() == "\u7a97\u53e3\u7ba1\u7406\u5668\u8bbe\u7f6e" ||
+                 windowText.ToString() == "Window Manager Settings"))
             {
                 found = window;
                 return false;
@@ -113,6 +115,13 @@ public static class StageManagerNativeMethods
             return true;
         }, IntPtr.Zero);
         return found;
+    }
+
+    public static string WindowText(IntPtr window)
+    {
+        var text = new StringBuilder(256);
+        GetWindowText(window, text, text.Capacity);
+        return text.ToString();
     }
 }
 '@
@@ -244,6 +253,29 @@ try {
         throw 'process exited while rebuilding after the custom setting change'
     }
 
+    # UiLanguage is field 30; choice index 1 switches the complete UI to English.
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x0111, [IntPtr]2481, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'English UI language was not persisted' -Condition {
+        (Get-Content -Raw -LiteralPath $settingsPath) -match '(?m)^ui_language=1\r?$'
+    }
+    if (-not [StageManagerNativeMethods]::PostMessage(
+        $script:window, 0x0111, [IntPtr]2431, [IntPtr]::Zero)) {
+        throw 'English custom setting command could not be posted'
+    }
+    Wait-Until -FailureMessage 'English custom setting dialog was not created' -Condition {
+        $script:dialog = [StageManagerNativeMethods]::FindDialog($process.Id)
+        $script:dialog -ne [IntPtr]::Zero
+    }
+    if ([StageManagerNativeMethods]::WindowText($script:dialog) -ne 'Custom setting') {
+        throw 'custom setting dialog did not use the persisted English language'
+    }
+    [StageManagerNativeMethods]::SendMessage(
+        $script:dialog, 0x0111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'English custom setting dialog did not close' -Condition {
+        -not [StageManagerNativeMethods]::IsWindow($script:dialog)
+    }
+
     # Simulate coordinator status reports. The first Unsatisfiable transition
     # shows one notification; duplicates and a quick re-entry are suppressed.
     [StageManagerNativeMethods]::SendMessage(
@@ -280,6 +312,20 @@ try {
     Wait-Until -FailureMessage 'visual settings dialog was not created' -Condition {
         $script:settingsDialog = [StageManagerNativeMethods]::FindSettingsDialog($process.Id)
         $script:settingsDialog -ne [IntPtr]::Zero
+    }
+    if ([StageManagerNativeMethods]::WindowText($script:settingsDialog) -ne
+        'Window Manager Settings') {
+        throw 'visual settings dialog did not use the persisted English language'
+    }
+    $currentLabel = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1108)
+    $defaultsButton = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1107)
+    $saveButton = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1)
+    $cancelButton = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 2)
+    if ([StageManagerNativeMethods]::WindowText($currentLabel) -ne 'Current value:' -or
+        [StageManagerNativeMethods]::WindowText($defaultsButton) -ne 'Restore defaults' -or
+        [StageManagerNativeMethods]::WindowText($saveButton) -ne 'Save and apply' -or
+        [StageManagerNativeMethods]::WindowText($cancelButton) -ne 'Cancel') {
+        throw 'visual settings controls were not fully localized to English'
     }
     $fields = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1101)
     $valueControl = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1104)

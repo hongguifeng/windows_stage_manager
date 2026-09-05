@@ -25,6 +25,7 @@ int main()
           stage_manager::app::ActivationHorizontalAlignment::Center);
     CHECK(defaults.activationVerticalAlignment ==
           stage_manager::app::ActivationVerticalAlignment::Bottom);
+    CHECK(defaults.uiLanguage == stage_manager::app::UiLanguage::SimplifiedChinese);
     CHECK(defaults.topDepthDip < defaults.leftDepthDip);
     CHECK(defaults.leftDepthDip < defaults.rightDepthDip);
     CHECK(defaults.bottomMinimumLengthDip > defaults.topMinimumLengthDip);
@@ -78,6 +79,11 @@ int main()
         menu_settings,
         SettingSelection{SettingField::ActivationVerticalAlignment, 3}));
     CHECK(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::UiLanguage, 1}));
+    CHECK(menu_settings.uiLanguage == stage_manager::app::UiLanguage::English);
+    CHECK(!stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::UiLanguage, 2}));
+    CHECK(stage_manager::app::apply_setting_selection(
         menu_settings, SettingSelection{SettingField::AffordancePreset, 2}));
     CHECK(menu_settings.affordancePreset == stage_manager::app::AffordancePreset::Prominent);
     CHECK(menu_settings.rightDepthDip == 80);
@@ -113,6 +119,7 @@ int main()
     expected.activationVerticalAlignment =
         stage_manager::app::ActivationVerticalAlignment::Top;
     expected.affordancePreset = stage_manager::app::AffordancePreset::Custom;
+    expected.uiLanguage = stage_manager::app::UiLanguage::English;
     expected.topMinimumLengthDip = 156;
     expected.topMaximumLengthDip = 256;
     expected.rightDepthDip = 72;
@@ -130,6 +137,7 @@ int main()
     CHECK(actual.activationHorizontalAlignment == expected.activationHorizontalAlignment);
     CHECK(actual.activationVerticalAlignment == expected.activationVerticalAlignment);
     CHECK(actual.affordancePreset == expected.affordancePreset);
+    CHECK(actual.uiLanguage == expected.uiLanguage);
     CHECK(actual.topMinimumLengthDip == expected.topMinimumLengthDip);
     CHECK(actual.topMaximumLengthDip == expected.topMaximumLengthDip);
     CHECK(actual.rightDepthDip == expected.rightDepthDip);

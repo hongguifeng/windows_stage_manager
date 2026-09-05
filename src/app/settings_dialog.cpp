@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "app/resource.h"
+#include "app/localization.h"
 #include "geometry/dpi.h"
 
 #include <algorithm>
@@ -22,38 +23,17 @@ struct SettingsDialogState {
     std::uint32_t dpi = 96;
 };
 
-std::wstring value_text(SettingField field, std::uint32_t value)
+void localize_dialog_controls(HWND dialog, UiLanguage language)
 {
-    if (field == SettingField::DryRun) {
-        return value == 0 ? L"0 - \u5e94\u7528\u7a97\u53e3\u8c03\u6574"
-                          : L"1 - \u4ec5\u9884\u89c8\uff08DryRun\uff09";
-    }
-    if (field == SettingField::PlaceActivatedWindow) {
-        return value == 0 ? L"0 - \u5173\u95ed" : L"1 - \u5f00\u542f";
-    }
-    if (field == SettingField::ActivationHorizontalAlignment) {
-        switch (static_cast<ActivationHorizontalAlignment>(value)) {
-        case ActivationHorizontalAlignment::Left: return L"0 - \u9760\u5de6";
-        case ActivationHorizontalAlignment::Center: return L"1 - \u6c34\u5e73\u5c45\u4e2d";
-        case ActivationHorizontalAlignment::Right: return L"2 - \u9760\u53f3";
-        }
-    }
-    if (field == SettingField::ActivationVerticalAlignment) {
-        switch (static_cast<ActivationVerticalAlignment>(value)) {
-        case ActivationVerticalAlignment::Top: return L"0 - \u9760\u4e0a";
-        case ActivationVerticalAlignment::Center: return L"1 - \u5782\u76f4\u5c45\u4e2d";
-        case ActivationVerticalAlignment::Bottom: return L"2 - \u9760\u4e0b";
-        }
-    }
-    if (field == SettingField::AffordancePreset) {
-        switch (static_cast<AffordancePreset>(value)) {
-        case AffordancePreset::Compact: return L"0 - \u7d27\u51d1";
-        case AffordancePreset::Balanced: return L"1 - \u5e73\u8861";
-        case AffordancePreset::Prominent: return L"2 - \u9192\u76ee";
-        case AffordancePreset::Custom: return L"3 - \u81ea\u5b9a\u4e49";
-        }
-    }
-    return std::to_wstring(value);
+    SetWindowTextW(dialog, ui_text(language, UiText::SettingsTitle).data());
+    SetDlgItemTextW(dialog, IDC_SETTINGS_CURRENT_LABEL,
+                    ui_text(language, UiText::CurrentValue).data());
+    SetDlgItemTextW(dialog, IDC_SETTINGS_HINT,
+                    ui_text(language, UiText::PreviewHint).data());
+    SetDlgItemTextW(dialog, IDC_SETTINGS_DEFAULTS,
+                    ui_text(language, UiText::RestoreDefaults).data());
+    SetDlgItemTextW(dialog, IDOK, ui_text(language, UiText::SaveAndApply).data());
+    SetDlgItemTextW(dialog, IDCANCEL, ui_text(language, UiText::Cancel).data());
 }
 
 std::optional<std::uint32_t> read_value(HWND dialog)
@@ -85,7 +65,8 @@ void populate_value_choices(HWND dialog, const SettingsDialogState& state)
     const auto current = current_setting_value(state.draft, state.selected);
     int selected_index = -1;
     for (const auto choice : setting_choices(state.selected)) {
-        const auto text = value_text(state.selected, choice);
+        const auto text = setting_choice_text(
+            state.selected, choice, state.draft.uiLanguage, true);
         const auto index = static_cast<int>(SendMessageW(
             combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str())));
         if (index >= 0) {
@@ -98,36 +79,43 @@ void populate_value_choices(HWND dialog, const SettingsDialogState& state)
     if (selected_index >= 0) {
         SendMessageW(combo, CB_SETCURSEL, selected_index, 0);
     } else {
-        const auto text = value_text(state.selected, current);
+        const auto text = setting_choice_text(
+            state.selected, current, state.draft.uiLanguage, true);
         SetWindowTextW(combo, text.c_str());
     }
 }
 
 std::wstring range_and_scale_text(const SettingsDialogState& state)
 {
-    const auto help = setting_help(state.selected);
-    std::wstring text = L"\u5355\u4f4d\uff1a";
+    const auto language = state.draft.uiLanguage;
+    const auto help = setting_help(state.selected, language);
+    std::wstring text(ui_text(language, UiText::UnitPrefix));
     text += help.unit;
     if (const auto range = custom_setting_range(state.selected)) {
-        text += L"    \u53ef\u8f93\u5165\u8303\u56f4\uff1a" +
+        text += ui_text(language, UiText::InputRange);
+        text +=
             std::to_wstring(range->minimum) + L" - " + std::to_wstring(range->maximum);
     } else {
-        text += L"    \u8bf7\u4ece\u5019\u9009\u503c\u4e2d\u9009\u62e9";
+        text += ui_text(language, UiText::ChooseCandidate);
     }
     if (help.dipValue) {
         const auto value = current_setting_value(state.draft, state.selected);
         const auto pixels = geometry::scale_dip_ceil(value, state.dpi);
-        text += L"\r\n\u5f53\u524d\u663e\u793a\u5668\uff1a" + std::to_wstring(state.dpi) +
-            L" DPI\uff08" + std::to_wstring(state.dpi * 100u / 96u) +
-            L"%\uff09\uff0c" + std::to_wstring(value) + L" DIP \u2248 " +
-            std::to_wstring(pixels) + L" \u50cf\u7d20";
+        text += ui_text(language, UiText::CurrentMonitor);
+        const bool english = language == UiLanguage::English;
+        text += std::to_wstring(state.dpi) +
+            (english ? L" DPI (" : L" DPI\uff08") +
+            std::to_wstring(state.dpi * 100u / 96u) +
+            (english ? L"%), " : L"%\uff09\uff0c") +
+            std::to_wstring(value) + L" DIP \u2248 " +
+            std::to_wstring(pixels) + std::wstring(ui_text(language, UiText::Pixels));
     }
     return text;
 }
 
 void refresh_selected_field(HWND dialog, SettingsDialogState& state)
 {
-    const auto help = setting_help(state.selected);
+    const auto help = setting_help(state.selected, state.draft.uiLanguage);
     SetDlgItemTextW(dialog, IDC_SETTINGS_TITLE, help.title);
     SetDlgItemTextW(dialog, IDC_SETTINGS_DESCRIPTION, help.description);
     populate_value_choices(dialog, state);
@@ -143,8 +131,8 @@ bool commit_current_field(HWND dialog, SettingsDialogState& state, bool show_err
     if (!value || !apply_setting_input(candidate, {state.selected, *value})) {
         if (show_error) {
             MessageBoxW(dialog,
-                        L"\u8bf7\u9009\u62e9\u9884\u8bbe\u503c\uff0c\u6216\u8f93\u5165\u5141\u8bb8\u8303\u56f4\u5185\u7684\u6574\u6570\u3002",
-                        L"\u53c2\u6570\u65e0\u6548",
+                        ui_text(state.draft.uiLanguage, UiText::InvalidParameterMessage).data(),
+                        ui_text(state.draft.uiLanguage, UiText::InvalidParameterTitle).data(),
                         MB_OK | MB_ICONWARNING);
         }
         return false;
@@ -253,12 +241,12 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
 
     SetBkMode(item.hDC, TRANSPARENT);
     SetTextColor(item.hDC, RGB(255, 255, 255));
-    DrawTextW(item.hDC, L"\u5f53\u524d\u6d3b\u52a8\u7a97\u53e3", -1, &active,
+    DrawTextW(item.hDC, ui_text(state.draft.uiLanguage, UiText::ActiveWindow).data(), -1, &active,
               DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(item.hDC, RGB(45, 45, 45));
     RECT caption{bounds.left + 12, bounds.bottom - 27, bounds.right - 12, bounds.bottom - 6};
-    const auto text = L"\u7eff\u8272 = \u56db\u8fb9\u72ec\u7acb\u53ef\u8fa8\u8bc6\u533a\uff1b\u9876\u90e8\u6309\u6807\u9898\u680f\u9ad8\u5ea6\uff0c\u53f3/\u4e0b\u9700\u8981\u66f4\u5927\u70b9\u51fb\u533a";
-    DrawTextW(item.hDC, text, -1, &caption, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(item.hDC, ui_text(state.draft.uiLanguage, UiText::PreviewCaption).data(),
+              -1, &caption, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
 INT_PTR CALLBACK settings_dialog_proc(HWND dialog,
@@ -272,9 +260,10 @@ INT_PTR CALLBACK settings_dialog_proc(HWND dialog,
         state = reinterpret_cast<SettingsDialogState*>(l_param);
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(state));
         state->dpi = GetDpiForWindow(dialog);
+        localize_dialog_controls(dialog, state->draft.uiLanguage);
         const auto fields = setting_fields();
         for (const auto field : fields) {
-            const auto help = setting_help(field);
+            const auto help = setting_help(field, state->draft.uiLanguage);
             const auto index = SendDlgItemMessageW(
                 dialog, IDC_SETTINGS_FIELDS, LB_ADDSTRING, 0,
                 reinterpret_cast<LPARAM>(help.title));
@@ -287,7 +276,8 @@ INT_PTR CALLBACK settings_dialog_proc(HWND dialog,
         for (const int id : {IDC_SETTINGS_FIELDS, IDC_SETTINGS_TITLE,
                              IDC_SETTINGS_DESCRIPTION, IDC_SETTINGS_VALUE,
                              IDC_SETTINGS_UNIT, IDC_SETTINGS_PREVIEW,
-                             IDC_SETTINGS_DEFAULTS}) {
+                             IDC_SETTINGS_DEFAULTS, IDC_SETTINGS_CURRENT_LABEL,
+                             IDC_SETTINGS_HINT, IDOK, IDCANCEL}) {
             set_control_font(dialog, id);
         }
         refresh_selected_field(dialog, *state);
@@ -350,8 +340,10 @@ INT_PTR CALLBACK settings_dialog_proc(HWND dialog,
     switch (control) {
     case IDC_SETTINGS_DEFAULTS: {
         const bool enabled = state->draft.enabled;
+        const auto language = state->draft.uiLanguage;
         state->draft = Settings{};
         state->draft.enabled = enabled;
+        state->draft.uiLanguage = language;
         refresh_selected_field(dialog, *state);
         return TRUE;
     }
@@ -376,8 +368,45 @@ std::uint64_t dip_pixels(std::uint32_t dip, std::uint32_t dpi) noexcept
 
 } // namespace
 
-SettingHelp setting_help(SettingField field) noexcept
+SettingHelp setting_help(SettingField field, UiLanguage language) noexcept
 {
+    if (language == UiLanguage::English) {
+        const auto title = setting_field_title(field, language).data();
+        switch (field) {
+        case SettingField::DryRun: return {title, L"Preview-only mode calculates layouts and writes logs without moving real windows.", L"toggle", false};
+        case SettingField::PlaceActivatedWindow: return {title, L"Place a window only when it changes from background to active. Manual dragging always wins.", L"toggle", false};
+        case SettingField::ActivationHorizontalAlignment: return {title, L"Choose Left, Center, or Right relative to the current monitor work area.", L"position", false};
+        case SettingField::ActivationVerticalAlignment: return {title, L"Choose Top, Center, or Bottom. Windows taller than the work area are always top-aligned.", L"position", false};
+        case SettingField::AffordancePreset: return {title, L"Compact minimizes movement, Balanced suits most displays, and Prominent retains larger click targets.", L"preset", false};
+        case SettingField::TopMinimumLengthDip: return {title, L"Lower bound for the visible title-bar segment.", L"DIP", true};
+        case SettingField::TopMaximumLengthDip: return {title, L"Upper bound for the visible title-bar segment.", L"DIP", true};
+        case SettingField::TopDepthDip: return {title, L"Top height used when the real title-bar height cannot be read.", L"DIP", true};
+        case SettingField::TopLengthPercent: return {title, L"Top length as a percentage of window width, clamped to its minimum and maximum.", L"%", false};
+        case SettingField::LeftMinimumLengthDip: return {title, L"Lower bound for the visible left-edge segment.", L"DIP", true};
+        case SettingField::LeftMaximumLengthDip: return {title, L"Upper bound for the visible left-edge segment.", L"DIP", true};
+        case SettingField::LeftDepthDip: return {title, L"Clickable width retained inward from the left edge.", L"DIP", true};
+        case SettingField::LeftLengthPercent: return {title, L"Left-edge length as a percentage of window height.", L"%", false};
+        case SettingField::RightMinimumLengthDip: return {title, L"Lower bound for the visible right-edge segment; larger than the left by default.", L"DIP", true};
+        case SettingField::RightMaximumLengthDip: return {title, L"Upper bound for the visible right-edge segment.", L"DIP", true};
+        case SettingField::RightDepthDip: return {title, L"Clickable width retained on the harder-to-recognize right edge.", L"DIP", true};
+        case SettingField::RightLengthPercent: return {title, L"Right-edge length as a percentage of window height.", L"%", false};
+        case SettingField::BottomMinimumLengthDip: return {title, L"Lower bound for the visible bottom-edge segment; largest by default.", L"DIP", true};
+        case SettingField::BottomMaximumLengthDip: return {title, L"Upper bound for the visible bottom-edge segment.", L"DIP", true};
+        case SettingField::BottomDepthDip: return {title, L"Clickable height retained on the harder-to-recognize bottom edge.", L"DIP", true};
+        case SettingField::BottomLengthPercent: return {title, L"Bottom-edge length as a percentage of window width.", L"%", false};
+        case SettingField::MinimumOnscreenWidthDip: return {title, L"Minimum window width that must remain inside the current work area after a move.", L"DIP", true};
+        case SettingField::MinimumOnscreenHeightDip: return {title, L"Minimum window height that must remain inside the current work area after a move.", L"DIP", true};
+        case SettingField::EventCoalesceWindowMs: return {title, L"Combines window events arriving close together. Larger values reduce jitter but add latency.", L"ms", false};
+        case SettingField::ReconcileIntervalMs: return {title, L"How often window state is refreshed even when no event arrives.", L"ms", false};
+        case SettingField::MaximumMovesPerBatch: return {title, L"Maximum number of window moves allowed in one layout repair batch.", L"moves", false};
+        case SettingField::MaximumSolverStates: return {title, L"Maximum candidate layouts inspected by the global search.", L"states", false};
+        case SettingField::MaximumSolveTimeMs: return {title, L"Time budget for one search before bounded per-window repair is used.", L"ms", false};
+        case SettingField::MaximumManagedWindows: return {title, L"Maximum number of windows included in one layout calculation on a monitor.", L"windows", false};
+        case SettingField::MaximumConsecutiveFailures: return {title, L"Pause automatically after this many consecutive API or verification failures.", L"failures", false};
+        case SettingField::UiLanguage: return {title, L"Language used by the tray menu, notifications, and settings windows.", L"language", false};
+        case SettingField::Count: return {};
+        }
+    }
     switch (field) {
     case SettingField::DryRun:
         return {L"\u8fd0\u884c\u6a21\u5f0f", L"\u4ec5\u9884\u89c8\u4f1a\u8ba1\u7b97\u5e03\u5c40\u5e76\u5199\u65e5\u5fd7\uff0c\u4f46\u4e0d\u79fb\u52a8\u771f\u5b9e\u7a97\u53e3\u3002", L"\u5f00\u5173", false};
@@ -423,6 +452,8 @@ SettingHelp setting_help(SettingField field) noexcept
         return {L"\u6700\u5927\u7ba1\u7406\u7a97\u53e3\u6570", L"\u540c\u4e00\u663e\u793a\u5668\u4e0a\u4e00\u6b21\u7eb3\u5165\u5e03\u5c40\u8ba1\u7b97\u7684\u7a97\u53e3\u6570\u4e0a\u9650\u3002", L"\u4e2a\u7a97\u53e3", false};
     case SettingField::MaximumConsecutiveFailures:
         return {L"\u8fde\u7eed\u5931\u8d25\u9608\u503c", L"\u8fde\u7eed\u53d1\u751f API \u6216\u9a8c\u8bc1\u5931\u8d25\u8fbe\u5230\u6b64\u6b21\u6570\u540e\uff0c\u81ea\u52a8\u6682\u505c\u4ee5\u4fdd\u62a4\u7a97\u53e3\u3002", L"\u6b21", false};
+    case SettingField::UiLanguage:
+        return {L"\u754c\u9762\u8bed\u8a00", L"\u9009\u62e9\u6258\u76d8\u83dc\u5355\u3001\u901a\u77e5\u548c\u8bbe\u7f6e\u7a97\u53e3\u4f7f\u7528\u7684\u8bed\u8a00\u3002", L"\u8bed\u8a00", false};
     case SettingField::Count:
         return {};
     }

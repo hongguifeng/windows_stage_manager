@@ -41,6 +41,7 @@ enum class SettingField : std::uint8_t {
     MaximumConsecutiveFailures,
     ActivationHorizontalAlignment,
     ActivationVerticalAlignment,
+    UiLanguage,
     Count,
 };
 

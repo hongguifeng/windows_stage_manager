@@ -1,4 +1,5 @@
 #include "app/resource.h"
+#include "app/localization.h"
 #include "app/settings_dialog.h"
 
 #include <windows.h>
@@ -29,6 +30,25 @@ int main()
         SettingField::ActivationHorizontalAlignment).title[0] != L'\0');
     CHECK(stage_manager::app::setting_help(
         SettingField::ActivationVerticalAlignment).title[0] != L'\0');
+    for (const auto field : stage_manager::app::setting_fields()) {
+        const auto help = stage_manager::app::setting_help(
+            field, stage_manager::app::UiLanguage::English);
+        CHECK(help.title != nullptr && help.title[0] != L'\0');
+        CHECK(help.description != nullptr && help.description[0] != L'\0');
+        CHECK(help.unit != nullptr && help.unit[0] != L'\0');
+    }
+    CHECK(std::wstring_view(stage_manager::app::setting_help(
+        SettingField::UiLanguage,
+        stage_manager::app::UiLanguage::English).title) == L"Interface language");
+    CHECK(stage_manager::app::setting_choice_text(
+        SettingField::DryRun, 1, stage_manager::app::UiLanguage::English) ==
+        L"Preview only (DryRun)");
+    CHECK(stage_manager::app::setting_choice_text(
+        SettingField::UiLanguage, 0,
+        stage_manager::app::UiLanguage::English) == L"\u7b80\u4f53\u4e2d\u6587");
+    CHECK(stage_manager::app::ui_text(
+        stage_manager::app::UiLanguage::English,
+        stage_manager::app::UiText::SettingsTitle) == L"Window Manager Settings");
 
     stage_manager::app::Settings settings;
     settings.topMinimumLengthDip = 96;

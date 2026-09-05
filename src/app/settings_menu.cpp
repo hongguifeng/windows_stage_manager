@@ -37,6 +37,7 @@ constexpr std::array kFields = {
     SettingField::MaximumSolveTimeMs,
     SettingField::MaximumManagedWindows,
     SettingField::MaximumConsecutiveFailures,
+    SettingField::UiLanguage,
 };
 
 constexpr std::array<std::uint32_t, 2> kBooleanChoices = {0, 1};
@@ -119,6 +120,9 @@ bool apply_setting_value(Settings& settings, const SettingSelection& selection) 
         }
         apply_affordance_preset(settings, static_cast<AffordancePreset>(selection.value));
         break;
+    case SettingField::UiLanguage:
+        settings.uiLanguage = static_cast<UiLanguage>(selection.value);
+        break;
     case SettingField::TopMinimumLengthDip:
         settings.topMinimumLengthDip = selection.value;
         settings.topMaximumLengthDip = std::max(settings.topMaximumLengthDip, selection.value);
@@ -182,7 +186,8 @@ std::span<const SettingField> setting_fields() noexcept { return kFields; }
 
 std::span<const std::uint32_t> setting_choices(SettingField field) noexcept
 {
-    if (field == SettingField::DryRun || field == SettingField::PlaceActivatedWindow) {
+    if (field == SettingField::DryRun || field == SettingField::PlaceActivatedWindow ||
+        field == SettingField::UiLanguage) {
         return kBooleanChoices;
     }
     if (field == SettingField::ActivationHorizontalAlignment ||
@@ -220,7 +225,7 @@ std::string_view setting_field_name(SettingField field) noexcept
         "event_coalesce_window_ms", "reconcile_interval_ms", "max_moves_per_batch",
         "max_solver_states", "max_solve_time_ms", "max_managed_windows",
         "max_consecutive_failures", "activation_horizontal_alignment",
-        "activation_vertical_alignment"};
+        "activation_vertical_alignment", "ui_language"};
     const auto index = static_cast<std::size_t>(field);
     return index < names.size() ? names[index] : "unknown";
 }
@@ -235,6 +240,7 @@ std::uint32_t current_setting_value(const Settings& settings, SettingField field
     case SettingField::ActivationVerticalAlignment:
         return static_cast<std::uint32_t>(settings.activationVerticalAlignment);
     case SettingField::AffordancePreset: return static_cast<std::uint32_t>(settings.affordancePreset);
+    case SettingField::UiLanguage: return static_cast<std::uint32_t>(settings.uiLanguage);
     case SettingField::TopMinimumLengthDip: return settings.topMinimumLengthDip;
     case SettingField::TopMaximumLengthDip: return settings.topMaximumLengthDip;
     case SettingField::TopDepthDip: return settings.topDepthDip;

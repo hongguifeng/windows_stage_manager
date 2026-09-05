@@ -33,7 +33,9 @@ struct DipPreviewMetrics {
     std::uint64_t minimumOnscreenHeightPixels = 0;
 };
 
-SettingHelp setting_help(SettingField field) noexcept;
+SettingHelp setting_help(
+    SettingField field,
+    UiLanguage language = UiLanguage::SimplifiedChinese) noexcept;
 DipPreviewMetrics make_dip_preview_metrics(
     const Settings& settings, std::uint32_t dpi) noexcept;
 std::optional<Settings> prompt_settings_dialog(HWND owner, const Settings& current);

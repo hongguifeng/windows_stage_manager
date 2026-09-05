@@ -38,7 +38,7 @@ A system-tray utility that automatically organizes ordinary desktop windows. Whe
 
 ## Tray and settings
 
-- Right-click the tray icon for **Pause/Enable management**, **Open visual settings...**, **Quick settings**, and **Exit**.
+- Right-click the tray icon for **Pause/Enable management**, **Open visual settings...**, **Quick settings**, and **Exit**. Use **Interface language** under Quick settings to switch between Simplified Chinese and English; the choice takes effect immediately and is saved automatically.
 - **Quick settings** contains the run mode (Apply window moves / Preview only (DryRun)), newly activated window placement, horizontal and vertical placement, recognizability presets (Compact/Balanced/Prominent), and 16 continuous values for the minimum length, maximum length, depth, and dynamic percentage of the top, left, right, and bottom edges. Continuous values include a **Custom...** option and show the current value in the menu.
 - **Open visual settings...** provides localized names, units, valid ranges, and a live canvas preview of the clickable edges retained for each window. **Save and apply** takes effect immediately without restarting the application.
 - Configuration and logs are stored automatically under `%LOCALAPPDATA%\WindowsStageManager` (`settings.ini` and `logs\manager.log`). Manual editing is not required. In DryRun mode, `batch_complete` log entries report planned moves (`planned_moves`) and the selected degradation level (`affordance_goal` and `affordance_goal_degraded`).

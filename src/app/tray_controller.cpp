@@ -1,4 +1,5 @@
 #include "app/tray_controller.h"
+#include "app/localization.h"
 #include "app/resource.h"
 
 #ifdef _WIN32
@@ -15,10 +16,14 @@ struct CustomSettingDialogState {
     SettingField field = SettingField::Count;
     std::uint32_t currentValue = 0;
     std::optional<std::uint32_t> result;
+    UiLanguage language = UiLanguage::SimplifiedChinese;
 };
 
-std::wstring choice_text(SettingField field, std::uint32_t value)
+std::wstring choice_text(SettingField field, std::uint32_t value, UiLanguage language)
 {
+    if (language == UiLanguage::English || field == SettingField::UiLanguage) {
+        return setting_choice_text(field, value, language);
+    }
     if (field == SettingField::DryRun) {
         return value == 0 ? L"\u5e94\u7528\u7a97\u53e3\u8c03\u6574"
                           : L"\u4ec5\u9884\u89c8\uff08DryRun\uff09";
@@ -87,14 +92,18 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
     case SettingField::ActivationHorizontalAlignment:
     case SettingField::ActivationVerticalAlignment:
     case SettingField::AffordancePreset:
+    case SettingField::UiLanguage:
     case SettingField::Count:
         return text;
     }
     return text;
 }
 
-const wchar_t* field_title(SettingField field) noexcept
+const wchar_t* field_title(SettingField field, UiLanguage language) noexcept
 {
+    if (language == UiLanguage::English) {
+        return setting_field_title(field, language).data();
+    }
     switch (field) {
     case SettingField::DryRun:
         return L"\u8fd0\u884c\u6a21\u5f0f";
@@ -136,6 +145,8 @@ const wchar_t* field_title(SettingField field) noexcept
         return L"\u6700\u5927\u7ba1\u7406\u7a97\u53e3\u6570";
     case SettingField::MaximumConsecutiveFailures:
         return L"\u8fde\u7eed\u5931\u8d25\u9608\u503c";
+    case SettingField::UiLanguage:
+        return L"\u754c\u9762\u8bed\u8a00";
     case SettingField::Count:
         return L"\u672a\u77e5\u8bbe\u7f6e";
     }
@@ -155,9 +166,14 @@ INT_PTR CALLBACK custom_setting_dialog_proc(
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
-        const auto prompt = std::wstring(field_title(state->field)) +
-            L"\uff1a\u8bf7\u8f93\u5165 " + std::to_wstring(range->minimum) + L" - " +
-            std::to_wstring(range->maximum) + L" \u4e4b\u95f4\u7684\u6574\u6570";
+        SetWindowTextW(dialog, ui_text(state->language, UiText::CustomSettingTitle).data());
+        SetDlgItemTextW(dialog, IDOK, ui_text(state->language, UiText::Ok).data());
+        SetDlgItemTextW(dialog, IDCANCEL, ui_text(state->language, UiText::Cancel).data());
+        const auto prompt = std::wstring(field_title(state->field, state->language)) +
+            std::wstring(ui_text(state->language, UiText::EnterIntegerPrefix)) +
+            std::to_wstring(range->minimum) + L" - " +
+            std::to_wstring(range->maximum) +
+            std::wstring(ui_text(state->language, UiText::EnterIntegerSuffix));
         SetDlgItemTextW(dialog, IDC_CUSTOM_SETTING_PROMPT, prompt.c_str());
         SetDlgItemInt(dialog, IDC_CUSTOM_SETTING_VALUE, state->currentValue, FALSE);
         const auto edit = GetDlgItem(dialog, IDC_CUSTOM_SETTING_VALUE);
@@ -177,8 +193,8 @@ INT_PTR CALLBACK custom_setting_dialog_proc(
         if (translated == FALSE || !range || value < range->minimum ||
             value > range->maximum) {
             MessageBoxW(dialog,
-                        L"\u8bf7\u8f93\u5165\u63d0\u793a\u8303\u56f4\u5185\u7684\u6574\u6570\u3002",
-                        L"\u6570\u503c\u65e0\u6548",
+                        ui_text(state->language, UiText::InvalidValueMessage).data(),
+                        ui_text(state->language, UiText::InvalidValueTitle).data(),
                         MB_OK | MB_ICONWARNING);
             return TRUE;
         }
@@ -196,8 +212,8 @@ INT_PTR CALLBACK custom_setting_dialog_proc(
 
 std::wstring field_menu_text(const Settings& settings, SettingField field)
 {
-    return std::wstring(field_title(field)) + L" (" +
-        choice_text(field, current_setting_value(settings, field)) + L")";
+    return std::wstring(field_title(field, settings.uiLanguage)) + L" (" +
+        choice_text(field, current_setting_value(settings, field), settings.uiLanguage) + L")";
 }
 
 bool append_setting_menu(HMENU parent, const Settings& settings, SettingField field)
@@ -212,8 +228,9 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
     const bool current_is_preset =
         std::find(choices.begin(), choices.end(), current) != choices.end();
     if (!current_is_preset) {
-        const auto custom_text = L"\u5f53\u524d\u81ea\u5b9a\u4e49\u503c\uff1a" +
-            choice_text(field, current);
+        const auto custom_text =
+            std::wstring(ui_text(settings.uiLanguage, UiText::CurrentCustomValue)) +
+            choice_text(field, current, settings.uiLanguage);
         AppendMenuW(choices_menu, MF_STRING | MF_DISABLED | MF_CHECKED, 0, custom_text.c_str());
         AppendMenuW(choices_menu, MF_SEPARATOR, 0, nullptr);
     }
@@ -221,7 +238,7 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
     for (std::size_t index = 0; index < choices.size(); ++index) {
         const auto value = choices[index];
         const UINT flags = MF_STRING | (value == current ? MF_CHECKED : MF_UNCHECKED);
-        const auto text = choice_text(field, value);
+        const auto text = choice_text(field, value, settings.uiLanguage);
         AppendMenuW(choices_menu,
                     flags,
                     setting_command_id(field, index),
@@ -233,7 +250,7 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
         AppendMenuW(choices_menu,
                     MF_STRING,
                     custom_setting_command_id(field),
-                    L"\u81ea\u5b9a\u4e49\u2026");
+                    ui_text(settings.uiLanguage, UiText::Custom).data());
     }
 
     const auto title = field_menu_text(settings, field);
@@ -249,11 +266,11 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
 
 } // namespace
 
-UnsatisfiableNotification unsatisfiable_notification() noexcept
+UnsatisfiableNotification unsatisfiable_notification(UiLanguage language) noexcept
 {
     return {
-        L"\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3",
-        L"\u5f53\u524d\u7a7a\u95f4\u65e0\u6cd5\u8fdb\u4e00\u6b65\u9732\u51fa\u540e\u53f0\u7a97\u53e3\u3002\u7a0b\u5e8f\u672a\u6539\u53d8\u7a97\u53e3\u5c42\u7ea7\uff0c\u5c06\u5728\u7a97\u53e3\u72b6\u6001\u53d8\u5316\u540e\u91cd\u8bd5\u3002",
+        ui_text(language, UiText::UnsatisfiableTitle),
+        ui_text(language, UiText::UnsatisfiableMessage),
         5'000,
         NIIF_WARNING | NIIF_NOSOUND,
     };
@@ -269,12 +286,12 @@ bool unsatisfiable_notification_due(
 }
 
 std::optional<std::uint32_t> prompt_custom_setting_value(
-    HWND owner, SettingField field, std::uint32_t current_value)
+    HWND owner, SettingField field, std::uint32_t current_value, UiLanguage language)
 {
     if (!custom_setting_range(field)) {
         return std::nullopt;
     }
-    CustomSettingDialogState state{field, current_value, std::nullopt};
+    CustomSettingDialogState state{field, current_value, std::nullopt, language};
     const auto result = DialogBoxParamW(GetModuleHandleW(nullptr),
                                         MAKEINTRESOURCEW(IDD_CUSTOM_SETTING),
                                         owner,
@@ -290,16 +307,17 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
         return nullptr;
     }
 
-    const wchar_t* toggle_text = enabled ? L"\u6682\u505c\u7ba1\u7406"
-                                         : L"\u542f\u7528\u7ba1\u7406";
-    AppendMenuW(menu, MF_STRING, TrayController::kCommandToggle, toggle_text);
+    const auto toggle_text = ui_text(
+        settings.uiLanguage,
+        enabled ? UiText::PauseManagement : UiText::EnableManagement);
+    AppendMenuW(menu, MF_STRING, TrayController::kCommandToggle, toggle_text.data());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
     const HMENU settings_menu = CreatePopupMenu();
     AppendMenuW(menu,
                 MF_STRING,
                 TrayController::kCommandSettings,
-                L"\u6253\u5f00\u53ef\u89c6\u5316\u8bbe\u7f6e\u2026");
+                ui_text(settings.uiLanguage, UiText::OpenVisualSettings).data());
     if (settings_menu != nullptr) {
         for (const auto field : setting_fields()) {
             append_setting_menu(settings_menu, settings, field);
@@ -307,13 +325,14 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
         if (!AppendMenuW(menu,
                          MF_POPUP | MF_STRING,
                          reinterpret_cast<UINT_PTR>(settings_menu),
-                         L"\u5feb\u901f\u53c2\u6570\u8bbe\u7f6e")) {
+                         ui_text(settings.uiLanguage, UiText::QuickSettings).data())) {
             DestroyMenu(settings_menu);
         }
     }
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, TrayController::kCommandExit, L"\u9000\u51fa");
+    AppendMenuW(menu, MF_STRING, TrayController::kCommandExit,
+                ui_text(settings.uiLanguage, UiText::Exit).data());
     return menu;
 }
 
@@ -404,7 +423,7 @@ bool TrayController::show_unsatisfiable_notification(std::uint64_t now_ms)
         !unsatisfiable_notification_due(last_unsatisfiable_notification_ms_, now_ms)) {
         return false;
     }
-    const auto content = unsatisfiable_notification();
+    const auto content = unsatisfiable_notification(settings_.uiLanguage);
     auto notification = icon_data_;
     notification.uFlags = NIF_INFO;
     wcsncpy_s(notification.szInfoTitle, content.title.data(), _TRUNCATE);
@@ -426,6 +445,10 @@ bool TrayController::enabled() const noexcept
 void TrayController::set_settings(const Settings& settings)
 {
     settings_ = settings;
+    update_tooltip();
+    if (installed_) {
+        Shell_NotifyIconW(NIM_MODIFY, &icon_data_);
+    }
 }
 
 bool TrayController::is_setting_checked(std::uint32_t command) const noexcept
@@ -490,23 +513,25 @@ void TrayController::show_context_menu()
 
 void TrayController::update_tooltip()
 {
+    UiText text = UiText::TooltipRunning;
     switch (status_) {
     case TrayStatus::Running:
-        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u8fd0\u884c\u4e2d\uff09";
+        text = UiText::TooltipRunning;
         break;
     case TrayStatus::Paused:
-        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u5df2\u6682\u505c\uff09";
+        text = UiText::TooltipPaused;
         break;
     case TrayStatus::Unsatisfiable:
-        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u65e0\u53ef\u7528\u5e03\u5c40\uff09";
+        text = UiText::TooltipUnsatisfiable;
         break;
     case TrayStatus::ApiError:
-        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08API \u9519\u8bef\uff09";
+        text = UiText::TooltipApiError;
         break;
     case TrayStatus::Rebuilding:
-        tooltip_ = L"Windows \u7a97\u53e3\u7ba1\u7406\u5668\uff08\u6b63\u5728\u91cd\u5efa\uff09";
+        text = UiText::TooltipRebuilding;
         break;
     }
+    tooltip_ = ui_text(settings_.uiLanguage, text);
     wcsncpy_s(icon_data_.szTip, tooltip_.c_str(), _TRUNCATE);
 }
 

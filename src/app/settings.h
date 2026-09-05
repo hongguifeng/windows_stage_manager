@@ -24,6 +24,11 @@ enum class ActivationVerticalAlignment : std::uint32_t {
     Bottom = 2,
 };
 
+enum class UiLanguage : std::uint32_t {
+    SimplifiedChinese = 0,
+    English = 1,
+};
+
 struct Settings {
     bool enabled = true;
     bool dryRun = false;
@@ -33,6 +38,7 @@ struct Settings {
     ActivationVerticalAlignment activationVerticalAlignment =
         ActivationVerticalAlignment::Bottom;
     AffordancePreset affordancePreset = AffordancePreset::Balanced;
+    UiLanguage uiLanguage = UiLanguage::SimplifiedChinese;
 
     std::uint32_t topMinimumLengthDip = 120;
     std::uint32_t topMaximumLengthDip = 240;

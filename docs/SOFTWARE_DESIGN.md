@@ -607,6 +607,8 @@ SetWindowPos(
 
 `app::Settings` 是运行配置的单一结构体，带默认成员初始化。`load_settings` 使用简单 `key=value` 解析，忽略空行、注释、section、未知键和无效值。`save_settings` 先写 `.tmp`，再替换正式文件。
 
+`UiLanguage` 当前包含 `SimplifiedChinese` 和 `English`，由 `Settings::uiLanguage` 持有并以 `ui_language=0/1` 持久化；默认使用简体中文。语言只影响显示文本，不进入求解器策略。
+
 配置文件路径：
 
 ```text
@@ -637,7 +639,9 @@ kSettingCommandBase + field * kSettingCommandStride + choiceIndex
 
 `TrayController` 负责纯 UI 行为和命令转译，不直接重启协调器。`AppLifecycle::handle_tray_action` 负责真正修改配置、持久化和重建运行组件。
 
-`settings_dialog.cpp` 通过 `SettingHelp` 提供中文名称、说明、单位和是否需要 DIP 预览。画布从草稿设置实时计算四边示意，不修改真实窗口；按“保存并应用”才返回新 `Settings`。
+`localization.cpp` 是界面短文本、设置字段标题和候选值的双语资源层，调用者必须显式传入 `UiLanguage`。`tray_controller.cpp` 使用它构造菜单、工具提示、自定义值窗口和无解通知；`settings_dialog.cpp` 通过带语言参数的 `SettingHelp` 提供双语名称、说明、单位和是否需要 DIP 预览，并在初始化时覆盖 `.rc` 中的静态占位文本。
+
+画布从草稿设置实时计算四边示意，不修改真实窗口；按“保存并应用”才返回新 `Settings`。通过托盘切换语言走普通 `SettingField::UiLanguage` 命令路径，先持久化并更新托盘，再重建窗口管理组件；之后打开的对话框会读取新语言。已经打开的设置对话框不会在草稿语言变化时原地重建，保存后重新打开即可看到完整的新语言。
 
 ### 16.4 新增设置的完整步骤
 
@@ -647,8 +651,8 @@ kSettingCommandBase + field * kSettingCommandStride + choiceIndex
 2. `src/app/settings.cpp`：加载键和保存键；
 3. `src/app/settings_menu.h`：`SettingField`；
 4. `src/app/settings_menu.cpp`：字段列表、选项/范围、名称、读取和写回；
-5. `src/app/tray_controller.cpp`：中文标题和显示文本（若通用路径不能覆盖）；
-6. `src/app/settings_dialog.cpp`：`SettingHelp` 和必要的预览；
+5. `src/app/localization.cpp`：中英文标题和候选值（若该字段包含新显示文本）；
+6. `src/app/settings_dialog.cpp`：中英文 `SettingHelp` 和必要的预览；
 7. 对应消费者，例如 coordinator/solver；
 8. settings、tray、dialog 和集成测试；
 9. `SOFTWARE_FEATURES.md` 的配置表；
@@ -738,7 +742,7 @@ DIP 转像素使用向上取整，保证最低可点击尺寸不会因缩放舍�
 | `identity_classifier` / `window_provider` | HWND 代次、分类和真实 Win32 快照 |
 | `move_applier` / `win32_window_mover` | 事务、位置验证和真实 `SetWindowPos` |
 | `mvp_coordinator` | 前台、拖动、右键、降级和最终策略 |
-| `tray` / `settings_dialog` / `tray_settings_integration` | 菜单、中文设置、持久化和运行实例 |
+| `tray` / `settings_dialog` / `tray_settings_integration` | 中英文菜单、设置、语言持久化和运行实例 |
 | `documentation` / `release_bundle` | 当前文档契约和发布包 |
 
 性质测试使用固定 seed，失败时应记录 seed 并将最小复现场景加入确定性测试。

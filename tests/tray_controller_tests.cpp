@@ -108,6 +108,30 @@ int main()
     CHECK(std::wstring(menu_text) == L"\u81ea\u5b9a\u4e49\u2026");
     CHECK(DestroyMenu(menu) != FALSE);
 
+    settings.uiLanguage = stage_manager::app::UiLanguage::English;
+    const auto english_notification = stage_manager::app::unsatisfiable_notification(
+        stage_manager::app::UiLanguage::English);
+    CHECK(english_notification.title == L"No window layout is currently available");
+    CHECK(english_notification.message.find(L"Z-order") != std::wstring_view::npos);
+    const HMENU english_menu = stage_manager::app::create_tray_context_menu(settings, false);
+    CHECK(english_menu != nullptr);
+    CHECK(GetMenuStringW(english_menu, 0, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"Enable management");
+    CHECK(GetMenuStringW(english_menu, 2, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"Open visual settings...");
+    CHECK(GetMenuStringW(english_menu, 3, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"Quick settings");
+    const HMENU english_settings_menu = GetSubMenu(english_menu, 3);
+    CHECK(english_settings_menu != nullptr);
+    const auto language_position = static_cast<int>(
+        stage_manager::app::setting_fields().size() - 1);
+    CHECK(GetMenuStringW(
+        english_settings_menu, language_position, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text).find(L"Interface language") != std::wstring::npos);
+    CHECK(GetMenuStringW(english_menu, 5, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"Exit");
+    CHECK(DestroyMenu(english_menu) != FALSE);
+
     CHECK(controller.status() == TrayStatus::Running);
     controller.set_status(TrayStatus::Unsatisfiable);
     CHECK(controller.status() == TrayStatus::Unsatisfiable);

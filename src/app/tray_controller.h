@@ -34,7 +34,10 @@ struct TrayAction {
 // The caller owns the returned menu and must destroy it with DestroyMenu.
 HMENU create_tray_context_menu(const Settings& settings, bool enabled);
 std::optional<std::uint32_t> prompt_custom_setting_value(
-    HWND owner, SettingField field, std::uint32_t current_value);
+    HWND owner,
+    SettingField field,
+    std::uint32_t current_value,
+    UiLanguage language = UiLanguage::SimplifiedChinese);
 
 enum class TrayStatus {
     Running,
@@ -53,7 +56,8 @@ struct UnsatisfiableNotification final {
 
 constexpr std::uint64_t kUnsatisfiableNotificationCooldownMs = 10'000;
 
-UnsatisfiableNotification unsatisfiable_notification() noexcept;
+UnsatisfiableNotification unsatisfiable_notification(
+    UiLanguage language = UiLanguage::SimplifiedChinese) noexcept;
 bool unsatisfiable_notification_due(
     std::optional<std::uint64_t> last_notification_ms,
     std::uint64_t now_ms) noexcept;

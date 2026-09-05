@@ -87,6 +87,11 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
                 apply_affordance_preset(settings, static_cast<AffordancePreset>(*parsed));
             }
         }
+    } else if (key == "ui_language") {
+        if (const auto parsed = parse_uint(value);
+            parsed && *parsed <= static_cast<std::uint32_t>(UiLanguage::English)) {
+            settings.uiLanguage = static_cast<UiLanguage>(*parsed);
+        }
     } else if (key == "top_minimum_length_dip") {
         if (const auto parsed = parse_uint(value)) {
             settings.topMinimumLengthDip = *parsed;
@@ -338,6 +343,7 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
                   settings.activationVerticalAlignment) << '\n'
            << "affordance_preset=" << static_cast<std::uint32_t>(
                   settings.affordancePreset) << '\n'
+           << "ui_language=" << static_cast<std::uint32_t>(settings.uiLanguage) << '\n'
            << "top_minimum_length_dip=" << settings.topMinimumLengthDip << '\n'
            << "top_maximum_length_dip=" << settings.topMaximumLengthDip << '\n'
            << "top_depth_dip=" << settings.topDepthDip << '\n'

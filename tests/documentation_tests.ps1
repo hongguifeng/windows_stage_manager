@@ -99,6 +99,9 @@ foreach ($pattern in @(
     'InternalMoveTracker',
     'planned_reorders',
     'SettingField',
+    'localization\.cpp',
+    'UiLanguage',
+    'ui_language=0/1',
     'SOFTWARE_FEATURES\.md',
     'ctest --preset windows-debug',
     'ctest --preset windows-release'

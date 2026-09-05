@@ -25,6 +25,7 @@ function(stage_manager_target_defaults target)
 endfunction()
 
 add_library(stage_manager_core STATIC
+    src/app/localization.cpp
     src/app/settings.cpp
     src/app/settings_menu.cpp
     src/diagnostics/logger.cpp
