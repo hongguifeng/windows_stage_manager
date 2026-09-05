@@ -49,6 +49,7 @@ LayoutHash hash_layout(const LayoutSnapshot& snapshot) noexcept
         append_rect(result.first, window.placementRect, kFirstPrime);
         append_rect(result.first, window.visualRect, kFirstPrime);
         append_value(result.first, window.zIndex, kFirstPrime);
+        append_value(result.first, window.topmost, kFirstPrime);
 
         append_value(result.second, window.key.hwnd, kSecondPrime);
         append_value(result.second, window.key.processId, kSecondPrime);
@@ -56,6 +57,7 @@ LayoutHash hash_layout(const LayoutSnapshot& snapshot) noexcept
         append_rect(result.second, window.placementRect, kSecondPrime);
         append_rect(result.second, window.visualRect, kSecondPrime);
         append_value(result.second, window.zIndex, kSecondPrime);
+        append_value(result.second, window.topmost, kSecondPrime);
     }
     return result;
 }

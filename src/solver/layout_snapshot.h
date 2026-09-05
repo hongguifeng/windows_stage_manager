@@ -21,6 +21,7 @@ struct LayoutWindow {
     bool visible = false;
     bool blocksVisibility = false;
     bool currentDesktop = false;
+    bool topmost = false;
 };
 
 struct LayoutSnapshot {
