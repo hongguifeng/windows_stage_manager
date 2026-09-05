@@ -30,7 +30,7 @@ try {
     Copy-Item -LiteralPath $executable -Destination $stagingRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\README.md") -Destination $stagingRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\assets") -Destination $stagingRoot -Recurse
-    @"
+    $sampleSettings = @'
 enabled=true
 dry_run=false
 place_activated_window=true
@@ -43,7 +43,8 @@ right_depth_dip=64
 bottom_depth_dip=64
 max_managed_windows=20
 max_consecutive_failures=3
-"@ | Set-Content -LiteralPath (Join-Path $stagingRoot "settings.example.ini") -Encoding utf8
+'@
+    $sampleSettings -split "`r?`n" | Set-Content -LiteralPath (Join-Path $stagingRoot "settings.example.ini") -Encoding utf8
     [ordered]@{
         product = "WindowsStageManager"
         version = $Version

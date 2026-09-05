@@ -54,7 +54,8 @@ try {
     } finally {
         [StageManagerResourceMethods]::FreeLibrary($module) | Out-Null
     }
-    $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
+    $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw -Encoding utf8
+    $settings = $settings -replace "`r", ""
     if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
     if ($settings -notmatch '(?m)^place_activated_window=true$') { throw "activation placement default is missing" }
     if ($settings -notmatch '(?m)^activation_horizontal_alignment=1$') { throw "horizontal activation alignment is missing" }
