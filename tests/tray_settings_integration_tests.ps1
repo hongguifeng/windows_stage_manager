@@ -75,6 +75,8 @@ $window = [IntPtr]::Zero
 
 try {
     [IO.Directory]::CreateDirectory($testRoot) | Out-Null
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($settingsPath)) | Out-Null
+    [IO.File]::WriteAllText($settingsPath, "enabled=false`r`ndry_run=false`r`n")
     $env:LOCALAPPDATA = $testRoot
     $process = Start-Process -FilePath $Executable -PassThru
 

@@ -111,10 +111,14 @@ int main()
     using stage_manager::platform::win32::Win32WindowProvider;
     using stage_manager::window::InternalMoveTracker;
     using stage_manager::window::MoveApplyOptions;
+    using stage_manager::window::MoveApplyResult;
     using stage_manager::window::MoveApplyStatus;
     using stage_manager::window::MoveFailureTracker;
     using stage_manager::window::SnapshotRefreshReason;
     using stage_manager::window::VerifiedMoveApplier;
+
+    const HRESULT com_result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    CHECK(SUCCEEDED(com_result) || com_result == RPC_E_CHANGED_MODE);
 
     CHECK(Win32WindowMover::position_only_flags() ==
           static_cast<std::uint32_t>(SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER |
@@ -227,7 +231,12 @@ int main()
 
     const auto foreground_before_reorder = GetForegroundWindow();
     CHECK(foreground_before_reorder != nullptr);
-    CHECK(SetWindowPos(reference, foreground_before_reorder, 0, 0, 0, 0,
+    const bool foreground_is_topmost =
+        (GetWindowLongPtrW(foreground_before_reorder, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    const HWND reference_insert_after = foreground_is_topmost
+        ? HWND_TOP
+        : foreground_before_reorder;
+    CHECK(SetWindowPos(reference, reference_insert_after, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
     CHECK(SetWindowPos(rejecting, reference, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
@@ -238,6 +247,8 @@ int main()
     const auto* reorder_reference_before = find_snapshot(reorder_before, reference);
     CHECK(reorder_target_before != nullptr);
     CHECK(reorder_reference_before != nullptr);
+    CHECK(!reorder_target_before->topmost);
+    CHECK(!reorder_reference_before->topmost);
     CHECK(reorder_target_before->zIndex > reorder_reference_before->zIndex + 1);
     const auto target_rect_before_reorder = reorder_target_before->placementRect;
     const auto reference_rect_before_reorder = reorder_reference_before->placementRect;
@@ -257,8 +268,51 @@ int main()
     MoveApplyOptions reorder_options = options;
     reorder_options.transactionId = 2;
     reorder_options.layoutGeneration = 2;
-    const std::vector reorder_plans = {reorder_plan};
-    const auto reordered = reorder_applier.apply({}, reorder_plans, reorder_options);
+    MoveApplyResult reordered;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        const auto fresh = provider.capture(SnapshotRefreshReason::Manual);
+        const auto* fresh_target = find_snapshot(fresh, target);
+        const auto* fresh_reference = find_snapshot(fresh, reference);
+        CHECK(fresh_target != nullptr);
+        CHECK(fresh_reference != nullptr);
+        CHECK(fresh_target->zIndex > fresh_reference->zIndex + 1);
+        reorder_plan.window = fresh_target->key;
+        reorder_plan.insertAfter = fresh_reference->key;
+        reorder_plan.fromZIndex = fresh_target->zIndex;
+        reorder_plan.toZIndex = fresh_reference->zIndex + 1;
+        const std::vector reorder_plans = {reorder_plan};
+        reordered = reorder_applier.apply({}, reorder_plans, reorder_options);
+        if (reordered.status != MoveApplyStatus::WindowUnavailable) {
+            break;
+        }
+        Sleep(10);
+    }
+    if (reordered.status != MoveApplyStatus::Applied) {
+        const auto* failed_target = find_snapshot(reordered.finalSnapshot, target);
+        const auto* failed_reference = find_snapshot(reordered.finalSnapshot, reference);
+        std::fprintf(stderr,
+                     "reorder diagnostics: status=%u native=%u error=%lu "
+                     "before_foreground=%p current_foreground=%p complete=%d "
+                     "planned_from=%d planned_to=%d actual_target=%d actual_reference=%d "
+                     "target_failures=%u reference_failures=%u target_topmost=%d "
+                     "reference_topmost=%d target_z_known=%d reference_z_known=%d\n",
+                     static_cast<unsigned>(reordered.status),
+                     static_cast<unsigned>(reordered.nativeReorderStatus),
+                     static_cast<unsigned long>(reordered.lastError),
+                     static_cast<void*>(foreground_before_reorder),
+                     static_cast<void*>(GetForegroundWindow()),
+                     reordered.finalSnapshot.complete ? 1 : 0,
+                     reorder_plan.fromZIndex,
+                     reorder_plan.toZIndex,
+                     failed_target != nullptr ? failed_target->zIndex : -1,
+                     failed_reference != nullptr ? failed_reference->zIndex : -1,
+                     failed_target != nullptr ? failed_target->queryFailures : 0u,
+                     failed_reference != nullptr ? failed_reference->queryFailures : 0u,
+                     failed_target != nullptr && failed_target->topmost ? 1 : 0,
+                     failed_reference != nullptr && failed_reference->topmost ? 1 : 0,
+                     failed_target != nullptr && failed_target->zOrderKnown ? 1 : 0,
+                     failed_reference != nullptr && failed_reference->zOrderKnown ? 1 : 0);
+    }
     CHECK(reordered.status == MoveApplyStatus::Applied);
     CHECK(reordered.appliedReorders.size() == 1);
     const auto* reorder_target_after = find_snapshot(reordered.finalSnapshot, target);
@@ -402,6 +456,9 @@ int main()
     DestroyWindow(target);
     DestroyWindow(reference);
     UnregisterClassW(kTestClassName, instance);
+    if (SUCCEEDED(com_result)) {
+        CoUninitialize();
+    }
     return 0;
 }
 
