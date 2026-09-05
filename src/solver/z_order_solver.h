@@ -25,7 +25,8 @@ struct ZOrderSolveResult {
 };
 
 // Call only after the unchanged-Z-order position solve is Unsatisfiable.
-// Candidates are tried from the bottom of the inactive managed window stack.
+// Candidates first preserve the longest possible top-of-stack prefix. Within
+// the same changed suffix, lower inactive managed targets are tried first.
 ZOrderSolveResult solve_z_order_fallback(const LayoutSnapshot& initial,
                                          const SolverPolicy& policy,
                                          std::size_t active_window_index,

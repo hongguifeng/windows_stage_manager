@@ -76,13 +76,16 @@ int main()
     CHECK(bottom_result.candidatesTried == 1);
     CHECK(bottom_result.reorders.size() == 1);
     CHECK(bottom_result.reorders[0].window == bottom_succeeds.windows[3].key);
-    CHECK(bottom_result.reorders[0].insertAfter == bottom_succeeds.windows[0].key);
+    CHECK(bottom_result.reorders[0].insertAfter == bottom_succeeds.windows[1].key);
     CHECK(bottom_result.reorders[0].fromZIndex == 3);
-    CHECK(bottom_result.reorders[0].toZIndex == 1);
+    CHECK(bottom_result.reorders[0].toZIndex == 2);
     CHECK(bottom_result.positionSolve.status == SolveStatus::NoViolation);
     CHECK(scan_visibility_violations(
               bottom_result.finalSnapshot, policy.ranking.visibility).violations.empty());
     CHECK(bottom_result.finalSnapshot.windows[0].zIndex == 0);
+    CHECK(bottom_result.finalSnapshot.windows[1].zIndex == 1);
+    CHECK(bottom_result.finalSnapshot.windows[3].zIndex == 2);
+    CHECK(bottom_result.finalSnapshot.windows[2].zIndex == 3);
 
     auto gapped_z_order = bottom_succeeds;
     gapped_z_order.windows[0].zIndex = 5;
@@ -91,24 +94,28 @@ int main()
     gapped_z_order.windows[3].zIndex = 10;
     const auto gapped_result = solve_z_order_fallback(gapped_z_order, policy, 0);
     CHECK(gapped_result.status == SolveStatus::Solved);
-    CHECK(gapped_result.reorders[0].toZIndex == 6);
+    CHECK(gapped_result.reorders[0].insertAfter == gapped_z_order.windows[1].key);
+    CHECK(gapped_result.reorders[0].toZIndex == 7);
     CHECK(gapped_result.finalSnapshot.windows[0].zIndex == 5);
-    CHECK(gapped_result.finalSnapshot.windows[3].zIndex == 6);
-    CHECK(gapped_result.finalSnapshot.windows[1].zIndex == 7);
+    CHECK(gapped_result.finalSnapshot.windows[1].zIndex == 6);
+    CHECK(gapped_result.finalSnapshot.windows[3].zIndex == 7);
     CHECK(gapped_result.finalSnapshot.windows[2].zIndex == 9);
 
     LayoutSnapshot next_candidate_succeeds;
     next_candidate_succeeds.windows = {
         make_window(10, {400, 400, 480, 480}, 0),
-        make_window(11, {100, 100, 300, 300}, 1, false),
+        make_window(11, {100, 100, 300, 300}, 1),
         make_window(12, {100, 100, 300, 300}, 2),
         make_window(13, {350, 0, 450, 100}, 3),
     };
+    next_candidate_succeeds.windows[2].blocksVisibility = false;
+    next_candidate_succeeds.windows[3].blocksVisibility = false;
     const auto next_result = solve_z_order_fallback(next_candidate_succeeds, policy, 0);
     CHECK(next_result.status == SolveStatus::Solved);
-    CHECK(next_result.candidatesTried == 2);
+    CHECK(next_result.candidatesTried == 3);
     CHECK(next_result.reorders.size() == 1);
     CHECK(next_result.reorders[0].window == next_candidate_succeeds.windows[2].key);
+    CHECK(next_result.reorders[0].insertAfter == next_candidate_succeeds.windows[0].key);
     CHECK(next_result.finalSnapshot.windows[0].zIndex == 0);
 
     auto topmost_bottom = bottom_succeeds;

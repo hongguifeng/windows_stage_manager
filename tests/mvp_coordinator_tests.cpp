@@ -288,16 +288,17 @@ int main()
     CHECK(one_edge_result.solve.moves.empty());
 
     auto z_order_settings = test_settings();
-    z_order_settings.maxManagedWindows = 2;
+    z_order_settings.maxManagedWindows = 3;
     z_order_settings.minOnscreenWidthDip = 900;
     z_order_settings.minOnscreenHeightDip = 100;
     auto make_z_order_layout = [] {
-        auto blocker = make_window(202, {0, 0, 1000, 700}, 1);
+        auto blocker = make_window(202, {0, 0, 1000, 700}, 2);
         blocker.ownerHwnd = 999;
         return std::vector{
             make_window(201, {50, 300, 950, 400}, 0),
+            make_window(204, {50, 0, 950, 100}, 1),
             blocker,
-            make_window(203, {50, 50, 950, 650}, 2),
+            make_window(203, {50, 50, 950, 650}, 3),
         };
     };
 
@@ -312,7 +313,8 @@ int main()
     CHECK(z_order_dry_result.reorderedWindowCount == 1);
     CHECK(z_order_dry_result.zOrderSolve.candidatesTried == 1);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].window.hwnd == 203);
-    CHECK(z_order_dry_result.zOrderSolve.reorders[0].insertAfter.hwnd == 201);
+    CHECK(z_order_dry_result.zOrderSolve.reorders[0].insertAfter.hwnd == 204);
+    CHECK(z_order_dry_result.zOrderSolve.reorders[0].toZIndex == 2);
     CHECK(z_order_dry_result.solve.status == SolveStatus::NoViolation);
     CHECK(z_order_dry_result.solve.moves.empty());
     CHECK(z_order_dry_result.apply.status ==
@@ -333,8 +335,9 @@ int main()
     CHECK(z_order_live.desktop.reorderCalls == 1);
     CHECK(z_order_live.desktop.moveCalls == 0);
     CHECK(z_order_live.desktop.windows[0].zIndex == 0);
-    CHECK(z_order_live.desktop.windows[2].zIndex == 1);
-    CHECK(z_order_live.desktop.windows[1].zIndex == 2);
+    CHECK(z_order_live.desktop.windows[1].zIndex == 1);
+    CHECK(z_order_live.desktop.windows[3].zIndex == 2);
+    CHECK(z_order_live.desktop.windows[2].zIndex == 3);
 
     MvpFixture crowded;
     auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);
