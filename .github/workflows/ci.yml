@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Use MSVC toolchain (VS2022)
-        uses: ilammy/msvc-dev-cmd@v1.6
+        uses: ilammy/msvc-dev-cmd@v1.13.0
         with:
           arch: x64
 
