@@ -86,6 +86,7 @@ int main()
     using stage_manager::solver::rank_candidates;
     using stage_manager::solver::scan_visibility_violations;
     using stage_manager::solver::solve_layout;
+    using stage_manager::solver::solve_layout_incrementally;
 
     auto policy = make_policy();
 
@@ -129,6 +130,26 @@ int main()
     CHECK(chain_result.moves.size() == 1);
     CHECK(chain_result.moves[0].window == chain.windows[1].key);
     CHECK(scan_visibility_violations(chain_result.finalSnapshot, policy.ranking.visibility)
+              .violations.empty());
+
+    LayoutSnapshot stacked;
+    stacked.version = 3;
+    stacked.windows = {
+        make_window(10, {100, 100, 400, 400}, 0, false),
+        make_window(11, {100, 100, 400, 400}, 1, true),
+        make_window(12, {100, 100, 400, 400}, 2, true),
+        make_window(13, {100, 100, 400, 400}, 3, true),
+    };
+    auto incremental_policy = policy;
+    incremental_policy.ranking.visibility.minimumExposedEdges = 2;
+    const auto incremental = solve_layout_incrementally(stacked, incremental_policy, 0);
+    CHECK(incremental.status == SolveStatus::Solved);
+    CHECK(incremental.moves.size() == 3);
+    CHECK(incremental.finalSnapshot.windows[1].managed);
+    CHECK(incremental.finalSnapshot.windows[2].managed);
+    CHECK(incremental.finalSnapshot.windows[3].managed);
+    CHECK(scan_visibility_violations(
+              incremental.finalSnapshot, incremental_policy.ranking.visibility)
               .violations.empty());
 
     auto active_target_policy = policy;

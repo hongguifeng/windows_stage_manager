@@ -238,4 +238,133 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
     return result;
 }
 
+SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
+                                       const SolverPolicy& policy,
+                                       std::size_t active_window_index,
+                                       ISolverClock* supplied_clock)
+{
+    SteadySolverClock default_clock;
+    ISolverClock& clock = supplied_clock == nullptr ? static_cast<ISolverClock&>(default_clock)
+                                                    : *supplied_clock;
+    const auto start = clock.now_ms();
+    if (active_window_index >= initial.windows.size() ||
+        policy.limits.maximumMoves == 0 || policy.limits.maximumStates == 0 ||
+        policy.limits.maximumElapsedMs == 0) {
+        return terminal_result(
+            SolveStatus::InvalidSnapshot, initial, {}, {}, 0, start, clock);
+    }
+
+    const auto initial_scan = scan_visibility_violations(initial, policy.ranking.visibility);
+    if (initial_scan.status == ViolationScanStatus::InvalidSnapshot) {
+        return terminal_result(
+            SolveStatus::InvalidSnapshot, initial, {}, {}, 1, start, clock);
+    }
+    if (initial_scan.status == ViolationScanStatus::GeometryTooComplex) {
+        return terminal_result(
+            SolveStatus::GeometryTooComplex, initial, {}, {}, 1, start, clock);
+    }
+    if (initial_scan.violations.empty()) {
+        return terminal_result(
+            SolveStatus::NoViolation, initial, {}, {}, 1, start, clock);
+    }
+
+    auto current = initial;
+    std::vector<MovePlan> moves;
+    std::uint32_t states_visited = 1;
+    std::vector<LayoutHash> visited = {hash_layout(current)};
+
+    while (moves.size() < policy.limits.maximumMoves) {
+        const auto scan = scan_visibility_violations(current, policy.ranking.visibility);
+        if (scan.status == ViolationScanStatus::InvalidSnapshot) {
+            return terminal_result(SolveStatus::InvalidSnapshot,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        if (scan.status == ViolationScanStatus::GeometryTooComplex) {
+            return terminal_result(SolveStatus::GeometryTooComplex,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        if (scan.violations.empty()) {
+            return terminal_result(SolveStatus::Solved,
+                                   current,
+                                   std::move(moves),
+                                   {},
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+
+        const auto violation = std::min_element(
+            scan.violations.begin(), scan.violations.end(), [&current](const auto& left,
+                                                                       const auto& right) {
+                return current.windows[left.targetIndex].zIndex <
+                    current.windows[right.targetIndex].zIndex;
+            });
+        if (violation == scan.violations.end() ||
+            violation->targetIndex == active_window_index) {
+            break;
+        }
+
+        auto local = current;
+        for (std::size_t index = 0; index < local.windows.size(); ++index) {
+            const bool is_target = index == violation->targetIndex;
+            local.windows[index].managed = is_target;
+            local.windows[index].movable = is_target && current.windows[index].movable;
+        }
+
+        auto local_policy = policy;
+        local_policy.limits.maximumMoves = 1;
+        const auto local_result = solve_layout(local, local_policy, &clock);
+        states_visited += local_result.statesVisited;
+        if (local_result.status != SolveStatus::Solved || local_result.moves.size() != 1) {
+            const auto status = local_result.status == SolveStatus::NoViolation
+                ? SolveStatus::Unsatisfiable
+                : local_result.status;
+            return terminal_result(status,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+
+        const auto target_index = violation->targetIndex;
+        current.windows[target_index].placementRect =
+            local_result.finalSnapshot.windows[target_index].placementRect;
+        current.windows[target_index].visualRect =
+            local_result.finalSnapshot.windows[target_index].visualRect;
+        moves.push_back(local_result.moves.front());
+
+        const auto state = hash_layout(current);
+        if (contains_hash(visited, state) || visited.size() >= policy.limits.maximumStates) {
+            return terminal_result(SolveStatus::Timeout,
+                                   initial,
+                                   {},
+                                   initial_scan.violations,
+                                   states_visited,
+                                   start,
+                                   clock);
+        }
+        visited.push_back(state);
+    }
+
+    return terminal_result(SolveStatus::Unsatisfiable,
+                           initial,
+                           {},
+                           initial_scan.violations,
+                           states_visited,
+                           start,
+                           clock);
+}
+
 } // namespace stage_manager::solver

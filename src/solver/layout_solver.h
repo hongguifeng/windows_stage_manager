@@ -67,4 +67,9 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
                          const SolverPolicy& policy,
                          ISolverClock* clock = nullptr);
 
+SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
+                                       const SolverPolicy& policy,
+                                       std::size_t active_window_index,
+                                       ISolverClock* clock = nullptr);
+
 } // namespace stage_manager::solver

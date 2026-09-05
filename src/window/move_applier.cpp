@@ -375,6 +375,14 @@ MoveApplyResult VerifiedMoveApplier::apply(
         result.finalSnapshot = std::move(final_snapshot);
         return result;
     }
+    const auto placement_matches_plan = [&final_positions, &options](
+                                            const WindowSnapshot& actual,
+                                            const PixelRect& original) {
+        const auto moved = final_positions.find(actual.key.hwnd);
+        return moved == final_positions.end()
+            ? same_rectangle(actual.placementRect, original)
+            : rectangles_match(actual.placementRect, moved->second, options.positionTolerance);
+    };
     for (const auto& verification : reorder_verifications) {
         const auto* actual_target = find_window(final_snapshot, verification.plan.window);
         const auto* actual_reference = find_window(
@@ -384,8 +392,8 @@ MoveApplyResult VerifiedMoveApplier::apply(
             !actual_target->zOrderKnown || !actual_reference->zOrderKnown ||
             actual_reference->zIndex != verification.referenceZIndex ||
             actual_target->zIndex != actual_reference->zIndex + 1 ||
-            !same_rectangle(actual_target->placementRect, verification.targetPlacement) ||
-            !same_rectangle(actual_reference->placementRect, verification.referencePlacement) ||
+            !placement_matches_plan(*actual_target, verification.targetPlacement) ||
+            !placement_matches_plan(*actual_reference, verification.referencePlacement) ||
             !preserves_invariant(*actual_target, verification.targetInvariant) ||
             !preserves_invariant(*actual_reference, verification.referenceInvariant)) {
             result.status = MoveApplyStatus::VerificationFailed;

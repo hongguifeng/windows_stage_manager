@@ -246,6 +246,22 @@ int main()
     CHECK(reorder_desktop.find(active)->placementRect.left == 700);
     CHECK(reorder_desktop.find(second)->placementRect.left == 400);
 
+    FakeDesktop combined_desktop;
+    combined_desktop.windows = dry_reorder_desktop.windows;
+    InternalMoveTracker combined_tracker;
+    VerifiedMoveApplier combined_applier(
+        combined_desktop, combined_desktop, combined_tracker);
+    const std::vector combined_moves = {
+        make_move(active, {700, 100, 900, 300}, {720, 120, 920, 320}),
+    };
+    const auto combined = combined_applier.apply(
+        combined_moves, reorder_plan, reorder_options);
+    CHECK(combined.status == MoveApplyStatus::Applied);
+    CHECK(combined.appliedReorders.size() == 1);
+    CHECK(combined.appliedMoves.size() == 1);
+    CHECK(combined_desktop.find(active)->placementRect.left == 720);
+    CHECK(combined_desktop.find(second)->zIndex == 1);
+
     FakeDesktop rejected_reorder_desktop;
     rejected_reorder_desktop.windows = dry_reorder_desktop.windows;
     rejected_reorder_desktop.alterReorder = true;

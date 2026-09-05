@@ -272,6 +272,29 @@ int main()
           stage_manager::solver::ViolationScanStatus::Ok);
     CHECK(chain_visibility.violations.empty());
 
+    auto stacked_settings = test_settings();
+    stacked_settings.maxSolverStates = 4;
+    MvpFixture stacked(stacked_settings);
+    stacked.desktop.windows = {
+        make_window(40, {100, 100, 400, 400}, 0),
+        make_window(41, {100, 100, 400, 400}, 1),
+        make_window(42, {100, 100, 400, 400}, 2),
+        make_window(43, {100, 100, 400, 400}, 3),
+    };
+    const auto stacked_result =
+        stacked.coordinator.process(drag_events(40), true, true);
+    CHECK(stacked_result.status == MvpBatchStatus::DryRun);
+    CHECK(stacked_result.fallbackUsed);
+    CHECK(stacked_result.managedWindowCount == 4);
+    CHECK(stacked_result.solve.status == SolveStatus::Solved);
+    CHECK(stacked_result.solve.moves.size() == 3);
+    const auto stacked_visibility = stage_manager::solver::scan_visibility_violations(
+        stacked_result.solve.finalSnapshot,
+        stage_manager::solver::VisibilityRequirements{48, 24, 128, 2});
+    CHECK(stacked_visibility.status ==
+          stage_manager::solver::ViolationScanStatus::Ok);
+    CHECK(stacked_visibility.violations.empty());
+
     MvpFixture two_edge_goal;
     two_edge_goal.desktop.windows = {
         make_window(14, {130, 50, 430, 450}, 0),
@@ -379,7 +402,7 @@ int main()
 
     MvpFixture crowded;
     auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);
-    fixed_blocker.topmost = true;
+    fixed_blocker.ownerHwnd = 999;
     crowded.desktop.windows = {
         make_window(20, {100, 100, 400, 400}, 0),
         make_window(21, {100, 100, 400, 400}, 1),
@@ -388,24 +411,24 @@ int main()
     };
     const auto crowded_result = crowded.coordinator.process(drag_events(20), true, true);
     CHECK(crowded_result.status == MvpBatchStatus::DryRun);
-    CHECK(crowded_result.fallbackUsed);
-    CHECK(crowded_result.managedWindowCount == 2);
+    CHECK(!crowded_result.fallbackUsed);
+    CHECK(crowded_result.zOrderFallbackUsed);
+    CHECK(crowded_result.managedWindowCount == 3);
     CHECK(crowded_result.solve.status == SolveStatus::Solved);
     CHECK(crowded_result.solve.moves.size() == 1);
-    CHECK(crowded_result.solve.moves[0].window.hwnd == 21);
-    CHECK(crowded_result.movedWindowCount == 1);
+    CHECK(crowded_result.zOrderSolve.reorders.size() == 1);
 
     MvpFixture crowded_live;
     crowded_live.desktop.windows = crowded.desktop.windows;
     const auto crowded_live_result =
         crowded_live.coordinator.process(drag_events(20), true, false);
     CHECK(crowded_live_result.status == MvpBatchStatus::Applied);
-    CHECK(crowded_live_result.fallbackUsed);
-    CHECK(crowded_live_result.apply.status ==
-          stage_manager::window::MoveApplyStatus::Applied);
+    CHECK(!crowded_live_result.fallbackUsed);
+    CHECK(crowded_live_result.zOrderFallbackUsed);
     CHECK(crowded_live_result.apply.appliedMoves.size() == 1);
-    CHECK(crowded_live_result.apply.appliedMoves[0].plan.window.hwnd == 21);
+    CHECK(crowded_live_result.apply.appliedReorders.size() == 1);
     CHECK(crowded_live.desktop.moveCalls == 1);
+    CHECK(crowded_live.desktop.reorderCalls == 1);
 
     MvpFixture capped;
     for (std::uintptr_t index = 0; index < 21; ++index) {

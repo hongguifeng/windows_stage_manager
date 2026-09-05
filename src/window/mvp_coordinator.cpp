@@ -68,30 +68,6 @@ bool contains_hash(std::span<const solver::LayoutHash> hashes,
     return std::find(hashes.begin(), hashes.end(), value) != hashes.end();
 }
 
-std::vector<std::size_t> directly_obscured_targets(
-    const solver::LayoutSnapshot& layout,
-    std::span<const solver::Violation> violations,
-    std::size_t active_index)
-{
-    std::vector<std::size_t> targets;
-    for (const auto& violation : violations) {
-        if (violation.targetIndex >= layout.windows.size() ||
-            violation.targetIndex == active_index) {
-            continue;
-        }
-        const bool blocked_by_active = std::find(
-            violation.blockerIndices.begin(), violation.blockerIndices.end(), active_index) !=
-            violation.blockerIndices.end();
-        if (blocked_by_active) {
-            targets.push_back(violation.targetIndex);
-        }
-    }
-    std::stable_sort(targets.begin(), targets.end(), [&layout](auto left, auto right) {
-        return layout.windows[left].zIndex < layout.windows[right].zIndex;
-    });
-    return targets;
-}
-
 std::optional<geometry::Edge> move_direction(const solver::MovePlan& move) noexcept
 {
     const auto delta_x = move.to.left - move.from.left;
@@ -463,30 +439,16 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             result.solve.finalState = solver::hash_layout(layout);
         }
 
-        const auto targets = directly_obscured_targets(
-            layout, result.solve.violations, *active_index);
-        for (const auto target_index : targets) {
-            auto fallback_layout = layout;
-            for (std::size_t index = 0; index < fallback_layout.windows.size(); ++index) {
-                const bool in_fallback = index == *active_index || index == target_index;
-                fallback_layout.windows[index].managed = in_fallback;
-                fallback_layout.windows[index].movable = in_fallback;
-            }
-            const auto fallback = solver::solve_layout(fallback_layout, policy);
-            if (fallback.status != solver::SolveStatus::Solved ||
-                fallback.moves.size() > remaining_position_moves) {
-                continue;
-            }
-            layout = std::move(fallback_layout);
+        const auto fallback = solver::solve_layout_incrementally(
+            layout, policy, *active_index);
+        if (fallback.status == solver::SolveStatus::Solved &&
+            fallback.moves.size() <= remaining_position_moves) {
             result.solve = fallback;
             include_activation_move();
-            managed_handles.clear();
-            managed_handles.insert(layout.windows[*active_index].key.hwnd);
-            managed_handles.insert(layout.windows[target_index].key.hwnd);
-            result.managedWindowCount = managed_handles.size();
             result.fallbackUsed = true;
             return true;
         }
+        result.solve = fallback;
         return false;
     };
 
