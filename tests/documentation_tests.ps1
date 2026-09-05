@@ -5,145 +5,152 @@ $ErrorActionPreference = "Stop"
 function Read-WorkspaceFile([string]$RelativePath) {
     $path = Join-Path $Workspace $RelativePath
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        $path = Join-Path (Join-Path $Workspace 'docs') $RelativePath
+        throw "required documentation input is missing: $RelativePath"
     }
     return Get-Content -LiteralPath $path -Raw -Encoding UTF8
 }
 
+function Assert-Match(
+    [string]$Text,
+    [string]$Pattern,
+    [string]$FailureMessage
+) {
+    if ($Text -notmatch $Pattern) {
+        throw $FailureMessage
+    }
+}
+
 $readme = Read-WorkspaceFile "README.md"
-$guide = Read-WorkspaceFile "USER_GUIDE.md"
-$limits = Read-WorkspaceFile "KNOWN_LIMITATIONS.md"
-$todo = Read-WorkspaceFile "TODO.md"
+$functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
 $feature = Read-WorkspaceFile "assets\feature-overview.svg"
 $versionHeader = Read-WorkspaceFile "src\app\version.h"
+$settingsHeader = Read-WorkspaceFile "src\app\settings.h"
+$settingsSource = Read-WorkspaceFile "src\app\settings.cpp"
+$coordinatorSource = Read-WorkspaceFile "src\window\mvp_coordinator.cpp"
+$lifecycleSource = Read-WorkspaceFile "src\app\app_lifecycle.cpp"
+$eventHookSource = Read-WorkspaceFile "src\platform\win32\win_event_hook.cpp"
 
-$markdownRoots = @($Workspace)
-$docsRoot = Join-Path $Workspace 'docs'
-if (Test-Path -LiteralPath $docsRoot -PathType Container) {
-    $markdownRoots += $docsRoot
+$versionMatch = [regex]::Match($versionHeader, 'kVersion\s*=\s*"([^"]+)"')
+if (-not $versionMatch.Success) {
+    throw "application version is missing"
 }
-$markdownDocuments = Get-ChildItem -LiteralPath $markdownRoots -Filter '*.md' -File | ForEach-Object {
-    [PSCustomObject]@{
-        Path = $_.FullName
-        Text = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
-    }
+$version = $versionMatch.Groups[1].Value
+$documentVersion = [regex]::Match($functions, '\u9002\u7528\u7248\u672c\uff1a([^\s]+)')
+if (-not $documentVersion.Success -or $documentVersion.Groups[1].Value -ne $version) {
+    throw "software feature document version does not match the application"
 }
-function Find-SingleMarkdown([scriptblock]$Predicate, [string]$Description) {
-    $matches = @($markdownDocuments | Where-Object $Predicate)
-    if ($matches.Count -ne 1) {
-        throw "expected one $Description document, found $($matches.Count)"
-    }
-    return $matches[0].Text
-}
+Assert-Match $readme ([regex]::Escape("-Version $version")) `
+    "README release version does not match the application"
 
-$requirements = Find-SingleMarkdown {
-    $_.Text -match 'TopAndSide' -and
-    $_.Text -match 'AnyRecognizableEdge' -and
-    $_.Text -notmatch 'EdgeAffordanceRule'
-} 'requirements'
-$design = Find-SingleMarkdown {
-    $_.Text -match 'EdgeAffordanceRule' -and
-    $_.Text -match 'TopLeftChannel' -and
-    $_.Text -notmatch 'M16-01'
-} 'design'
-$plan = Find-SingleMarkdown {
-    $_.Text -match 'M16-01' -and
-    $_.Text -match 'M17-02' -and
-    $_.Text -match 'EdgeAffordanceRule'
-} 'development plan'
-$acceptance = Find-SingleMarkdown { $_.Text -match 'MVP-A23' } 'acceptance'
-$maintainedDocuments = @(
-    $readme,
-    $guide,
-    $limits,
-    $requirements,
-    $design,
-    $plan,
-    $todo,
-    $acceptance
-) -join "`n"
+Assert-Match $readme 'docs/SOFTWARE_FEATURES\.md' `
+    "README does not link to the current software feature document"
+Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
+    "README does not identify the authoritative current document"
+Assert-Match $functions 'As-built' `
+    "software feature document is not identified as an as-built document"
+Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
+    "software feature document does not distinguish historical documents"
 
-if ($readme -notmatch 'dry_run=false') { throw "README lost the active default" }
-if ($readme -notmatch 'activation_horizontal_alignment=1' -or
-    $readme -notmatch 'activation_vertical_alignment=2') {
-    throw "README lost configurable activation alignment defaults"
-}
-if ($readme -notmatch '\u6c34\u5e73\u53ef\u9009\u9760\u5de6\u3001\u5c45\u4e2d\u3001\u9760\u53f3' -or
-    $readme -notmatch '\u7ad6\u76f4\u53ef\u9009\u9760\u4e0a\u3001\u5c45\u4e2d\u3001\u9760\u4e0b') {
-    throw "README lost activation alignment choices"
-}
-if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
-if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
-if ($readme -notmatch 'assets/feature-overview\.svg') { throw "README feature illustration is missing" }
-if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\feature-overview.svg') -PathType Leaf)) { throw "README feature illustration file is missing" }
-if ($feature -notmatch '<svg' -or $feature -notmatch 'viewBox="0 0 1400 780"' -or $feature -notmatch '<title') { throw "README feature illustration is invalid" }
-if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.svg') -PathType Leaf)) { throw "application icon source is missing" }
-if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.ico') -PathType Leaf)) { throw "application icon file is missing" }
-
-if ($guide -notmatch 'affordance_preset=1') { throw "balanced affordance preset is missing" }
-if ($guide -notmatch 'place_activated_window=true') { throw "activation placement default is missing" }
-if ($guide -notmatch 'affordance_goal_degraded') { throw "affordance degradation diagnostics are missing" }
-if ($guide -notmatch 'activation_placement_used') { throw "activation placement diagnostics are missing" }
-if ($guide -notmatch '\u5b9e\u9645\u6807\u9898\u680f\u9ad8\u5ea6') { throw "title bar affordance behavior is missing" }
-if ($guide -notmatch '\u5de6\u4e0a\u6216\u53f3\u4e0a' -or $guide -notmatch '\u901a\u9053\u8d1f\u8f7d') { throw "balanced top channel behavior is missing" }
-if ($guide -notmatch '\u5173\u95ed\u8be5\u5f00\u5173\u65f6\u4ecd\u4f1a\u4fee\u590d\u88ab\u906e\u6321\u7a97\u53e3') { throw "disabled placement behavior is missing" }
-if ($readme -notmatch '\u4e0d\u8c03\u6574\u7a97\u53e3\u5c3a\u5bf8\u6216 Z-order' -or
-    $readme -notmatch '\u4f18\u5148\u4fdd\u8bc1\u6700\u8fd1\u4f7f\u7528\u7684\u4e0a\u5c42\u7a97\u53e3') {
-    throw "README lost immutable Z-order or upper-window priority policy"
-}
-if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
-if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }
-if ($guide -notmatch '\u81ea\u5b9a\u4e49\u2026') { throw "custom numeric setting instructions are missing" }
-if ($guide -notmatch '\u6700\u5c0f\u957f\u5ea6\u8d85\u8fc7\u5f53\u524d\u6700\u5927\u957f\u5ea6') { throw "setting dependency behavior is missing" }
-
-if ($requirements -notmatch 'TopAndSide' -or
-    $requirements -notmatch 'AnyRecognizableEdge') {
-    throw "requirements lost the two-level affordance goal"
-}
-if ($requirements -notmatch '\u5de6\u4e0a\u4e0e\u53f3\u4e0a' -or $requirements -notmatch '\u5f52\u4e00\u5316\u8ddd\u79bb') {
-    throw "requirements lost channel balancing or normalized ranking"
-}
-if ($requirements -notmatch '\u5e95\u8fb9\u5bf9\u9f50' -or $requirements -notmatch '\u975e\u6d3b\u52a8\s*\u2192\s*\u6d3b\u52a8') {
-    throw "requirements lost activation placement semantics"
-}
-
-foreach ($term in @(
-    'EdgeAffordanceRule',
-    'PixelEdgeAffordance',
-    'titleBarHeight',
-    'VisibilityGoal::TopAndSide',
-    'VisibilityGoal::AnyRecognizableEdge',
-    'TopLeftChannel',
-    'TopRightChannel',
-    'channelImbalance',
-    'centerDistance',
-    'placeActivatedWindow'
+foreach ($pattern in @(
+    '\u4e0d\u6539\u53d8\u7a97\u53e3\u5bbd\u5ea6\u6216\u9ad8\u5ea6',
+    '\u4e0d\u8c03\u6574\u7a97\u53e3 Z-order',
+    'planned_reorders.*\u56fa\u5b9a\u4e3a `0`',
+    '\u5de6\u4e0a / \u53f3\u4e0a\uff08\u540c\u7ea7\uff09',
+    '\u4ec5\u9876\u90e8 > \u4ec5\u5de6\u4fa7 > \u4ec5\u53f3\u4fa7 > \u4ec5\u5e95\u90e8',
+    '\u6309\u4e0a\u5c42\u7a97\u53e3\u4f18\u5148\u9010\u7a97\u4fee\u590d',
+    '\u5df2\u7ecf\u6ee1\u8db3\u7684\u4e0a\u5c42\u7a97\u53e3\u4e0d\u4f1a\u4e3a\u4e86\u66f4\u4e0b\u5c42\u7a97\u53e3\u8ba9\u4f4d',
+    '\u4e2d\u5fc3\u8ddd\u79bb\u4f1a\u5206\u522b\u9664\u4ee5\u5de5\u4f5c\u533a\u5bbd\u5ea6\u548c\u9ad8\u5ea6\u8fdb\u884c\u5f52\u4e00\u5316',
+    '\u5171\u4eab\u7684\u89d2\u90e8\u4f1a\u4ece\u4e24\u4e2a\u533a\u57df\u4e2d\u6263\u9664',
+    '\u771f\u5b9e\u62d6\u52a8\u540e\uff0c\u6d3b\u52a8\u7a97\u53e3\u6700\u7ec8\u4f4d\u7f6e\u4f18\u5148',
+    'WH_MOUSE_LL',
+    '\u91ca\u653e\u540e 1500 ms \u5185',
+    'Ctrl\+Alt\+F12',
+    '\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3',
+    'dry_run=false',
+    'stage_manager_tray_settings_integration',
+    'UAC',
+    'owned window',
+    'scenario_runner'
 )) {
-    if ($design -notmatch [regex]::Escape($term)) {
-        throw "design is missing current algorithm term: $term"
-    }
+    Assert-Match $functions $pattern "software feature document is missing current behavior: $pattern"
 }
 
-if ($plan -notmatch 'M16-01' -or $plan -notmatch 'M16-05') {
-    throw "M16 implementation plan is missing"
+# Every setting persisted by the application must be discoverable in the
+# authoritative feature document. This automatically catches newly added keys.
+$persistedKeys = [regex]::Matches($settingsSource, '<<\s*"([a-z0-9_]+)=') |
+    ForEach-Object { $_.Groups[1].Value } |
+    Sort-Object -Unique
+if ($persistedKeys.Count -eq 0) {
+    throw "no persisted settings were discovered"
 }
-foreach ($commit in @('15e7429', '45db15e', 'f94b87d', '835d319')) {
-    if ($plan -notmatch $commit -or $todo -notmatch $commit) {
-        throw "M16 commit trace is missing: $commit"
+foreach ($key in $persistedKeys) {
+    Assert-Match $functions ([regex]::Escape("``$key``")) `
+        "software feature document is missing setting: $key"
+}
+
+# Protect the release defaults that materially change out-of-box behavior.
+foreach ($sourcePattern in @(
+    'bool enabled = true;',
+    'bool dryRun = false;',
+    'bool placeActivatedWindow = true;',
+    'ActivationHorizontalAlignment::Center',
+    'ActivationVerticalAlignment::Bottom',
+    'AffordancePreset::Balanced',
+    'std::uint32_t maxManagedWindows = 20;',
+    'std::uint32_t maxConsecutiveFailures = 3;'
+)) {
+    Assert-Match $settingsHeader ([regex]::Escape($sourcePattern)) `
+        "settings defaults changed; review the software feature document: $sourcePattern"
+}
+foreach ($documentPattern in @(
+    '\| `enabled` \| `true` \|',
+    '\| `dry_run` \| `false` \|',
+    '\| `place_activated_window` \| `true` \|',
+    '\| `activation_horizontal_alignment` \| `1` \|',
+    '\| `activation_vertical_alignment` \| `2` \|',
+    '\| `affordance_preset` \| `1` \|',
+    '\| `max_managed_windows` \| 20 \|',
+    '\| `max_consecutive_failures` \| 3 \|'
+)) {
+    Assert-Match $functions $documentPattern `
+        "software feature document has lost an important default: $documentPattern"
+}
+
+# These source assertions keep the central policy statements tied to executable
+# behavior instead of allowing the document and test to drift together.
+Assert-Match $lifecycleSource 'planned_reorders = std::string\{"0"\}' `
+    "runtime no longer guarantees zero planned Z-order changes"
+Assert-Match $coordinatorSource 'solve_layout_prioritized' `
+    "upper-window-priority partial solver is no longer wired into the coordinator"
+Assert-Match $coordinatorSource 'affordanceGoalDegraded = true' `
+    "two-edge to one-edge degradation is no longer wired into the coordinator"
+Assert-Match $lifecycleSource 'RegisterHotKey\(' `
+    "emergency hotkey is no longer registered"
+Assert-Match $eventHookSource 'WH_MOUSE_LL' `
+    "delayed right-click activation tracking is no longer installed"
+
+Assert-Match $readme 'dry_run=false' "README lost the active default"
+Assert-Match $readme 'activation_horizontal_alignment=1' `
+    "README lost the default horizontal activation alignment"
+Assert-Match $readme 'activation_vertical_alignment=2' `
+    "README lost the default vertical activation alignment"
+Assert-Match $readme 'stage_release\.ps1' "README release command is missing"
+Assert-Match $readme 'assets/feature-overview\.svg' `
+    "README feature illustration is missing"
+
+if ($feature -notmatch '<svg' -or
+    $feature -notmatch 'viewBox="0 0 1400 780"' -or
+    $feature -notmatch '<title') {
+    throw "README feature illustration is invalid"
+}
+foreach ($asset in @(
+    'assets\feature-overview.svg',
+    'assets\windows-stage-manager.svg',
+    'assets\windows-stage-manager.ico'
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Workspace $asset) -PathType Leaf)) {
+        throw "required product asset is missing: $asset"
     }
-}
-if ($todo -notmatch 'M16-01' -or $todo -notmatch 'M16-05') {
-    throw "M16 TODO section is missing"
-}
-if ($todo -notmatch 'M17-01' -or
-    $todo -notmatch 'd19a771' -or
-    $todo -notmatch '3E0FB61F0FCCA37DB9030D40CF8FB626B66A8BA3DF93A4DFC55F8315ACEF374C') {
-    throw "RC15 release trace is missing"
-}
-if ($acceptance -notmatch 'MVP-A23' -or
-    $acceptance -notmatch 'activation_placement_used=true' -or
-    $acceptance -notmatch '\u6c34\u5e73\u5c45\u4e2d\u5e76\u4e0e\u5f53\u524d\u663e\u793a\u5668\u5de5\u4f5c\u533a\u5e95\u90e8\u5bf9\u9f50') {
-    throw "current acceptance scenarios are missing"
 }
 
 $obsoletePatterns = @(
@@ -160,18 +167,7 @@ $obsoletePatterns = @(
     'RepairTargetEdge'
 )
 foreach ($pattern in $obsoletePatterns) {
-    if ($maintainedDocuments -match [regex]::Escape($pattern)) {
-        throw "obsolete layout setting or diagnostic remains: $pattern"
+    if ($functions -match [regex]::Escape($pattern)) {
+        throw "obsolete setting or diagnostic remains in the current document: $pattern"
     }
 }
-
-if ($maintainedDocuments -notmatch 'stage_manager_tray_settings_integration') { throw "tray settings acceptance coverage is missing" }
-if ($limits -notmatch 'UAC') { throw "privilege limitation is missing" }
-if ($limits -notmatch 'owned window') { throw "window classification limitations are missing" }
-if ($limits -notmatch 'scenario_runner') { throw "benchmark limitation is missing" }
-
-$versionMatch = [regex]::Match($versionHeader, 'kVersion\s*=\s*"([^"]+)"')
-if (-not $versionMatch.Success) { throw "application version is missing" }
-if ($versionMatch.Groups[1].Value -ne '0.1.0-rc22') { throw "application version was not advanced to rc22" }
-$documentedVersion = [regex]::Escape("-Version " + $versionMatch.Groups[1].Value)
-if ($readme -notmatch $documentedVersion) { throw "README release version does not match the application" }

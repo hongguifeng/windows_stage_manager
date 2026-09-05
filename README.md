@@ -65,10 +65,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
 
 ## 文档
 
-- [用户指南](docs/USER_GUIDE.md)
-- [已知限制](docs/KNOWN_LIMITATIONS.md)
-- [MVP 验收测试](docs/MVP%20Acceptance%20Test.md)
-- [需求说明书](docs/Windows%20Stage%20Manager-style%20Window%20Manager%20Requirements%20Spec.md)
-- [高层设计](docs/Windows%20Stage%20Manager-style%20Window%20Manager%20High-level%20Design.md)
-- [详细开发计划](docs/Windows%20Stage%20Manager-style%20Window%20Manager%20Detailed%20Development%20Plan.md)
-- [开发 TODO](docs/TODO.md)
+- [软件功能说明（当前实现的唯一基准）](docs/SOFTWARE_FEATURES.md)
+
+`docs` 目录中的其他文件是历史需求、设计或使用资料，可能与当前代码不一致；判断现有功能时以《软件功能说明》和代码为准。
