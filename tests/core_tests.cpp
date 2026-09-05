@@ -1,4 +1,5 @@
 #include "app/settings.h"
+#include "app/settings_menu.h"
 #include "diagnostics/logger.h"
 
 #include <cassert>
@@ -19,6 +20,43 @@ int main()
     }
     assert(defaults.preferredExposedEdges == 2);
     assert(defaults.minimumExposedEdges == 1);
+
+    for (const auto field : stage_manager::app::setting_fields()) {
+        const auto choices = stage_manager::app::setting_choices(field);
+        assert(!choices.empty());
+        for (std::size_t index = 0; index < choices.size(); ++index) {
+            const auto command = stage_manager::app::setting_command_id(field, index);
+            const auto decoded = stage_manager::app::decode_setting_command(command);
+            assert(decoded.has_value());
+            assert(decoded->field == field);
+            assert(decoded->value == choices[index]);
+        }
+    }
+    assert(!stage_manager::app::decode_setting_command(1999));
+    assert(!stage_manager::app::decode_setting_command(
+        stage_manager::app::kSettingCommandBase +
+        static_cast<std::uint32_t>(stage_manager::app::SettingField::Count) *
+            stage_manager::app::kSettingCommandStride));
+
+    auto menu_settings = defaults;
+    using stage_manager::app::SettingField;
+    using stage_manager::app::SettingSelection;
+    assert(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::DryRun, 1}));
+    assert(menu_settings.dryRun);
+    assert(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::MinimumExposedEdges, 4}));
+    assert(menu_settings.minimumExposedEdges == 4);
+    assert(menu_settings.preferredExposedEdges == 4);
+    assert(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::PreferredExposedEdges, 2}));
+    assert(menu_settings.preferredExposedEdges == 2);
+    assert(menu_settings.minimumExposedEdges == 2);
+    assert(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 96}));
+    assert(menu_settings.repairTargetEdgeDip >= menu_settings.minExposedEdgeDip);
+    assert(!stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 99}));
 
     stage_manager::app::Settings expected;
     expected.enabled = false;

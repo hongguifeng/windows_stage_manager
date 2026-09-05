@@ -26,6 +26,7 @@ endfunction()
 
 add_library(stage_manager_core STATIC
     src/app/settings.cpp
+    src/app/settings_menu.cpp
     src/diagnostics/logger.cpp
     src/diagnostics/runtime_metrics.cpp
     src/geometry/rect.cpp
