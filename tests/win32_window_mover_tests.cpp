@@ -1,6 +1,8 @@
 #include "platform/win32/window_mover.h"
 #include "platform/win32/window_provider.h"
 #include "window/move_applier.h"
+#include "window/mvp_coordinator.h"
+#include "window/tracking_window_provider.h"
 
 #ifdef _WIN32
 
@@ -8,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #define CHECK(condition)                                                                  \
@@ -70,6 +73,35 @@ stage_manager::geometry::Rect to_rect(const stage_manager::window::PixelRect& re
 {
     return {rectangle.left, rectangle.top, rectangle.right, rectangle.bottom};
 }
+
+class RestrictedWindowProvider final : public stage_manager::window::IWindowProvider {
+public:
+    RestrictedWindowProvider(stage_manager::window::IWindowProvider& provider,
+                             std::vector<std::uintptr_t> allowed)
+        : provider_(provider), allowed_(std::move(allowed))
+    {
+    }
+
+    stage_manager::window::WindowSnapshotBatch capture(
+        stage_manager::window::SnapshotRefreshReason reason) override
+    {
+        auto batch = provider_.capture(reason);
+        std::erase_if(batch.windows, [this](const auto& snapshot) {
+            return std::find(allowed_.begin(), allowed_.end(), snapshot.key.hwnd) ==
+                allowed_.end();
+        });
+        return batch;
+    }
+
+    void handle_event(const stage_manager::window::WindowEvent& event) override
+    {
+        provider_.handle_event(event);
+    }
+
+private:
+    stage_manager::window::IWindowProvider& provider_;
+    std::vector<std::uintptr_t> allowed_;
+};
 
 } // namespace
 
@@ -212,6 +244,107 @@ int main()
     CHECK(rejected.windowFailureCount == 1);
     CHECK(rejected.transactionNonCooperative);
     CHECK(failures.is_non_cooperative(options.transactionId, rejected_plan.window));
+
+    WindowBehavior integration_behavior;
+    const HWND covered = CreateWindowExW(0,
+                                         kTestClassName,
+                                         L"Coordinator covered window",
+                                         WS_OVERLAPPEDWINDOW,
+                                         100,
+                                         400,
+                                         360,
+                                         260,
+                                         nullptr,
+                                         nullptr,
+                                         instance,
+                                         &integration_behavior);
+    const HWND active = CreateWindowExW(0,
+                                        kTestClassName,
+                                        L"Coordinator active window",
+                                        WS_OVERLAPPEDWINDOW,
+                                        100,
+                                        400,
+                                        360,
+                                        260,
+                                        nullptr,
+                                        nullptr,
+                                        instance,
+                                        &integration_behavior);
+    CHECK(covered != nullptr);
+    CHECK(active != nullptr);
+    ShowWindow(covered, SW_SHOWNOACTIVATE);
+    ShowWindow(active, SW_SHOWNOACTIVATE);
+    UpdateWindow(covered);
+    UpdateWindow(active);
+    CHECK(SetWindowPos(covered, HWND_TOP, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
+    CHECK(SetWindowPos(active, HWND_TOP, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
+
+    RECT covered_before{};
+    RECT active_before{};
+    CHECK(GetWindowRect(covered, &covered_before) != FALSE);
+    CHECK(GetWindowRect(active, &active_before) != FALSE);
+
+    RestrictedWindowProvider restricted_provider(
+        provider,
+        {reinterpret_cast<std::uintptr_t>(active),
+         reinterpret_cast<std::uintptr_t>(covered)});
+    stage_manager::window::WindowIdentityTracker identities;
+    stage_manager::window::TrackingWindowProvider tracked_provider(restricted_provider, identities);
+    InternalMoveTracker integration_tracker;
+    stage_manager::window::MoveTransactionGuard integration_guard;
+    MoveFailureTracker integration_failures;
+    VerifiedMoveApplier integration_applier(
+        mover, tracked_provider, integration_tracker, &integration_guard, &integration_failures);
+    stage_manager::app::Settings integration_settings;
+    integration_settings.maxManagedWindows = 2;
+    integration_settings.maxSolveTimeMs = 1000;
+    stage_manager::window::MvpCoordinator coordinator(
+        tracked_provider,
+        integration_applier,
+        integration_guard,
+        integration_tracker,
+        stage_manager::window::ConservativeWindowClassifier(integration_settings),
+        integration_settings);
+    const auto active_handle = reinterpret_cast<std::uintptr_t>(active);
+    const std::vector<stage_manager::window::WindowEvent> integration_events = {
+        {stage_manager::window::WindowEventType::MoveSizeStart, active_handle, 1, 100, 1},
+        {stage_manager::window::WindowEventType::LocationChange, active_handle, 1, 101, 2},
+        {stage_manager::window::WindowEventType::MoveSizeEnd, active_handle, 1, 102, 3},
+    };
+    const auto integration_result = coordinator.process(integration_events, true, false);
+    if (integration_result.status != stage_manager::window::MvpBatchStatus::Applied) {
+        std::fprintf(stderr,
+                     "coordinator status=%u reason=%.*s managed=%zu solve=%u plans=%zu "
+                     "apply=%u applied=%zu\n",
+                     static_cast<unsigned>(integration_result.status),
+                     static_cast<int>(stage_manager::window::suspend_reason_name(
+                         integration_result.reason).size()),
+                     stage_manager::window::suspend_reason_name(integration_result.reason).data(),
+                     integration_result.managedWindowCount,
+                     static_cast<unsigned>(integration_result.solve.status),
+                     integration_result.solve.moves.size(),
+                     static_cast<unsigned>(integration_result.apply.status),
+                     integration_result.apply.appliedMoves.size());
+    }
+    CHECK(integration_result.status == stage_manager::window::MvpBatchStatus::Applied);
+    CHECK(integration_result.managedWindowCount == 2);
+    CHECK(integration_result.solve.status == stage_manager::solver::SolveStatus::Solved);
+    CHECK(!integration_result.solve.moves.empty());
+    CHECK(integration_result.apply.status == MoveApplyStatus::Applied);
+    CHECK(!integration_result.apply.appliedMoves.empty());
+
+    RECT covered_after{};
+    RECT active_after{};
+    CHECK(GetWindowRect(covered, &covered_after) != FALSE);
+    CHECK(GetWindowRect(active, &active_after) != FALSE);
+    CHECK(covered_after.left != covered_before.left || covered_after.top != covered_before.top);
+    CHECK(active_after.left == active_before.left);
+    CHECK(active_after.top == active_before.top);
+
+    DestroyWindow(active);
+    DestroyWindow(covered);
 
     DestroyWindow(rejecting);
     DestroyWindow(target);
