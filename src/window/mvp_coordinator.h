@@ -51,6 +51,7 @@ struct MvpBatchResult {
     MoveApplyResult apply;
     std::size_t managedWindowCount = 0;
     std::size_t movedWindowCount = 0;
+    bool fallbackUsed = false;
 };
 
 class MvpCoordinator final {

@@ -429,6 +429,8 @@ void AppLifecycle::coordinator_loop()
         const auto solver_states = std::to_string(result.solve.statesVisited);
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
+        const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
+                                                       : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
         const auto queue_depth_text = std::to_string(queue_depth);
         const auto total_batches = std::to_string(metrics.batches);
@@ -447,6 +449,7 @@ void AppLifecycle::coordinator_loop()
              {"solver_states", solver_states},
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
+             {"fallback_used", fallback_used},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

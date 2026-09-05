@@ -212,6 +212,36 @@ int main()
     CHECK(chain_result.movedWindowCount == 3);
     CHECK(chain_result.solve.moves.size() >= 3);
 
+    MvpFixture crowded;
+    auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);
+    fixed_blocker.topmost = true;
+    crowded.desktop.windows = {
+        make_window(20, {100, 100, 400, 400}, 0),
+        make_window(21, {100, 100, 400, 400}, 1),
+        fixed_blocker,
+        make_window(23, {0, 0, 1000, 700}, 3),
+    };
+    const auto crowded_result = crowded.coordinator.process(drag_events(20), true, true);
+    CHECK(crowded_result.status == MvpBatchStatus::DryRun);
+    CHECK(crowded_result.fallbackUsed);
+    CHECK(crowded_result.managedWindowCount == 2);
+    CHECK(crowded_result.solve.status == SolveStatus::Solved);
+    CHECK(crowded_result.solve.moves.size() == 1);
+    CHECK(crowded_result.solve.moves[0].window.hwnd == 21);
+    CHECK(crowded_result.movedWindowCount == 1);
+
+    MvpFixture crowded_live;
+    crowded_live.desktop.windows = crowded.desktop.windows;
+    const auto crowded_live_result =
+        crowded_live.coordinator.process(drag_events(20), true, false);
+    CHECK(crowded_live_result.status == MvpBatchStatus::Applied);
+    CHECK(crowded_live_result.fallbackUsed);
+    CHECK(crowded_live_result.apply.status ==
+          stage_manager::window::MoveApplyStatus::Applied);
+    CHECK(crowded_live_result.apply.appliedMoves.size() == 1);
+    CHECK(crowded_live_result.apply.appliedMoves[0].plan.window.hwnd == 21);
+    CHECK(crowded_live.desktop.moveCalls == 1);
+
     MvpFixture capped;
     for (std::uintptr_t index = 0; index < 21; ++index) {
         const auto left = static_cast<std::int32_t>(index * 300);
