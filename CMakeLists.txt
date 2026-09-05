@@ -27,6 +27,7 @@ endfunction()
 add_library(stage_manager_core STATIC
     src/app/settings.cpp
     src/diagnostics/logger.cpp
+    src/diagnostics/runtime_metrics.cpp
     src/geometry/rect.cpp
     src/geometry/region.cpp
     src/geometry/dpi.cpp
@@ -108,6 +109,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_core_tests)
     target_link_libraries(stage_manager_core_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_core COMMAND stage_manager_core_tests)
+
+    add_executable(stage_manager_runtime_metrics_tests
+        tests/runtime_metrics_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_runtime_metrics_tests)
+    target_link_libraries(stage_manager_runtime_metrics_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_runtime_metrics COMMAND stage_manager_runtime_metrics_tests)
 
     add_executable(stage_manager_event_queue_tests
         tests/event_queue_tests.cpp

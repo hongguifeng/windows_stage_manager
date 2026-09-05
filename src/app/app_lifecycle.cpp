@@ -11,6 +11,34 @@
 #include <vector>
 
 namespace stage_manager::app {
+namespace {
+
+std::string_view status_name(window::MvpBatchStatus status) noexcept
+{
+    switch (status) {
+    case window::MvpBatchStatus::Disabled:
+        return "disabled";
+    case window::MvpBatchStatus::Idle:
+        return "idle";
+    case window::MvpBatchStatus::Dragging:
+        return "dragging";
+    case window::MvpBatchStatus::DryRun:
+        return "dry_run";
+    case window::MvpBatchStatus::Applied:
+        return "applied";
+    case window::MvpBatchStatus::Unsatisfiable:
+        return "unsatisfiable";
+    case window::MvpBatchStatus::Suspended:
+        return "suspended";
+    case window::MvpBatchStatus::ApiError:
+        return "api_error";
+    case window::MvpBatchStatus::Rebuilding:
+        return "rebuilding";
+    }
+    return "unknown";
+}
+
+} // namespace
 
 AppLifecycle::~AppLifecycle()
 {
@@ -272,6 +300,28 @@ void AppLifecycle::stop_window_manager()
     if (coordinator_thread_.joinable()) {
         coordinator_thread_.join();
     }
+    if (event_queue_ != nullptr) {
+        const auto metrics = runtime_metrics_.snapshot();
+        const auto batches = std::to_string(metrics.batches);
+        const auto input_events = std::to_string(metrics.inputEvents);
+        const auto dropped_events = std::to_string(metrics.droppedEvents);
+        const auto solver_states = std::to_string(metrics.solverStates);
+        const auto applied_moves = std::to_string(metrics.appliedMoves);
+        const auto api_failures = std::to_string(metrics.apiFailures);
+        const auto maximum_queue_depth = std::to_string(metrics.maximumQueueDepth);
+        const auto maximum_batch_us = std::to_string(metrics.maximumBatchDurationUs);
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Info,
+            "runtime_summary",
+            {{"batches", batches},
+             {"input_events", input_events},
+             {"dropped_events", dropped_events},
+             {"solver_states", solver_states},
+             {"applied_moves", applied_moves},
+             {"api_failures", api_failures},
+             {"maximum_queue_depth", maximum_queue_depth},
+             {"maximum_batch_us", maximum_batch_us}});
+    }
     coordinator_.reset();
     move_applier_.reset();
     mover_.reset();
@@ -297,15 +347,68 @@ void AppLifecycle::coordinator_loop()
         std::vector<window::WindowEvent> events = {first};
         const auto coalesce_window = std::min(settings_.eventCoalesceWindowMs, 100u);
         std::this_thread::sleep_for(std::chrono::milliseconds(coalesce_window));
+        const auto queue_depth = event_queue_->size() + 1;
         auto remaining = event_queue_->drain();
         events.insert(events.end(), remaining.begin(), remaining.end());
         const auto dropped = event_queue_->dropped_count();
+        std::uint64_t dropped_delta = 0;
         if (dropped != observed_drops) {
+            dropped_delta = dropped >= observed_drops ? dropped - observed_drops : dropped;
             observed_drops = dropped;
             events.push_back({window::WindowEventType::HookError, 0, 0, 0, 0});
         }
+        const auto batch_started = std::chrono::steady_clock::now();
         const auto result = coordinator_->process(
             events, enabled_.load(), dry_run_.load());
+        const auto batch_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - batch_started);
+        diagnostics::BatchObservation observation;
+        observation.inputEvents = result.events.inputCount;
+        observation.coalescedLocationEvents = result.events.coalescedLocationCount;
+        observation.solverStates = result.solve.statesVisited;
+        observation.plannedMoves = result.solve.moves.size();
+        observation.appliedMoves = result.apply.appliedMoves.size();
+        observation.droppedEvents = dropped_delta;
+        observation.durationUs = static_cast<std::uint64_t>(batch_duration.count());
+        observation.queueDepth = queue_depth;
+        observation.reconciliation = result.events.requiresFullReconcile;
+        observation.dryRun = result.status == window::MvpBatchStatus::DryRun;
+        observation.solverFailure = result.status == window::MvpBatchStatus::Unsatisfiable;
+        observation.apiFailure = result.status == window::MvpBatchStatus::ApiError ||
+            result.reason == window::MvpSuspendReason::SnapshotUnavailable;
+        runtime_metrics_.record(observation);
+
+        const auto metrics = runtime_metrics_.snapshot();
+        const auto transaction_id = std::to_string(result.transactionId);
+        const auto layout_generation = std::to_string(result.layoutGeneration);
+        const auto input_count = std::to_string(result.events.inputCount);
+        const auto coalesced_count = std::to_string(result.events.coalescedLocationCount);
+        const auto managed_windows = std::to_string(result.managedWindowCount);
+        const auto moved_windows = std::to_string(result.movedWindowCount);
+        const auto solver_states = std::to_string(result.solve.statesVisited);
+        const auto planned_moves = std::to_string(result.solve.moves.size());
+        const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
+        const auto duration_us = std::to_string(observation.durationUs);
+        const auto queue_depth_text = std::to_string(queue_depth);
+        const auto total_batches = std::to_string(metrics.batches);
+        const auto total_dropped = std::to_string(metrics.droppedEvents);
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Debug,
+            "batch_complete",
+            {{"status", status_name(result.status)},
+             {"transaction_id", transaction_id},
+             {"layout_generation", layout_generation},
+             {"input_events", input_count},
+             {"coalesced_locations", coalesced_count},
+             {"managed_windows", managed_windows},
+             {"moved_windows", moved_windows},
+             {"solver_states", solver_states},
+             {"planned_moves", planned_moves},
+             {"applied_moves", applied_moves},
+             {"duration_us", duration_us},
+             {"queue_depth", queue_depth_text},
+             {"total_batches", total_batches},
+             {"total_dropped_events", total_dropped}});
         if (message_window_ != nullptr) {
             PostMessageW(message_window_,
                          kCoordinatorStatusMessage,

@@ -12,6 +12,7 @@
 
 #include "app/settings.h"
 #include "app/tray_controller.h"
+#include "diagnostics/runtime_metrics.h"
 #include "platform/win32/win_event_hook.h"
 #include "platform/win32/window_mover.h"
 #include "platform/win32/window_provider.h"
@@ -65,6 +66,7 @@ private:
     std::filesystem::path settings_path_;
     std::atomic<bool> enabled_{true};
     std::atomic<bool> dry_run_{true};
+    diagnostics::RuntimeMetrics runtime_metrics_;
     bool emergency_hotkey_registered_ = false;
     std::uint64_t environment_generation_ = 0;
     std::unique_ptr<window::EventQueue> event_queue_;
