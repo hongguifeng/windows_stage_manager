@@ -78,7 +78,8 @@ private:
     MvpBatchResult settle(bool dry_run,
                           CoalescedBatch events,
                           bool place_activated_window = false,
-                          std::optional<WindowSnapshotBatch> captured = std::nullopt);
+                          std::optional<WindowSnapshotBatch> captured = std::nullopt,
+                          std::optional<PixelRect> unchanged_activation_rect = std::nullopt);
 
     IWindowProvider& provider_;
     IMoveApplier& applier_;
@@ -91,6 +92,9 @@ private:
     NativeWindowHandle active_window_ = 0;
     NativeWindowHandle foreground_window_ = 0;
     std::optional<NativeWindowHandle> dragging_window_;
+    std::optional<PixelRect> dragging_start_rect_;
+    bool dragging_started_by_activation_ = false;
+    bool dragging_location_change_seen_ = false;
     NativeMonitorHandle starting_monitor_ = 0;
     std::uint64_t next_transaction_id_ = 0;
     std::uint64_t layout_generation_ = 0;

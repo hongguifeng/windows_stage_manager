@@ -32,6 +32,12 @@ bool rectangles_intersect(const PixelRect& left, const PixelRect& right) noexcep
         left.top < right.bottom && left.bottom > right.top;
 }
 
+bool same_rectangle(const PixelRect& left, const PixelRect& right) noexcept
+{
+    return left.left == right.left && left.top == right.top &&
+        left.right == right.right && left.bottom == right.bottom;
+}
+
 bool directly_obscured_by(const WindowSnapshot& blocker,
                           const WindowSnapshot& target) noexcept
 {
@@ -139,6 +145,10 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     result.events = coalescer_.coalesce(events);
     if (!enabled) {
         guard_.cancel();
+        dragging_window_.reset();
+        dragging_start_rect_.reset();
+        dragging_started_by_activation_ = false;
+        dragging_location_change_seen_ = false;
         status_ = MvpBatchStatus::Disabled;
         result.status = status_;
         return result;
@@ -151,12 +161,16 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         provider_.handle_event(event);
         if (event.type == WindowEventType::MoveSizeStart) {
             guard_.observe(event);
+            const bool activation_preceded_drag = foreground_window &&
+                foreground_changed && *foreground_window == event.hwnd;
             ended_drag_window.reset();
             foreground_window.reset();
             foreground_changed = false;
             active_window_ = event.hwnd;
-            foreground_window_ = event.hwnd;
             dragging_window_ = event.hwnd;
+            dragging_start_rect_.reset();
+            dragging_started_by_activation_ = activation_preceded_drag;
+            dragging_location_change_seen_ = false;
             ++next_transaction_id_;
             ++layout_generation_;
             transaction_seen_states_.clear();
@@ -173,13 +187,20 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
                                                  return window.key.hwnd == active_window_;
                                              });
             starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
+            if (active != initial->windows.end()) {
+                dragging_start_rect_ = active->placementRect;
+            }
             guard_.activate(next_transaction_id_, layout_generation_);
             status_ = MvpBatchStatus::Dragging;
         } else if (event.type == WindowEventType::Foreground) {
             foreground_window = event.hwnd;
-            if (event.hwnd != foreground_window_) {
+            const bool changed_now = event.hwnd != foreground_window_;
+            if (changed_now) {
                 foreground_changed = true;
                 foreground_window_ = event.hwnd;
+            }
+            if (changed_now && dragging_window_ && event.hwnd == *dragging_window_) {
+                dragging_started_by_activation_ = true;
             }
         } else if (event.type == WindowEventType::MoveSizeEnd &&
                    dragging_window_ && event.hwnd == *dragging_window_) {
@@ -188,6 +209,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             const auto token = internal_moves_.find(event.hwnd);
             if (token) {
                 internal_moves_.complete(*token);
+            } else if (dragging_window_ && event.hwnd == *dragging_window_) {
+                dragging_location_change_seen_ = true;
             }
         } else if (event.type == WindowEventType::HookError) {
             status_ = MvpBatchStatus::Rebuilding;
@@ -201,6 +224,9 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     if (foreground_window && foreground_changed &&
         (!dragging_window_ || *foreground_window != *dragging_window_)) {
         dragging_window_.reset();
+        dragging_start_rect_.reset();
+        dragging_started_by_activation_ = false;
+        dragging_location_change_seen_ = false;
         active_window_ = *foreground_window;
         ++next_transaction_id_;
         ++layout_generation_;
@@ -246,8 +272,19 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     }
     if (ended_drag_window && dragging_window_ &&
         *ended_drag_window == *dragging_window_) {
+        const bool place_activated_window = dragging_started_by_activation_ &&
+            !dragging_location_change_seen_ && settings_.placeActivatedWindow;
+        const auto unchanged_activation_rect = dragging_start_rect_;
+        foreground_window_ = *ended_drag_window;
         dragging_window_.reset();
-        return settle(dry_run, std::move(result.events));
+        dragging_start_rect_.reset();
+        dragging_started_by_activation_ = false;
+        dragging_location_change_seen_ = false;
+        return settle(dry_run,
+                      std::move(result.events),
+                      place_activated_window,
+                      std::nullopt,
+                      unchanged_activation_rect);
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
@@ -266,7 +303,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
 MvpBatchResult MvpCoordinator::settle(bool dry_run,
                                       CoalescedBatch events,
                                       bool place_activated_window,
-                                      std::optional<WindowSnapshotBatch> captured)
+                                      std::optional<WindowSnapshotBatch> captured,
+                                      std::optional<PixelRect> unchanged_activation_rect)
 {
     MvpBatchResult result;
     result.events = std::move(events);
@@ -298,6 +336,10 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         result.status = status_;
         result.reason = MvpSuspendReason::ActiveMonitorChanged;
         return result;
+    }
+    if (place_activated_window && unchanged_activation_rect &&
+        !same_rectangle(active->placementRect, *unchanged_activation_rect)) {
+        place_activated_window = false;
     }
 
     const auto maximum_managed = std::clamp<std::uint32_t>(

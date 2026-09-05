@@ -242,18 +242,6 @@ std::vector<stage_manager::window::WindowEvent> foreground_event(std::uintptr_t 
     return {{WindowEventType::Foreground, active, 1, 100, 1}};
 }
 
-std::vector<stage_manager::window::WindowEvent> activation_drag_events(
-    std::uintptr_t active)
-{
-    using stage_manager::window::WindowEventType;
-    return {
-        {WindowEventType::Foreground, active, 1, 100, 1},
-        {WindowEventType::MoveSizeStart, active, 1, 101, 2},
-        {WindowEventType::LocationChange, active, 1, 102, 3},
-        {WindowEventType::MoveSizeEnd, active, 1, 103, 4},
-    };
-}
-
 } // namespace
 
 int main()
@@ -656,16 +644,82 @@ int main()
     activated_by_drag.desktop.windows = {
         make_window(164, {50, 50, 250, 250}, 0),
     };
+    const std::vector<WindowEvent> activated_drag_start = {
+        {WindowEventType::Foreground, 164, 1, 100, 1},
+        {WindowEventType::MoveSizeStart, 164, 1, 101, 2},
+    };
+    const auto activated_drag_started = activated_by_drag.coordinator.process(
+        activated_drag_start, true, false);
+    CHECK(activated_drag_started.status == MvpBatchStatus::Dragging);
+    activated_by_drag.desktop.windows[0].placementRect = {80, 70, 280, 270};
+    activated_by_drag.desktop.windows[0].visualRect = {80, 70, 280, 270};
+    const std::vector<WindowEvent> activated_drag_end = {
+        {WindowEventType::LocationChange, 164, 1, 102, 3},
+        {WindowEventType::MoveSizeEnd, 164, 1, 103, 4},
+    };
     const auto activated_by_drag_result = activated_by_drag.coordinator.process(
-        activation_drag_events(164), true, false);
+        activated_drag_end, true, false);
     CHECK(activated_by_drag_result.status == MvpBatchStatus::Idle);
     CHECK(!activated_by_drag_result.activationPlacementUsed);
     CHECK(activated_by_drag_result.solve.moves.empty());
     CHECK(activated_by_drag.desktop.moveCalls == 0);
-    CHECK(activated_by_drag.desktop.windows[0].placementRect.left == 50);
-    CHECK(activated_by_drag.desktop.windows[0].placementRect.top == 50);
-    CHECK(activated_by_drag.desktop.windows[0].placementRect.right == 250);
-    CHECK(activated_by_drag.desktop.windows[0].placementRect.bottom == 250);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.left == 80);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.top == 70);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.right == 280);
+    CHECK(activated_by_drag.desktop.windows[0].placementRect.bottom == 270);
+
+    MvpFixture quick_activated_drag;
+    quick_activated_drag.desktop.windows = {
+        make_window(178, {50, 50, 250, 250}, 0),
+    };
+    const std::vector<WindowEvent> quick_drag_events = {
+        {WindowEventType::Foreground, 178, 1, 100, 1},
+        {WindowEventType::MoveSizeStart, 178, 1, 101, 2},
+        {WindowEventType::LocationChange, 178, 1, 102, 3},
+        {WindowEventType::MoveSizeEnd, 178, 1, 103, 4},
+    };
+    const auto quick_drag_result = quick_activated_drag.coordinator.process(
+        quick_drag_events, true, false);
+    CHECK(quick_drag_result.status == MvpBatchStatus::Idle);
+    CHECK(!quick_drag_result.activationPlacementUsed);
+    CHECK(quick_drag_result.solve.moves.empty());
+    CHECK(quick_activated_drag.desktop.moveCalls == 0);
+
+    const auto activate_from_border_without_moving = [](bool foreground_first) {
+        MvpFixture fixture;
+        fixture.desktop.windows = {
+            make_window(179, {50, 50, 250, 250}, 0),
+        };
+        std::vector<WindowEvent> border_click;
+        if (foreground_first) {
+            border_click = {
+                {WindowEventType::Foreground, 179, 1, 100, 1},
+                {WindowEventType::MoveSizeStart, 179, 1, 101, 2},
+            };
+        } else {
+            border_click = {
+                {WindowEventType::MoveSizeStart, 179, 1, 100, 1},
+                {WindowEventType::Foreground, 179, 1, 101, 2},
+            };
+        }
+        const auto started = fixture.coordinator.process(border_click, true, false);
+        CHECK(started.status == MvpBatchStatus::Dragging);
+        CHECK(fixture.desktop.moveCalls == 0);
+        const std::vector<WindowEvent> released = {
+            {WindowEventType::MoveSizeEnd, 179, 1, 102, 3},
+        };
+        const auto result = fixture.coordinator.process(released, true, false);
+        CHECK(result.status == MvpBatchStatus::Applied);
+        CHECK(result.activationPlacementUsed);
+        CHECK(result.solve.moves.size() == 1);
+        CHECK(result.solve.moves[0].window.hwnd == 179);
+        CHECK((result.solve.moves[0].to ==
+               stage_manager::geometry::Rect{400, 500, 600, 700}));
+        CHECK(fixture.desktop.moveCalls == 1);
+        return 0;
+    };
+    CHECK(activate_from_border_without_moving(true) == 0);
+    CHECK(activate_from_border_without_moving(false) == 0);
 
     MvpFixture activation_capture_retry;
     activation_capture_retry.desktop.windows = {
