@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -43,6 +44,20 @@ enum class TrayStatus {
     Rebuilding,
 };
 
+struct UnsatisfiableNotification final {
+    std::wstring_view title;
+    std::wstring_view message;
+    std::uint32_t timeoutMs = 0;
+    DWORD flags = 0;
+};
+
+constexpr std::uint64_t kUnsatisfiableNotificationCooldownMs = 10'000;
+
+UnsatisfiableNotification unsatisfiable_notification() noexcept;
+bool unsatisfiable_notification_due(
+    std::optional<std::uint64_t> last_notification_ms,
+    std::uint64_t now_ms) noexcept;
+
 class TrayController final {
 public:
     TrayController() = default;
@@ -59,6 +74,7 @@ public:
     bool is_setting_checked(std::uint32_t command) const noexcept;
     void set_status(TrayStatus status);
     TrayStatus status() const noexcept;
+    bool show_unsatisfiable_notification(std::uint64_t now_ms);
 
     TrayAction handle_callback(LPARAM event);
     TrayAction handle_command(WPARAM command);
@@ -79,6 +95,7 @@ private:
     Settings settings_;
     TrayStatus status_ = TrayStatus::Running;
     std::wstring tooltip_;
+    std::optional<std::uint64_t> last_unsatisfiable_notification_ms_;
 };
 
 } // namespace stage_manager::app

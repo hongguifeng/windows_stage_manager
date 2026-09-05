@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include "app/settings.h"
@@ -72,6 +73,7 @@ private:
     window::CoordinatorHealthMonitor health_monitor_;
     bool emergency_hotkey_registered_ = false;
     std::uint64_t environment_generation_ = 0;
+    std::optional<window::MvpBatchStatus> last_runtime_status_;
     std::unique_ptr<window::EventQueue> event_queue_;
     std::unique_ptr<platform::win32::WinEventHook> event_hook_;
     std::unique_ptr<platform::win32::Win32WindowProvider> raw_provider_;

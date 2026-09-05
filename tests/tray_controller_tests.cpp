@@ -1,5 +1,6 @@
 #include "app/tray_controller.h"
 
+#include <optional>
 #include <string>
 
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (false)
@@ -10,6 +11,20 @@ int main()
     using stage_manager::app::TrayController;
     using stage_manager::app::TrayStatus;
     using stage_manager::app::SettingField;
+
+    const auto notification = stage_manager::app::unsatisfiable_notification();
+    CHECK(notification.title == L"\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3");
+    CHECK(notification.message.find(L"\u672a\u6539\u53d8\u7a97\u53e3\u5c42\u7ea7") !=
+          std::wstring_view::npos);
+    CHECK(notification.message.find(L"\u7a97\u53e3\u72b6\u6001\u53d8\u5316\u540e\u91cd\u8bd5") !=
+          std::wstring_view::npos);
+    CHECK(notification.timeoutMs == 5000);
+    CHECK((notification.flags & NIIF_WARNING) != 0);
+    CHECK((notification.flags & NIIF_NOSOUND) != 0);
+    CHECK(stage_manager::app::unsatisfiable_notification_due(std::nullopt, 0));
+    CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 10'099));
+    CHECK(stage_manager::app::unsatisfiable_notification_due(100, 10'100));
+    CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 99));
 
     TrayController controller;
     CHECK(controller.handle_command(TrayController::kCommandToggle).type ==

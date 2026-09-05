@@ -244,6 +244,32 @@ try {
         throw 'process exited while rebuilding after the custom setting change'
     }
 
+    # Simulate coordinator status reports. The first Unsatisfiable transition
+    # shows one notification; duplicates and a quick re-entry are suppressed.
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x8002, [IntPtr]6, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'Unsatisfiable tray notification was not requested' -Condition {
+        (Test-Path -LiteralPath $logPath) -and
+            ((Get-Content -Raw -LiteralPath $logPath) -match
+                'unsatisfiable_notification_shown')
+    }
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x8002, [IntPtr]6, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x8002, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x8002, [IntPtr]6, [IntPtr]::Zero) | Out-Null
+    Start-Sleep -Milliseconds 100
+    $notificationCount = @(
+        Select-String -LiteralPath $logPath -Pattern 'unsatisfiable_notification_shown'
+    ).Count
+    if ($notificationCount -ne 1) {
+        throw "Unsatisfiable notification was not edge-triggered and rate-limited: $notificationCount"
+    }
+    if ($process.HasExited) {
+        throw 'process exited while showing the Unsatisfiable notification'
+    }
+
     # Open the visual settings dialog. Change horizontal and vertical placement,
     # then select the top fallback depth and choose 64 DIP.
     if (-not [StageManagerNativeMethods]::PostMessage(

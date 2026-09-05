@@ -249,6 +249,25 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
 
 } // namespace
 
+UnsatisfiableNotification unsatisfiable_notification() noexcept
+{
+    return {
+        L"\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3",
+        L"\u5f53\u524d\u7a7a\u95f4\u65e0\u6cd5\u8fdb\u4e00\u6b65\u9732\u51fa\u540e\u53f0\u7a97\u53e3\u3002\u7a0b\u5e8f\u672a\u6539\u53d8\u7a97\u53e3\u5c42\u7ea7\uff0c\u5c06\u5728\u7a97\u53e3\u72b6\u6001\u53d8\u5316\u540e\u91cd\u8bd5\u3002",
+        5'000,
+        NIIF_WARNING | NIIF_NOSOUND,
+    };
+}
+
+bool unsatisfiable_notification_due(
+    std::optional<std::uint64_t> last_notification_ms,
+    std::uint64_t now_ms) noexcept
+{
+    return !last_notification_ms ||
+        (now_ms >= *last_notification_ms &&
+         now_ms - *last_notification_ms >= kUnsatisfiableNotificationCooldownMs);
+}
+
 std::optional<std::uint32_t> prompt_custom_setting_value(
     HWND owner, SettingField field, std::uint32_t current_value)
 {
@@ -351,6 +370,7 @@ void TrayController::shutdown()
     installed_ = false;
     owner_ = nullptr;
     icon_data_ = {};
+    last_unsatisfiable_notification_ms_.reset();
 }
 
 void TrayController::set_enabled(bool enabled)
@@ -376,6 +396,26 @@ void TrayController::set_status(TrayStatus status)
 TrayStatus TrayController::status() const noexcept
 {
     return status_;
+}
+
+bool TrayController::show_unsatisfiable_notification(std::uint64_t now_ms)
+{
+    if (!installed_ ||
+        !unsatisfiable_notification_due(last_unsatisfiable_notification_ms_, now_ms)) {
+        return false;
+    }
+    const auto content = unsatisfiable_notification();
+    auto notification = icon_data_;
+    notification.uFlags = NIF_INFO;
+    wcsncpy_s(notification.szInfoTitle, content.title.data(), _TRUNCATE);
+    wcsncpy_s(notification.szInfo, content.message.data(), _TRUNCATE);
+    notification.dwInfoFlags = content.flags;
+    notification.uTimeout = content.timeoutMs;
+    if (!Shell_NotifyIconW(NIM_MODIFY, &notification)) {
+        return false;
+    }
+    last_unsatisfiable_notification_ms_ = now_ms;
+    return true;
 }
 
 bool TrayController::enabled() const noexcept

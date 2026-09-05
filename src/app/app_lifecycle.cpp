@@ -629,6 +629,15 @@ void AppLifecycle::coordinator_loop()
 
 void AppLifecycle::update_runtime_status(window::MvpBatchStatus status)
 {
+    const bool entered_unsatisfiable = status == window::MvpBatchStatus::Unsatisfiable &&
+        (!last_runtime_status_ ||
+         *last_runtime_status_ != window::MvpBatchStatus::Unsatisfiable);
+    last_runtime_status_ = status;
+    if (entered_unsatisfiable &&
+        tray_.show_unsatisfiable_notification(steady_now_ms())) {
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Info, "unsatisfiable_notification_shown");
+    }
     switch (status) {
     case window::MvpBatchStatus::Disabled:
         tray_.set_status(TrayStatus::Paused);
