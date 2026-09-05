@@ -13,7 +13,10 @@ if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
 if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
 if ($guide -notmatch 'preferred_exposed_edges=2') { throw "preferred edge behavior is missing" }
 if ($guide -notmatch 'edge_goal_degraded') { throw "edge degradation diagnostics are missing" }
-if (-not $guide.Contains('left+top > right+bottom > top-only > unranked')) { throw "edge preference order is missing" }
+if ($guide -notmatch 'activation_centering_used') { throw "activation centering diagnostics are missing" }
+if ($guide -match 'left\+top > right\+bottom > top-only > unranked') { throw "obsolete edge preference order remains" }
+if ($allDocuments -notmatch 'distanceFromWorkAreaCenter') { throw "center-first repair ranking is missing" }
+if ($allDocuments -notmatch 'M12') { throw "center-oriented layout plan is missing" }
 if ($guide -notmatch 'z_order_fallback_used') { throw "Z-order fallback diagnostics are missing" }
 if ($guide -notmatch 'bottom-first') { throw "bottom-first Z-order policy is missing" }
 if ($guide -notmatch 'top-prefix') { throw "top-prefix Z-order policy is missing" }

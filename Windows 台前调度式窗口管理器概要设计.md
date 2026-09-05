@@ -1,6 +1,6 @@
 # Windows 11 台前调度式窗口管理器概要设计
 
-文档版本：1.3
+文档版本：1.4
 对应需求：`Windows 台前调度式窗口管理器需求说明.md`  
 设计目标：先实现可验证、可失败、不会自触发循环的矩形窗口 MVP
 
@@ -11,6 +11,7 @@
 3. 交互区是硬约束，移动距离和布局稳定性是软代价。
 4. 无解时停止推挤并保留用户控制权，不用“把窗口推出屏幕”伪造成功。
 5. MVP 对透明、非矩形、置顶、最大化和系统 UI 采用保守排除。
+6. 前台切换只在活动 HWND 发生变化时居中；拖动事务中的用户最终位置优先。
 
 ## 2. 系统架构
 
@@ -184,6 +185,7 @@ consume events
     -> identify active transaction
     -> enumerate/refresh affected windows
     -> build immutable LayoutSnapshot
+    -> prescribe center position only for inactive-to-active transition
     -> solve in memory
     -> apply bounded MovePlan
     -> refresh actual rectangles
@@ -197,6 +199,8 @@ consume events
 - 若与当前内部移动令牌匹配，只更新实际矩形，不新建用户事务。
 - 若窗口偏离期望矩形，视为应用或用户的外部修改，丢弃旧计划并重新快照。
 - `MOVESIZESTART` 优先于旧的内部事件；用户操作可以打断自动布局。
+- `FOREGROUND` 的 HWND 与已记录活动 HWND 不同时才创建激活居中事务；相同 HWND 的重复事件只更新状态，不再次移动。
+- 同一事件批次同时包含前台切换和 `MOVESIZESTART` 时按拖动事务处理，不生成居中移动。
 
 必须设置钩子注销、线程退出和窗口销毁的生命周期，避免回调访问已释放状态。
 
@@ -273,7 +277,7 @@ exposed(zone) = zone - union(visualRect of higher blockers)
 
 硬约束按以下顺序判断：
 
-1. 活动窗口位置不被计划修改。
+1. 活动窗口位置由事务类型固定：前台激活事务固定为当前显示器工作区中心，拖动事务固定为用户最终位置；纯位置求解器不得再次修改。
 2. 候选窗口仍属于允许的显示器、虚拟桌面和工作区范围。
 3. 候选窗口尺寸不变，保留最小屏上区域。
 4. 每个受管理窗口优先有两个不同边缘的交互区达到 `RepairTargetEdge`；首选目标无解时允许降级为至少一个。
@@ -282,7 +286,7 @@ exposed(zone) = zone - union(visualRect of higher blockers)
 所有硬约束通过后，软代价按以下顺序比较：
 
 ```text
-visibilityPreferenceRank
+distanceFromWorkAreaCenter
 numberOfMovedWindows
 totalManhattanDistance
 distanceFromLastStableLayout
@@ -291,7 +295,7 @@ edgeChangePenalty
 stableWindowKeyTieBreak
 ```
 
-`visibilityPreferenceRank` 的顺序为：左+上、右+下、仅上、无方向偏好。前三档严格优先于移动距离；“仅上”只表示恰好一条合格边且为上边缘，不提升其他含上边缘的组合。
+`distanceFromWorkAreaCenter` 是候选窗口中心到其工作区中心的 Manhattan 距离。它是硬约束通过后的第一软代价，不再对左上、右下或单一边缘设置固定方向优先级；边缘组合分类只保留用于诊断。这样可避免窗口持续向某个角聚集。
 
 ### 7.2 候选生成
 
@@ -335,7 +339,7 @@ solve(snapshot, activeWindow, transaction):
 
 ### 7.4 滞后和布局稳定
 
-协调器先以 `PreferredExposedEdges=2` 求解；失败后以 `MinimumExposedEdges=1` 重新求解，并记录降级。达到首选数量时不触发修复；只达到最低数量时仍尝试恢复首选数量。一次拖动事务中，已选择的边方向作为软偏好，除非该方向无解或代价明显更高，否则不切换到另一条边。
+协调器先以 `PreferredExposedEdges=2` 求解；失败后以 `MinimumExposedEdges=1` 重新求解，并记录降级。达到首选数量时不触发修复；只达到最低数量时仍尝试恢复首选数量。一次拖动事务中，已选择的边方向只作为中心距离、移动数量、移动距离、稳定布局距离和边界代价之后的弱软偏好。
 
 事务保存 `lastStableLayout` 和 `seenStates`。若新计划使布局质量变差、产生周期或超过时间/移动次数上限，放弃该计划并进入无解/暂停状态。
 
@@ -445,11 +449,11 @@ Discovering -> Idle <-> Dragging -> Settling -> Idle
 
 ### 12.2 求解属性测试
 
-随机生成 2 至 20 个矩形窗口，验证求解成功时所有窗口满足约束；验证无解时不会移动活动窗口、不会越过边界、不会产生重复状态。
+随机生成 2 至 20 个矩形窗口，验证求解成功时所有窗口满足约束；拖动事务不移动活动窗口，激活事务只采用规定的居中位置；任何事务都不会越过边界或产生重复状态。
 
 ### 12.3 Windows 集成测试
 
-使用可控制的测试窗口覆盖：快速拖动、调整大小、最大化、Snap、前台切换、窗口销毁/重建、置顶窗口、菜单/提示窗口、不同 DPI 和应用拒绝移动。
+使用可控制的测试窗口覆盖：快速拖动、调整大小、最大化、Snap、前台切换居中、相同 HWND 重复前台事件、激活时直接拖动、窗口销毁/重建、置顶窗口、菜单/提示窗口、不同 DPI 和应用拒绝移动。
 
 托盘参数集成测试在隔离的 `LOCALAPPDATA` 下启动真实 `stage_manager.exe`，向其消息窗口发送参数命令，验证配置落盘、结构化日志、内部管理器热重建、DryRun 恢复和正常退出。
 
