@@ -27,7 +27,7 @@ ctest --preset windows-debug --output-on-failure
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.1.0-rc2 -Commit (git rev-parse --short HEAD)
+  -Version 0.1.0-rc3 -Commit (git rev-parse --short HEAD)
 ```
 
 脚本生成版本化 ZIP、`current.json`，并在提升下一版本时把上一版本记录保存为 `rollback.json`。
