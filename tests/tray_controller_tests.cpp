@@ -11,10 +11,12 @@ int main()
     using stage_manager::app::TrayController;
     using stage_manager::app::TrayStatus;
     using stage_manager::app::SettingField;
+    using stage_manager::app::LayoutFailureReason;
 
-    const auto notification = stage_manager::app::unsatisfiable_notification(
+    const auto notification = stage_manager::app::layout_failure_notification(
+        LayoutFailureReason::NoFeasibleLayout,
         stage_manager::app::UiLanguage::SimplifiedChinese);
-    CHECK(notification.title == L"\u7a97\u53e3\u5e03\u5c40\u6682\u65f6\u65e0\u89e3");
+    CHECK(notification.title == L"\u5f53\u524d\u7ea6\u675f\u4e0b\u6ca1\u6709\u53ef\u884c\u5e03\u5c40");
     CHECK(notification.message.find(L"\u672a\u6539\u53d8\u7a97\u53e3\u5c42\u7ea7") !=
           std::wstring_view::npos);
     CHECK(notification.message.find(L"\u7a97\u53e3\u72b6\u6001\u53d8\u5316\u540e\u91cd\u8bd5") !=
@@ -22,12 +24,22 @@ int main()
     CHECK(notification.timeoutMs == 5000);
     CHECK((notification.flags & NIIF_WARNING) != 0);
     CHECK((notification.flags & NIIF_NOSOUND) != 0);
-    CHECK(stage_manager::app::unsatisfiable_notification_due(std::nullopt, 0));
-    CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 10'099));
-    CHECK(stage_manager::app::unsatisfiable_notification_due(100, 10'100));
-    CHECK(!stage_manager::app::unsatisfiable_notification_due(100, 99));
-    CHECK(stage_manager::app::unsatisfiable_notification().title ==
-          L"No window layout is currently available");
+    CHECK(stage_manager::app::layout_failure_notification_due(std::nullopt, 0));
+    CHECK(!stage_manager::app::layout_failure_notification_due(100, 10'099));
+    CHECK(stage_manager::app::layout_failure_notification_due(100, 10'100));
+    CHECK(!stage_manager::app::layout_failure_notification_due(100, 99));
+    const auto timeout_notification = stage_manager::app::layout_failure_notification(
+        LayoutFailureReason::SearchLimitReached,
+        stage_manager::app::UiLanguage::SimplifiedChinese);
+    CHECK(timeout_notification.title.find(L"\u672a\u5b8c\u6210") != std::wstring_view::npos);
+    CHECK(timeout_notification.message.find(L"\u4e0d\u8868\u793a\u5c4f\u5e55\u7a7a\u95f4\u4e0d\u8db3") !=
+          std::wstring_view::npos);
+    CHECK(stage_manager::app::layout_failure_notification(
+              LayoutFailureReason::GeometryTooComplex).title ==
+          L"Window occlusion geometry is too complex");
+    CHECK(stage_manager::app::layout_failure_notification(
+              LayoutFailureReason::InvalidLayoutInput).message.find(L"invalid") !=
+          std::wstring_view::npos);
 
     TrayController controller;
     CHECK(controller.handle_command(TrayController::kCommandToggle).type ==
@@ -113,9 +125,10 @@ int main()
     CHECK(DestroyMenu(menu) != FALSE);
 
     settings.uiLanguage = stage_manager::app::UiLanguage::English;
-    const auto english_notification = stage_manager::app::unsatisfiable_notification(
+    const auto english_notification = stage_manager::app::layout_failure_notification(
+        LayoutFailureReason::NoFeasibleLayout,
         stage_manager::app::UiLanguage::English);
-    CHECK(english_notification.title == L"No window layout is currently available");
+    CHECK(english_notification.title == L"No feasible layout under the current constraints");
     CHECK(english_notification.message.find(L"Z-order") != std::wstring_view::npos);
     const HMENU english_menu = stage_manager::app::create_tray_context_menu(settings, false);
     CHECK(english_menu != nullptr);

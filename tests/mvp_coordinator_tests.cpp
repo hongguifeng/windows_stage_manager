@@ -290,6 +290,50 @@ int main()
     CHECK(dry_result.movedWindowCount == 1);
     CHECK(!dry_result.partialLayoutUsed);
     CHECK(dry.desktop.reorderCalls == 0);
+
+    MvpFixture filtered_snapshot;
+    auto relevant_fixed = make_window(301, {900, 600, 950, 650}, 1);
+    relevant_fixed.ownerHwnd = 999;
+    auto hidden_noise = make_window(303, {100, 100, 300, 300}, 3);
+    hidden_noise.visible = false;
+    auto minimized_noise = make_window(304, {100, 100, 300, 300}, 4);
+    minimized_noise.iconic = true;
+    auto cloaked_noise = make_window(305, {100, 100, 300, 300}, 5);
+    cloaked_noise.cloaked = true;
+    cloaked_noise.ownerHwnd = 999;
+    auto other_desktop_noise = make_window(306, {100, 100, 300, 300}, 6);
+    other_desktop_noise.currentDesktop = false;
+    auto other_monitor_noise = make_window(307, {1100, 100, 1300, 300}, 7);
+    other_monitor_noise.monitor = 2;
+    other_monitor_noise.workArea = {1000, 0, 2000, 700};
+    auto outside_work_area_noise = make_window(308, {0, 700, 1000, 750}, 8);
+    outside_work_area_noise.ownerHwnd = 999;
+    auto behind_all_noise = make_window(309, {100, 100, 300, 300}, 9);
+    behind_all_noise.ownerHwnd = 999;
+    filtered_snapshot.desktop.windows = {
+        make_window(300, {0, 0, 200, 200}, 0),
+        relevant_fixed,
+        make_window(302, {400, 0, 600, 200}, 2),
+        hidden_noise,
+        minimized_noise,
+        cloaked_noise,
+        other_desktop_noise,
+        other_monitor_noise,
+        outside_work_area_noise,
+        behind_all_noise,
+    };
+    const auto filtered_result =
+        filtered_snapshot.coordinator.process(drag_events(300), true, true);
+    CHECK(filtered_result.status == MvpBatchStatus::Idle);
+    CHECK(filtered_result.solve.status == SolveStatus::NoViolation);
+    CHECK(filtered_result.snapshotWindowCount == 10);
+    CHECK(filtered_result.managedWindowCount == 2);
+    CHECK(filtered_result.blockingWindowCount == 1);
+    CHECK(filtered_result.solverWindowCount == 3);
+    CHECK(filtered_result.solve.finalSnapshot.windows.size() == 3);
+    CHECK(std::any_of(filtered_result.solve.finalSnapshot.windows.begin(),
+                      filtered_result.solve.finalSnapshot.windows.end(),
+                      [](const auto& item) { return item.key.hwnd == 301; }));
     const std::vector<WindowEvent> duplicate_end = {
         {WindowEventType::MoveSizeEnd, 1, 1, 104, 5},
     };
@@ -458,7 +502,7 @@ int main()
     };
     const auto crowded_result = crowded.coordinator.process(drag_events(20), true, true);
     CHECK(crowded_result.status == MvpBatchStatus::DryRun);
-    CHECK(!crowded_result.fallbackUsed);
+    CHECK(crowded_result.fallbackUsed);
     CHECK(crowded_result.partialLayoutUsed);
     CHECK(crowded_result.managedWindowCount == 3);
     CHECK(crowded_result.solve.status == SolveStatus::PartiallySolved);
@@ -474,7 +518,7 @@ int main()
     const auto crowded_live_result =
         crowded_live.coordinator.process(drag_events(20), true, false);
     CHECK(crowded_live_result.status == MvpBatchStatus::PartiallySolved);
-    CHECK(!crowded_live_result.fallbackUsed);
+    CHECK(crowded_live_result.fallbackUsed);
     CHECK(crowded_live_result.partialLayoutUsed);
     CHECK(crowded_live_result.apply.appliedMoves.size() == 1);
     CHECK(crowded_live_result.apply.appliedReorders.empty());

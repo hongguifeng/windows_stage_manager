@@ -163,6 +163,29 @@ bool contains_target_violation(std::span<const Violation> violations, std::size_
     });
 }
 
+VisibilityPreferenceRank visibility_preference_rank(const EdgeVisibility& visibility) noexcept
+{
+    if (visibility.topLeft) {
+        return VisibilityPreferenceRank::TopLeft;
+    }
+    if (visibility.topRight) {
+        return VisibilityPreferenceRank::TopRight;
+    }
+    if (visibility.top) {
+        return VisibilityPreferenceRank::TopOnly;
+    }
+    if (visibility.left) {
+        return VisibilityPreferenceRank::LeftOnly;
+    }
+    if (visibility.right) {
+        return VisibilityPreferenceRank::RightOnly;
+    }
+    if (visibility.bottom) {
+        return VisibilityPreferenceRank::BottomOnly;
+    }
+    return VisibilityPreferenceRank::Unrecognized;
+}
+
 std::pair<std::uint32_t, std::uint32_t> channel_loads(
     const LayoutSnapshot& snapshot,
     const VisibilityRequirements& requirements,
@@ -210,25 +233,7 @@ std::optional<VisibilityPreferenceRank> visibility_preference_rank(
         return std::nullopt;
     }
 
-    if (visibility->topLeft) {
-        return VisibilityPreferenceRank::TopLeft;
-    }
-    if (visibility->topRight) {
-        return VisibilityPreferenceRank::TopRight;
-    }
-    if (visibility->top) {
-        return VisibilityPreferenceRank::TopOnly;
-    }
-    if (visibility->left) {
-        return VisibilityPreferenceRank::LeftOnly;
-    }
-    if (visibility->right) {
-        return VisibilityPreferenceRank::RightOnly;
-    }
-    if (visibility->bottom) {
-        return VisibilityPreferenceRank::BottomOnly;
-    }
-    return VisibilityPreferenceRank::Unrecognized;
+    return visibility_preference_rank(*visibility);
 }
 
 CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
@@ -291,30 +296,57 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
         LayoutSnapshot simulated = snapshot;
         simulated.windows[violation.targetIndex].placementRect = candidate.placementRect;
         simulated.windows[violation.targetIndex].visualRect = *expected_visual;
-        const auto scan = scan_visibility_violations(simulated, policy.visibility);
-        if (scan.status == ViolationScanStatus::GeometryTooComplex) {
-            result.status = CandidateRankingStatus::GeometryTooComplex;
-            result.accepted.clear();
-            result.rejected.clear();
-            return result;
+        std::vector<Violation> remaining_violations;
+        std::optional<VisibilityPreferenceRank> visibility_preference;
+        if (policy.requireStableLayout || policy.collectRemainingViolations) {
+            const auto scan = scan_visibility_violations(simulated, policy.visibility);
+            if (scan.status == ViolationScanStatus::GeometryTooComplex) {
+                result.status = CandidateRankingStatus::GeometryTooComplex;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            if (scan.status != ViolationScanStatus::Ok) {
+                result.status = CandidateRankingStatus::InvalidInput;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            if (contains_target_violation(scan.violations, violation.targetIndex)) {
+                reject(HardConstraintFailure::TargetStillViolated);
+                continue;
+            }
+            if (policy.requireStableLayout && !scan.violations.empty()) {
+                reject(HardConstraintFailure::OtherManagedWindowViolated);
+                continue;
+            }
+            remaining_violations = scan.violations;
+            visibility_preference = visibility_preference_rank(
+                simulated, violation.targetIndex, policy.visibility);
+        } else {
+            const auto visibility = analyze_window_visibility_with_status(
+                simulated, violation.targetIndex, policy.visibility);
+            if (visibility.status == ViolationScanStatus::GeometryTooComplex) {
+                result.status = CandidateRankingStatus::GeometryTooComplex;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            if (visibility.status != ViolationScanStatus::Ok || !visibility.visibility) {
+                result.status = CandidateRankingStatus::InvalidInput;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            const bool satisfied = policy.visibility.goal == VisibilityGoal::TopAndSide
+                ? visibility.visibility->top_and_side()
+                : visibility.visibility->any_edge();
+            if (!satisfied) {
+                reject(HardConstraintFailure::TargetStillViolated);
+                continue;
+            }
+            visibility_preference = visibility_preference_rank(*visibility.visibility);
         }
-        if (scan.status != ViolationScanStatus::Ok) {
-            result.status = CandidateRankingStatus::InvalidInput;
-            result.accepted.clear();
-            result.rejected.clear();
-            return result;
-        }
-        if (contains_target_violation(scan.violations, violation.targetIndex)) {
-            reject(HardConstraintFailure::TargetStillViolated);
-            continue;
-        }
-        if (policy.requireStableLayout && !scan.violations.empty()) {
-            reject(HardConstraintFailure::OtherManagedWindowViolated);
-            continue;
-        }
-
-        const auto visibility_preference = visibility_preference_rank(
-            simulated, violation.targetIndex, policy.visibility);
         if (!visibility_preference) {
             result.status = CandidateRankingStatus::InvalidInput;
             result.accepted.clear();
@@ -352,7 +384,7 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
             channel_imbalance,
             alternation_penalty);
         ranked.simulatedSnapshot = std::move(simulated);
-        ranked.remainingViolations = scan.violations;
+        ranked.remainingViolations = std::move(remaining_violations);
         result.accepted.push_back(std::move(ranked));
     }
 

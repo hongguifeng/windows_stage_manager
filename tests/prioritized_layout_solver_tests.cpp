@@ -146,6 +146,15 @@ int main()
     CHECK(scan_visibility_violations(
               multiple_result.finalSnapshot, policy.ranking.visibility).violations.empty());
 
+    auto state_limited_policy = policy;
+    state_limited_policy.limits.maximumStates = 3;
+    const auto state_limited = solve_layout_prioritized(
+        multiple_lower, state_limited_policy, 0);
+    CHECK(state_limited.status == SolveStatus::PartiallySolved);
+    CHECK(state_limited.moves.size() == 1);
+    CHECK(state_limited.moves[0].window.hwnd == 31);
+    CHECK(!state_limited.violations.empty());
+
     LayoutSnapshot no_improvement;
     no_improvement.windows = {
         make_window(40, {100, 100, 300, 300}, 0, true, false),

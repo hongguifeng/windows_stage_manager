@@ -266,17 +266,40 @@ bool append_setting_menu(HMENU parent, const Settings& settings, SettingField fi
 
 } // namespace
 
-UnsatisfiableNotification unsatisfiable_notification(UiLanguage language) noexcept
+LayoutFailureNotification layout_failure_notification(
+    LayoutFailureReason reason, UiLanguage language) noexcept
 {
+    UiText title = UiText::LayoutFailureTitle;
+    UiText message = UiText::LayoutFailureMessage;
+    switch (reason) {
+    case LayoutFailureReason::NoFeasibleLayout:
+        title = UiText::UnsatisfiableTitle;
+        message = UiText::UnsatisfiableMessage;
+        break;
+    case LayoutFailureReason::SearchLimitReached:
+        title = UiText::SearchLimitTitle;
+        message = UiText::SearchLimitMessage;
+        break;
+    case LayoutFailureReason::GeometryTooComplex:
+        title = UiText::GeometryTooComplexTitle;
+        message = UiText::GeometryTooComplexMessage;
+        break;
+    case LayoutFailureReason::InvalidLayoutInput:
+        title = UiText::InvalidLayoutInputTitle;
+        message = UiText::InvalidLayoutInputMessage;
+        break;
+    case LayoutFailureReason::Unknown:
+        break;
+    }
     return {
-        ui_text(language, UiText::UnsatisfiableTitle),
-        ui_text(language, UiText::UnsatisfiableMessage),
+        ui_text(language, title),
+        ui_text(language, message),
         5'000,
         NIIF_WARNING | NIIF_NOSOUND,
     };
 }
 
-bool unsatisfiable_notification_due(
+bool layout_failure_notification_due(
     std::optional<std::uint64_t> last_notification_ms,
     std::uint64_t now_ms) noexcept
 {
@@ -389,7 +412,7 @@ void TrayController::shutdown()
     installed_ = false;
     owner_ = nullptr;
     icon_data_ = {};
-    last_unsatisfiable_notification_ms_.reset();
+    last_layout_failure_notification_ms_.reset();
 }
 
 void TrayController::set_enabled(bool enabled)
@@ -417,13 +440,14 @@ TrayStatus TrayController::status() const noexcept
     return status_;
 }
 
-bool TrayController::show_unsatisfiable_notification(std::uint64_t now_ms)
+bool TrayController::show_layout_failure_notification(
+    std::uint64_t now_ms, LayoutFailureReason reason)
 {
     if (!installed_ ||
-        !unsatisfiable_notification_due(last_unsatisfiable_notification_ms_, now_ms)) {
+        !layout_failure_notification_due(last_layout_failure_notification_ms_, now_ms)) {
         return false;
     }
-    const auto content = unsatisfiable_notification(settings_.uiLanguage);
+    const auto content = layout_failure_notification(reason, settings_.uiLanguage);
     auto notification = icon_data_;
     notification.uFlags = NIF_INFO;
     wcsncpy_s(notification.szInfoTitle, content.title.data(), _TRUNCATE);
@@ -433,7 +457,7 @@ bool TrayController::show_unsatisfiable_notification(std::uint64_t now_ms)
     if (!Shell_NotifyIconW(NIM_MODIFY, &notification)) {
         return false;
     }
-    last_unsatisfiable_notification_ms_ = now_ms;
+    last_layout_failure_notification_ms_ = now_ms;
     return true;
 }
 

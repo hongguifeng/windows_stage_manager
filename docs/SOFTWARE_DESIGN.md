@@ -1,7 +1,7 @@
 # Windows Stage Manager 软件设计文档
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
-> 适用版本：0.2.0
+> 适用版本：0.2.1
 > 更新日期：2026-09-05
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 
@@ -386,7 +386,13 @@ coordinator thread
 
 本批集合包含活动窗口和同屏 peers，上限被夹在 2 到 20。peers 先按“是否被活动窗口直接覆盖”排序；直接覆盖者再按覆盖面积比例从高到低排序，其余保持快照的 Z-order 顺序。
 
-布局快照仍包含所有几何有效窗口；只有集合中的窗口标记 `managed/movable=true`，其他可见窗口作为只读遮挡物。
+Win32 捕获批次仍枚举所有根级顶层窗口，用于分类、owner 关系和 Z-order 校验；这些 HWND 不会原样进入求解器。布局快照只包含本批 managed 窗口，以及可能影响它们候选位置的只读遮挡物。只读遮挡物必须同时满足：
+
+- 快照几何有效，当前可见、未最小化、未 DWM cloaked，并位于当前虚拟桌面；
+- 与 managed 窗口位于同一显示器，Z-order 在至少一个 managed 窗口之上；
+- 可视矩形与该 managed 窗口的工作区相交。
+
+使用工作区而不是当前窗口矩形过滤，是因为固定窗口虽然当前没有重叠，也可能遮挡移动后的候选位置。其他桌面/显示器、工作区外、隐藏以及位于所有 managed 窗口之后的 HWND 不参与复制、布局哈希或可见性搜索。
 
 ### 11.3 激活放置预模拟
 
@@ -457,7 +463,7 @@ min(axisLength,
 - 横向与纵向偏移的笛卡尔组合；
 - 显式标记的 `TopLeftChannel` 和 `TopRightChannel` 组合。
 
-候选按 placement rect 去重，并保留来源位图。所有加减使用溢出检查。
+候选按 placement rect 去重，并保留来源位图。所有加减使用溢出检查。达到每个违规的候选上限时返回 `Truncated` 并保留已经生成的有序候选，求解器继续搜索这些候选并把最终穷尽结果归类为 `Timeout`，不会再清空整批候选或误报输入无效。
 
 ### 13.2 硬约束
 
@@ -472,7 +478,7 @@ min(axisLength,
 - `requireStableLayout=true` 时仍存在任何 managed 窗口违规；
 - 区域复杂度或输入数据无效。
 
-最后一条稳定布局约束非常重要：协调器当前没有把 `requireStableLayout` 改为 false。因此所谓“完整搜索”不会接受“先修 A、仍让 B 违规、下一步再修 B”的中间节点；多窗口逐步改善主要由 incremental 和 prioritized 路径完成。不要仅根据 DFS 数据结构推断它能经过暂时不完整的布局。
+`solve_layout` 在搜索中把 `requireStableLayout` 设为 false，只验证当前移动目标已经满足可辨识要求；到下一个搜索节点时再扫描全体 managed 窗口。因此完整搜索可以经过“先修 A、下一步再修 B”的安全中间状态。需要收集候选后的剩余违规时，调用方显式设置 `collectRemainingViolations=true`，避免普通候选验证重复扫描全体窗口。
 
 ### 13.3 软排序
 
@@ -497,11 +503,11 @@ min(axisLength,
 
 ### 14.1 `solve_layout`
 
-使用带 visited hash 的有界深度优先搜索。每个节点扫描违规，选择一个违规窗口，生成并排序候选，将未访问状态压栈。终止状态包括 `Solved`、`NoViolation`、`Unsatisfiable`、`InvalidSnapshot`、`GeometryTooComplex` 和 `Timeout`。
+使用带 visited hash 的有界深度优先搜索。每个节点扫描违规，选择一个违规窗口，生成并排序候选，并最多扩展排序最优的 4 个未访问分支，避免大量兄弟节点在浅层耗尽状态预算。终止状态包括 `Solved`、`NoViolation`、`Unsatisfiable`、`InvalidSnapshot`、`GeometryTooComplex` 和 `Timeout`；候选被截断或达到时间/状态上限均返回 `Timeout`，不表示已经证明无解。
 
 ### 14.2 `solve_layout_incrementally`
 
-每轮选择 zIndex 最小的违规窗口，只允许该窗口移动，并调用一次局部 `solve_layout`。成功后把位置写入当前快照，继续下一个违规。任何局部失败会终止并返回失败，不保留半完成结果给调用方。
+每轮选择 zIndex 最小的违规窗口，只允许该窗口移动，并调用一次局部 `solve_layout`。成功后把位置写入当前快照，继续下一个违规。后续局部搜索失败或达到预算时，会重新扫描当前快照；只要前序移动仍然安全且确实减少了违规，就返回 `PartiallySolved` 和已验证的移动前缀。
 
 ### 14.3 `solve_layout_prioritized`
 
@@ -510,6 +516,8 @@ min(axisLength,
 - 无剩余违规：`Solved`；
 - 有成功移动但仍有违规：`PartiallySolved`；
 - 一个窗口都无法改善：`Unsatisfiable`。
+
+如果在已经完成部分移动后达到时间、状态或几何上限，同样先验证当前快照；有效的前缀返回 `PartiallySolved`，不会因为后段失败丢弃。
 
 因为较下层窗口不会遮挡较上层窗口，该顺序天然保护已经满足的上层窗口。
 
@@ -522,10 +530,10 @@ TopAndSide:
 
 AnyRecognizableEdge:
     solve_layout
-    -> solve_layout_incrementally
+    -> solve_layout_prioritized
 
-若最终明确 Unsatisfiable:
-    solve_layout_prioritized
+若宽松目标仍失败但严格阶段已有安全前缀:
+    使用严格目标的 PartiallySolved 结果
 
 若 peer 仍失败但存在 activation move:
     只应用 activation move，标记 PartiallySolved
@@ -534,9 +542,7 @@ AnyRecognizableEdge:
     Unsatisfiable，不执行移动
 ```
 
-`fallbackUsed` 只表示使用了 `solve_layout_incrementally` 的位置回退，不是 Z-order fallback。`affordanceGoalDegraded` 表示从 `TopAndSide` 降级到了 `AnyRecognizableEdge`。
-
-当前 prioritized fallback 只在最终状态为 `Unsatisfiable` 时进入；如果单边阶段返回 `Timeout` 或 `GeometryTooComplex`，不会进入部分布局。这是修改求解策略时需要显式评估的行为。
+`fallbackUsed` 表示采用了 incremental 或 prioritized 的位置回退，不是 Z-order fallback。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge`；如果最终保留的是严格阶段的安全前缀，该字段保持 false。完整搜索返回 `Unsatisfiable` 或 `Timeout` 都可以进入对应逐窗回退；无效输入和区域复杂度错误不会被当作普通搜索失败继续掩盖。
 
 ### 14.5 循环避免
 
@@ -712,7 +718,7 @@ kSettingCommandBase + field * kSettingCommandStride + choiceIndex
 
 `RuntimeMetrics` 使用 atomic 累计批次、输入、合并位置事件、求解状态、计划/应用移动、reconcile、DryRun、求解失败、API 失败、部分布局、最大队列深度和最大耗时。
 
-`planned_reorders` 目前总是 0；`fallback_used` 是逐窗位置 fallback；诊断工具和新功能不要重新赋予这些旧字段不同语义而不改名。
+`snapshot_windows` 是 Win32 捕获的根窗口总数；`solver_windows` 是过滤后的实际求解对象数，等于 `managed_windows + blocking_windows`。这组字段用于区分系统 HWND 数量和真实搜索规模。`planned_reorders` 目前总是 0；`fallback_used` 是逐窗位置 fallback；诊断工具和新功能不要重新赋予这些旧字段不同语义而不改名。
 
 ## 19. 几何层设计
 
@@ -863,7 +869,7 @@ mvp_coordinator.cpp
 2. **Z-order 基础设施是 dormant code**：有接口和测试，但产品路径不调用。
 3. **`fallbackUsed` 名称含糊**：它是 incremental position fallback。
 4. **全局求解的 stable 约束较强**：不允许仍有其他 managed 违规的中间节点。
-5. **prioritized 只在 Unsatisfiable 后启用**：Timeout 不会进入部分布局。
+5. **严格目标搜索成本较高**：当前会先尝试双边目标，再降级到任意可辨识边缘；复杂重叠下应关注两阶段的总预算。
 6. **periodic reconcile 不直接 settle**：它刷新状态但不主动移动静止桌面。
 7. **执行不回滚**：批次后段失败时，前序成功移动保留。
 8. **设置变更全量重启管线**：稳定布局和身份缓存会清空。
@@ -913,6 +919,7 @@ mvp_coordinator.cpp
     -> affordance_goal/degraded 判断降级层级
     -> partial_layout/remaining_violation_count 判断部分布局
     -> planned_moves/applied_moves 判断求解还是执行问题
+    -> snapshot_windows/solver_windows/blocking_windows 判断快照过滤是否有效
     -> solver_states/duration_us 判断预算问题
 ```
 

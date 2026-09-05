@@ -208,8 +208,10 @@ int main()
     CHECK(scan_visibility_violations(split_edge, fragment_limited).status ==
           ViolationScanStatus::GeometryTooComplex);
 
-    CHECK(generate_candidates(covered, violations.violations[0], requirements, 1).status ==
-          CandidateGenerationStatus::TooComplex);
+    const auto truncated = generate_candidates(
+        covered, violations.violations[0], requirements, 1);
+    CHECK(truncated.status == CandidateGenerationStatus::Truncated);
+    CHECK(truncated.candidates.size() == 1);
     auto invalid_violation = violations.violations[0];
     invalid_violation.targetIndex = 99;
     CHECK(generate_candidates(covered, invalid_violation, requirements).status ==

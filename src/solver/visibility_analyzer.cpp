@@ -272,21 +272,34 @@ std::optional<EdgeVisibility> analyze_window_visibility(
     std::size_t target_index,
     const VisibilityRequirements& requirements)
 {
+    return analyze_window_visibility_with_status(
+        snapshot, target_index, requirements).visibility;
+}
+
+WindowVisibilityResult analyze_window_visibility_with_status(
+    const LayoutSnapshot& snapshot,
+    std::size_t target_index,
+    const VisibilityRequirements& requirements)
+{
+    WindowVisibilityResult result;
     if (!valid_requirements(requirements) || target_index >= snapshot.windows.size()) {
-        return std::nullopt;
+        result.status = ViolationScanStatus::InvalidSnapshot;
+        return result;
     }
     const auto& target = snapshot.windows[target_index];
     if (!target.visible || !target.currentDesktop || target.zIndex < 0 ||
         target.visualRect.empty() || target.workArea.empty()) {
-        return std::nullopt;
+        result.status = ViolationScanStatus::InvalidSnapshot;
+        return result;
     }
-    ViolationScanStatus status = ViolationScanStatus::Ok;
     const auto context = make_exposure_context(
-        snapshot, target_index, requirements.maximumRegionRectangles, status);
+        snapshot, target_index, requirements.maximumRegionRectangles, result.status);
     if (!context) {
-        return std::nullopt;
+        return result;
     }
-    return analyze_with_context(target, requirements, context->blockerRegion, status);
+    result.visibility = analyze_with_context(
+        target, requirements, context->blockerRegion, result.status);
+    return result;
 }
 
 ViolationScanResult scan_visibility_violations(

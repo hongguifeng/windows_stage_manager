@@ -59,7 +59,8 @@ private:
     bool start_window_manager();
     void stop_window_manager();
     void coordinator_loop();
-    void update_runtime_status(window::MvpBatchStatus status);
+    void update_runtime_status(
+        window::MvpBatchStatus status, LayoutFailureReason failure_reason);
 
     HINSTANCE instance_ = nullptr;
     HANDLE instance_mutex_ = nullptr;
@@ -74,6 +75,7 @@ private:
     bool emergency_hotkey_registered_ = false;
     std::uint64_t environment_generation_ = 0;
     std::optional<window::MvpBatchStatus> last_runtime_status_;
+    std::optional<LayoutFailureReason> last_layout_failure_reason_;
     std::unique_ptr<window::EventQueue> event_queue_;
     std::unique_ptr<platform::win32::WinEventHook> event_hook_;
     std::unique_ptr<platform::win32::Win32WindowProvider> raw_provider_;

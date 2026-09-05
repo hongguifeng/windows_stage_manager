@@ -249,6 +249,7 @@ int main()
 
     auto intermediate_policy = policy;
     intermediate_policy.requireStableLayout = false;
+    intermediate_policy.collectRemainingViolations = true;
     const auto intermediate_chain = rank_candidates(
         chain, violations.violations[0], chain_candidates, intermediate_policy);
     CHECK(intermediate_chain.accepted.size() == 1);

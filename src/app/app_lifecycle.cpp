@@ -46,6 +46,63 @@ std::string_view status_name(window::MvpBatchStatus status) noexcept
     return "unknown";
 }
 
+std::string_view solve_status_name(solver::SolveStatus status) noexcept
+{
+    switch (status) {
+    case solver::SolveStatus::Solved:
+        return "solved";
+    case solver::SolveStatus::PartiallySolved:
+        return "partially_solved";
+    case solver::SolveStatus::NoViolation:
+        return "no_violation";
+    case solver::SolveStatus::Unsatisfiable:
+        return "unsatisfiable";
+    case solver::SolveStatus::InvalidSnapshot:
+        return "invalid_snapshot";
+    case solver::SolveStatus::GeometryTooComplex:
+        return "geometry_too_complex";
+    case solver::SolveStatus::Timeout:
+        return "timeout";
+    }
+    return "unknown";
+}
+
+LayoutFailureReason layout_failure_reason(solver::SolveStatus status) noexcept
+{
+    switch (status) {
+    case solver::SolveStatus::Unsatisfiable:
+        return LayoutFailureReason::NoFeasibleLayout;
+    case solver::SolveStatus::Timeout:
+        return LayoutFailureReason::SearchLimitReached;
+    case solver::SolveStatus::GeometryTooComplex:
+        return LayoutFailureReason::GeometryTooComplex;
+    case solver::SolveStatus::InvalidSnapshot:
+        return LayoutFailureReason::InvalidLayoutInput;
+    case solver::SolveStatus::Solved:
+    case solver::SolveStatus::PartiallySolved:
+    case solver::SolveStatus::NoViolation:
+        return LayoutFailureReason::Unknown;
+    }
+    return LayoutFailureReason::Unknown;
+}
+
+std::string_view layout_failure_reason_name(LayoutFailureReason reason) noexcept
+{
+    switch (reason) {
+    case LayoutFailureReason::NoFeasibleLayout:
+        return "no_feasible_layout";
+    case LayoutFailureReason::SearchLimitReached:
+        return "search_limit_reached";
+    case LayoutFailureReason::GeometryTooComplex:
+        return "geometry_too_complex";
+    case LayoutFailureReason::InvalidLayoutInput:
+        return "invalid_layout_input";
+    case LayoutFailureReason::Unknown:
+        return "unknown";
+    }
+    return "unknown";
+}
+
 std::uint64_t steady_now_ms() noexcept
 {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -257,7 +314,9 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
         }
         return 0;
     case kCoordinatorStatusMessage:
-        update_runtime_status(static_cast<window::MvpBatchStatus>(w_param));
+        update_runtime_status(
+            static_cast<window::MvpBatchStatus>(w_param),
+            static_cast<LayoutFailureReason>(l_param));
         return 0;
     case kSafetyTripMessage:
         tray_.set_enabled(false);
@@ -563,9 +622,15 @@ void AppLifecycle::coordinator_loop()
         const auto layout_generation = std::to_string(result.layoutGeneration);
         const auto input_count = std::to_string(result.events.inputCount);
         const auto coalesced_count = std::to_string(result.events.coalescedLocationCount);
+        const auto snapshot_windows = std::to_string(result.snapshotWindowCount);
+        const auto solver_windows = std::to_string(result.solverWindowCount);
         const auto managed_windows = std::to_string(result.managedWindowCount);
+        const auto blocking_windows = std::to_string(result.blockingWindowCount);
         const auto moved_windows = std::to_string(result.movedWindowCount);
         const auto solver_states = std::to_string(result.solve.statesVisited);
+        const auto solve_status = result.solveAttempted
+            ? solve_status_name(result.solve.status)
+            : std::string_view{"not_run"};
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
         const auto planned_reorders = std::string{"0"};
@@ -602,8 +667,12 @@ void AppLifecycle::coordinator_loop()
              {"layout_generation", layout_generation},
              {"input_events", input_count},
              {"coalesced_locations", coalesced_count},
+             {"snapshot_windows", snapshot_windows},
+             {"solver_windows", solver_windows},
              {"managed_windows", managed_windows},
+             {"blocking_windows", blocking_windows},
              {"moved_windows", moved_windows},
+             {"solve_status", solve_status},
              {"solver_states", solver_states},
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
@@ -627,21 +696,29 @@ void AppLifecycle::coordinator_loop()
             PostMessageW(message_window_,
                          kCoordinatorStatusMessage,
                          static_cast<WPARAM>(reported_status),
-                         0);
+                         static_cast<LPARAM>(layout_failure_reason(result.solve.status)));
         }
     }
 }
 
-void AppLifecycle::update_runtime_status(window::MvpBatchStatus status)
+void AppLifecycle::update_runtime_status(
+    window::MvpBatchStatus status, LayoutFailureReason failure_reason)
 {
     const bool entered_unsatisfiable = status == window::MvpBatchStatus::Unsatisfiable &&
         (!last_runtime_status_ ||
-         *last_runtime_status_ != window::MvpBatchStatus::Unsatisfiable);
+         *last_runtime_status_ != window::MvpBatchStatus::Unsatisfiable ||
+         !last_layout_failure_reason_ ||
+         *last_layout_failure_reason_ != failure_reason);
     last_runtime_status_ = status;
+    if (status == window::MvpBatchStatus::Unsatisfiable) {
+        last_layout_failure_reason_ = failure_reason;
+    }
     if (entered_unsatisfiable &&
-        tray_.show_unsatisfiable_notification(steady_now_ms())) {
+        tray_.show_layout_failure_notification(steady_now_ms(), failure_reason)) {
         diagnostics::Logger::instance().log(
-            diagnostics::LogLevel::Info, "unsatisfiable_notification_shown");
+            diagnostics::LogLevel::Info,
+            "layout_failure_notification_shown",
+            {{"failure_reason", layout_failure_reason_name(failure_reason)}});
     }
     switch (status) {
     case window::MvpBatchStatus::Disabled:

@@ -288,7 +288,7 @@ try {
     Wait-Until -FailureMessage 'Unsatisfiable tray notification was not requested' -Condition {
         (Test-Path -LiteralPath $logPath) -and
             ((Get-Content -Raw -LiteralPath $logPath) -match
-                'unsatisfiable_notification_shown')
+                'layout_failure_notification_shown')
     }
     [StageManagerNativeMethods]::SendMessage(
         $script:window, 0x8002, [IntPtr]6, [IntPtr]::Zero) | Out-Null
@@ -298,7 +298,7 @@ try {
         $script:window, 0x8002, [IntPtr]6, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 100
     $notificationCount = @(
-        Select-String -LiteralPath $logPath -Pattern 'unsatisfiable_notification_shown'
+        Select-String -LiteralPath $logPath -Pattern 'layout_failure_notification_shown'
     ).Count
     if ($notificationCount -ne 1) {
         throw "Unsatisfiable notification was not edge-triggered and rate-limited: $notificationCount"

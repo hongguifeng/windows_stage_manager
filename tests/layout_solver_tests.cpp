@@ -171,6 +171,25 @@ int main()
     CHECK(left_channel_count <= right_channel_count + 1);
     CHECK(right_channel_count <= left_channel_count + 1);
 
+    LayoutSnapshot incremental_partial;
+    incremental_partial.version = 4;
+    incremental_partial.windows = {
+        make_window(20, {100, 100, 300, 300}, 0, false),
+        make_window(21, {100, 100, 300, 300}, 1, true),
+        make_window(90, {0, 0, 500, 500}, 2, false),
+        make_window(22, {100, 100, 300, 300}, 3, true),
+    };
+    auto partial_policy = policy;
+    partial_policy.ranking.visibility.goal =
+        stage_manager::solver::VisibilityGoal::AnyRecognizableEdge;
+    const auto partial = solve_layout_incrementally(
+        incremental_partial, partial_policy, 0);
+    CHECK(partial.status == SolveStatus::PartiallySolved);
+    CHECK(partial.moves.size() == 1);
+    CHECK(partial.moves[0].window.hwnd == 21);
+    CHECK(partial.violations.size() == 1);
+    CHECK(partial.finalSnapshot.windows[partial.violations[0].targetIndex].key.hwnd == 22);
+
     auto active_target_policy = policy;
     active_target_policy.ranking.activeWindowIndex = 1;
     const auto unsatisfiable = solve_layout(covered, active_target_policy);

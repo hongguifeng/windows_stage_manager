@@ -26,6 +26,8 @@ struct SearchNode {
     std::vector<MovePlan> moves;
 };
 
+constexpr std::size_t kMaximumSearchBranchesPerState = 4;
+
 bool contains_hash(std::span<const LayoutHash> hashes, const LayoutHash& hash)
 {
     return std::find(hashes.begin(), hashes.end(), hash) != hashes.end();
@@ -53,6 +55,55 @@ SolveResult terminal_result(SolveStatus status,
     result.statesVisited = states_visited;
     result.elapsedMs = elapsed_since(start, clock.now_ms());
     return result;
+}
+
+SolveResult best_effort_result(SolveStatus failure_status,
+                               const LayoutSnapshot& initial,
+                               const LayoutSnapshot& current,
+                               std::vector<MovePlan> moves,
+                               const std::vector<Violation>& initial_violations,
+                               const VisibilityRequirements& requirements,
+                               std::uint32_t states_visited,
+                               std::uint64_t start,
+                               ISolverClock& clock)
+{
+    if (moves.empty()) {
+        return terminal_result(failure_status,
+                               initial,
+                               {},
+                               initial_violations,
+                               states_visited,
+                               start,
+                               clock);
+    }
+
+    const auto scan = scan_visibility_violations(current, requirements);
+    if (scan.status == ViolationScanStatus::InvalidSnapshot) {
+        return terminal_result(SolveStatus::InvalidSnapshot,
+                               initial,
+                               {},
+                               initial_violations,
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (scan.status == ViolationScanStatus::GeometryTooComplex) {
+        return terminal_result(SolveStatus::GeometryTooComplex,
+                               initial,
+                               {},
+                               initial_violations,
+                               states_visited,
+                               start,
+                               clock);
+    }
+    return terminal_result(scan.violations.empty() ? SolveStatus::Solved
+                                                   : SolveStatus::PartiallySolved,
+                           current,
+                           std::move(moves),
+                           scan.violations,
+                           states_visited,
+                           start,
+                           clock);
 }
 
 } // namespace
@@ -91,6 +142,7 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
     std::vector<LayoutHash> visited = {hash_layout(initial)};
     std::vector<CandidateRejection> last_rejections;
     bool reached_state_limit = false;
+    bool candidate_space_truncated = false;
 
     while (!stack.empty()) {
         const auto now = clock.now_ms();
@@ -153,15 +205,18 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
                                    clock);
         }
         if (generated.status != CandidateGenerationStatus::Ok) {
-            return terminal_result(SolveStatus::InvalidSnapshot,
-                                   initial,
-                                   {},
-                                   scan.violations,
-                                   static_cast<std::uint32_t>(visited.size()),
-                                   start,
-                                   clock);
+            if (generated.status == CandidateGenerationStatus::Truncated) {
+                candidate_space_truncated = true;
+            } else {
+                return terminal_result(SolveStatus::InvalidSnapshot,
+                                       initial,
+                                       {},
+                                       scan.violations,
+                                       static_cast<std::uint32_t>(visited.size()),
+                                       start,
+                                       clock);
+            }
         }
-
         auto ranking_policy = policy.ranking;
         ranking_policy.requireStableLayout = false;
         auto ranked = rank_candidates(
@@ -200,6 +255,9 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
 
         std::vector<SearchNode> children;
         for (auto& candidate : ranked.accepted) {
+            if (children.size() >= kMaximumSearchBranchesPerState) {
+                break;
+            }
             const auto state_hash = hash_layout(candidate.simulatedSnapshot);
             if (contains_hash(visited, state_hash)) {
                 continue;
@@ -225,8 +283,9 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
         }
     }
 
-    auto result = terminal_result(reached_state_limit ? SolveStatus::Timeout
-                                                      : SolveStatus::Unsatisfiable,
+    auto result = terminal_result(reached_state_limit || candidate_space_truncated
+                                      ? SolveStatus::Timeout
+                                      : SolveStatus::Unsatisfiable,
                                   initial,
                                   {},
                                   initial_scan.violations,
@@ -328,13 +387,15 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
             const auto status = local_result.status == SolveStatus::NoViolation
                 ? SolveStatus::Unsatisfiable
                 : local_result.status;
-            return terminal_result(status,
-                                   initial,
-                                   {},
-                                   initial_scan.violations,
-                                   states_visited,
-                                   start,
-                                   clock);
+            return best_effort_result(status,
+                                      initial,
+                                      current,
+                                      std::move(moves),
+                                      initial_scan.violations,
+                                      policy.ranking.visibility,
+                                      states_visited,
+                                      start,
+                                      clock);
         }
 
         const auto target_index = violation->targetIndex;
@@ -346,24 +407,28 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
 
         const auto state = hash_layout(current);
         if (contains_hash(visited, state) || visited.size() >= policy.limits.maximumStates) {
-            return terminal_result(SolveStatus::Timeout,
-                                   initial,
-                                   {},
-                                   initial_scan.violations,
-                                   states_visited,
-                                   start,
-                                   clock);
+            return best_effort_result(SolveStatus::Timeout,
+                                      initial,
+                                      current,
+                                      std::move(moves),
+                                      initial_scan.violations,
+                                      policy.ranking.visibility,
+                                      states_visited,
+                                      start,
+                                      clock);
         }
         visited.push_back(state);
     }
 
-    return terminal_result(SolveStatus::Unsatisfiable,
-                           initial,
-                           {},
-                           initial_scan.violations,
-                           states_visited,
-                           start,
-                           clock);
+    return best_effort_result(SolveStatus::Unsatisfiable,
+                              initial,
+                              current,
+                              std::move(moves),
+                              initial_scan.violations,
+                              policy.ranking.visibility,
+                              states_visited,
+                              start,
+                              clock);
 }
 
 SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
@@ -418,13 +483,15 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
         const auto elapsed = elapsed_since(start, clock.now_ms());
         if (elapsed >= policy.limits.maximumElapsedMs ||
             states_visited >= policy.limits.maximumStates) {
-            return terminal_result(SolveStatus::Timeout,
-                                   initial,
-                                   {},
-                                   initial_scan.violations,
-                                   states_visited,
-                                   start,
-                                   clock);
+            return best_effort_result(SolveStatus::Timeout,
+                                      initial,
+                                      current,
+                                      std::move(moves),
+                                      initial_scan.violations,
+                                      policy.ranking.visibility,
+                                      states_visited,
+                                      start,
+                                      clock);
         }
 
         const auto scan = scan_visibility_violations(current, policy.ranking.visibility);
@@ -473,13 +540,15 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
         if (local_result.status == SolveStatus::Timeout ||
             local_result.status == SolveStatus::GeometryTooComplex ||
             local_result.status == SolveStatus::InvalidSnapshot) {
-            return terminal_result(local_result.status,
-                                   initial,
-                                   {},
-                                   initial_scan.violations,
-                                   states_visited,
-                                   start,
-                                   clock);
+            return best_effort_result(local_result.status,
+                                      initial,
+                                      current,
+                                      std::move(moves),
+                                      initial_scan.violations,
+                                      policy.ranking.visibility,
+                                      states_visited,
+                                      start,
+                                      clock);
         }
         if (local_result.status != SolveStatus::Solved ||
             local_result.moves.size() != 1) {

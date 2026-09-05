@@ -27,6 +27,7 @@ constexpr CandidateSource operator|(CandidateSource left, CandidateSource right)
 
 enum class CandidateGenerationStatus : std::uint8_t {
     Ok,
+    Truncated,
     InvalidInput,
     TooComplex,
 };

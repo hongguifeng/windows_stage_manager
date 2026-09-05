@@ -75,10 +75,20 @@ struct ViolationScanResult {
     std::vector<Violation> violations;
 };
 
+struct WindowVisibilityResult {
+    ViolationScanStatus status = ViolationScanStatus::Ok;
+    std::optional<EdgeVisibility> visibility;
+};
+
 ViolationScanResult scan_visibility_violations(
     const LayoutSnapshot& snapshot, const VisibilityRequirements& requirements);
 
 std::optional<EdgeVisibility> analyze_window_visibility(
+    const LayoutSnapshot& snapshot,
+    std::size_t target_index,
+    const VisibilityRequirements& requirements);
+
+WindowVisibilityResult analyze_window_visibility_with_status(
     const LayoutSnapshot& snapshot,
     std::size_t target_index,
     const VisibilityRequirements& requirements);

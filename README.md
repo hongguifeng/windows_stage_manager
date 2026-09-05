@@ -61,7 +61,7 @@ Use the `windows-release` preset for a Release build. Every commit must pass Con
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.2.0 -Commit (git rev-parse --short HEAD)
+  -Version 0.2.1 -Commit (git rev-parse --short HEAD)
 ```
 
 This produces a versioned ZIP archive and `manifest.json`, updates `current.json`, and retains the previous release as `rollback.json`.

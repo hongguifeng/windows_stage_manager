@@ -107,8 +107,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
     std::vector<AxisOffset> y_offsets = {{0, CandidateSource::Current}};
 
     if (!add_candidate(result, target, 0, 0, CandidateSource::Current, maximum_candidates)) {
-        result.status = CandidateGenerationStatus::TooComplex;
-        result.candidates.clear();
+        result.status = CandidateGenerationStatus::Truncated;
         return result;
     }
 
@@ -156,8 +155,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                                    CandidateSource::CombinedAxes |
                                    CandidateSource::TopLeftChannel,
                                maximum_candidates)) {
-                result.status = CandidateGenerationStatus::TooComplex;
-                result.candidates.clear();
+                result.status = CandidateGenerationStatus::Truncated;
                 return result;
             }
         }
@@ -173,8 +171,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                                    CandidateSource::CombinedAxes |
                                    CandidateSource::TopRightChannel,
                                maximum_candidates)) {
-                result.status = CandidateGenerationStatus::TooComplex;
-                result.candidates.clear();
+                result.status = CandidateGenerationStatus::Truncated;
                 return result;
             }
         }
@@ -201,8 +198,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                            0,
                            x_offset.source,
                            maximum_candidates)) {
-            result.status = CandidateGenerationStatus::TooComplex;
-            result.candidates.clear();
+            result.status = CandidateGenerationStatus::Truncated;
             return result;
         }
     }
@@ -214,8 +210,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                            y_offset.value,
                            y_offset.source,
                            maximum_candidates)) {
-            result.status = CandidateGenerationStatus::TooComplex;
-            result.candidates.clear();
+            result.status = CandidateGenerationStatus::Truncated;
             return result;
         }
     }
@@ -235,8 +230,7 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                                y_offset.value,
                                sources,
                                maximum_candidates)) {
-                result.status = CandidateGenerationStatus::TooComplex;
-                result.candidates.clear();
+                result.status = CandidateGenerationStatus::Truncated;
                 return result;
             }
         }

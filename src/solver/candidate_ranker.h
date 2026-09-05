@@ -46,6 +46,7 @@ struct CandidateRankingPolicy {
     std::optional<std::size_t> activeWindowIndex;
     std::optional<geometry::Edge> preferredEdge;
     bool requireStableLayout = true;
+    bool collectRemainingViolations = false;
 };
 
 struct CandidateCost {

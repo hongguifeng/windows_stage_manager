@@ -50,8 +50,12 @@ struct MvpBatchResult {
     CoalescedBatch events;
     solver::SolveResult solve;
     MoveApplyResult apply;
+    std::size_t snapshotWindowCount = 0;
+    std::size_t solverWindowCount = 0;
     std::size_t managedWindowCount = 0;
+    std::size_t blockingWindowCount = 0;
     std::size_t movedWindowCount = 0;
+    bool solveAttempted = false;
     bool fallbackUsed = false;
     solver::VisibilityGoal affordanceGoal = solver::VisibilityGoal::AnyRecognizableEdge;
     bool affordanceGoalDegraded = false;
