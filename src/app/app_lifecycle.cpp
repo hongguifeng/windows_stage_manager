@@ -78,7 +78,7 @@ int AppLifecycle::run(HINSTANCE instance, int)
         diagnostics::LogLevel::Info,
         "application_start",
         {{"version", kVersion}, {"dry_run", dry_run_.load() ? "true" : "false"}});
-    if (!tray_.initialize(message_window_, enabled_.load())) {
+    if (!tray_.initialize(message_window_, settings_)) {
         return 1;
     }
     register_emergency_hotkey();
@@ -253,8 +253,8 @@ void AppLifecycle::request_exit()
 
 void AppLifecycle::handle_tray_action(TrayAction action)
 {
-    switch (action) {
-    case TrayAction::ToggleEnabled:
+    switch (action.type) {
+    case TrayActionType::ToggleEnabled:
         enabled_.store(!enabled_.load());
         if (enabled_.load()) {
             health_monitor_.reset();
@@ -266,10 +266,46 @@ void AppLifecycle::handle_tray_action(TrayAction action)
         tray_.set_enabled(enabled_.load());
         persist_settings();
         return;
-    case TrayAction::Exit:
+    case TrayActionType::ApplySetting: {
+        if (!action.setting.has_value()) {
+            return;
+        }
+        if (current_setting_value(settings_, action.setting->field) == action.setting->value) {
+            return;
+        }
+        tray_.set_status(TrayStatus::Rebuilding);
+        if (move_guard_ != nullptr) {
+            move_guard_->cancel();
+        }
+        stop_window_manager();
+        if (!apply_setting_selection(settings_, *action.setting)) {
+            start_window_manager();
+            tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
+            return;
+        }
+        dry_run_.store(settings_.dryRun);
+        health_monitor_.set_failure_threshold(settings_.maxConsecutiveFailures);
+        health_monitor_.reset();
+        persist_settings();
+        tray_.set_settings(settings_);
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Info,
+            "setting_changed",
+            {{"field", setting_field_name(action.setting->field)},
+             {"value", std::to_string(action.setting->value)}});
+        if (!start_window_manager()) {
+            tray_.set_status(TrayStatus::ApiError);
+            diagnostics::Logger::instance().log(
+                diagnostics::LogLevel::Error, "window_manager_restart_failed");
+            return;
+        }
+        tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
+        return;
+    }
+    case TrayActionType::Exit:
         request_exit();
         return;
-    case TrayAction::None:
+    case TrayActionType::None:
         return;
     }
 }
