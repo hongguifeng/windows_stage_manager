@@ -4,6 +4,7 @@
 
 #include "diagnostics/logger.h"
 #include "app/version.h"
+#include "window/reconcile_scheduler.h"
 
 #include <algorithm>
 #include <chrono>
@@ -38,6 +39,12 @@ std::string_view status_name(window::MvpBatchStatus status) noexcept
     return "unknown";
 }
 
+std::uint64_t steady_now_ms() noexcept
+{
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 } // namespace
 
 AppLifecycle::~AppLifecycle()
@@ -63,6 +70,7 @@ int AppLifecycle::run(HINSTANCE instance, int)
     }
     settings_path_ = default_settings_path();
     settings_ = load_settings(settings_path_);
+    health_monitor_.set_failure_threshold(settings_.maxConsecutiveFailures);
     enabled_.store(settings_.enabled);
     dry_run_.store(settings_.dryRun);
     diagnostics::Logger::instance().initialize(default_log_path());
@@ -208,6 +216,10 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
     case kCoordinatorStatusMessage:
         update_runtime_status(static_cast<window::MvpBatchStatus>(w_param));
         return 0;
+    case kSafetyTripMessage:
+        tray_.set_enabled(false);
+        tray_.set_status(TrayStatus::ApiError);
+        return 0;
     case WM_DISPLAYCHANGE:
         mark_environment_changed("display_change");
         return 0;
@@ -244,6 +256,9 @@ void AppLifecycle::handle_tray_action(TrayAction action)
     switch (action) {
     case TrayAction::ToggleEnabled:
         enabled_.store(!enabled_.load());
+        if (enabled_.load()) {
+            health_monitor_.reset();
+        }
         if (!enabled_.load() && move_guard_ != nullptr) {
             move_guard_->cancel();
         }
@@ -339,17 +354,27 @@ void AppLifecycle::coordinator_loop()
 {
     using namespace std::chrono_literals;
     std::uint64_t observed_drops = 0;
+    window::ReconcileScheduler reconcile_scheduler(settings_.reconcileIntervalMs);
+    reconcile_scheduler.reset(steady_now_ms());
     while (!coordinator_stop_.load()) {
         window::WindowEvent first;
-        if (!event_queue_->wait_pop(first, 50ms)) {
-            continue;
+        const bool received_event = event_queue_->wait_pop(first, 50ms);
+        std::vector<window::WindowEvent> events;
+        if (received_event) {
+            events.push_back(first);
+            const auto coalesce_window = std::min(settings_.eventCoalesceWindowMs, 100u);
+            std::this_thread::sleep_for(std::chrono::milliseconds(coalesce_window));
         }
-        std::vector<window::WindowEvent> events = {first};
-        const auto coalesce_window = std::min(settings_.eventCoalesceWindowMs, 100u);
-        std::this_thread::sleep_for(std::chrono::milliseconds(coalesce_window));
-        const auto queue_depth = event_queue_->size() + 1;
+        const auto queue_depth = events.size() + event_queue_->size();
         auto remaining = event_queue_->drain();
         events.insert(events.end(), remaining.begin(), remaining.end());
+        const auto now_ms = steady_now_ms();
+        if (reconcile_scheduler.due(now_ms)) {
+            events.push_back(reconcile_scheduler.poll(now_ms));
+        }
+        if (events.empty()) {
+            continue;
+        }
         const auto dropped = event_queue_->dropped_count();
         std::uint64_t dropped_delta = 0;
         if (dropped != observed_drops) {
@@ -377,6 +402,22 @@ void AppLifecycle::coordinator_loop()
         observation.apiFailure = result.status == window::MvpBatchStatus::ApiError ||
             result.reason == window::MvpSuspendReason::SnapshotUnavailable;
         runtime_metrics_.record(observation);
+        const auto health_action = health_monitor_.observe(result.status, result.reason);
+        if (health_action == window::HealthAction::DisableAutomation &&
+            enabled_.exchange(false)) {
+            if (move_guard_ != nullptr) {
+                move_guard_->cancel();
+            }
+            const auto failures = std::to_string(
+                health_monitor_.state().consecutiveFailures);
+            diagnostics::Logger::instance().log(
+                diagnostics::LogLevel::Error,
+                "automation_disabled_after_failures",
+                {{"consecutive_failures", failures}});
+            if (message_window_ != nullptr) {
+                PostMessageW(message_window_, kSafetyTripMessage, 0, 0);
+            }
+        }
 
         const auto metrics = runtime_metrics_.snapshot();
         const auto transaction_id = std::to_string(result.transactionId);
@@ -410,9 +451,12 @@ void AppLifecycle::coordinator_loop()
              {"total_batches", total_batches},
              {"total_dropped_events", total_dropped}});
         if (message_window_ != nullptr) {
+            const auto reported_status = health_action == window::HealthAction::DisableAutomation
+                ? window::MvpBatchStatus::ApiError
+                : result.status;
             PostMessageW(message_window_,
                          kCoordinatorStatusMessage,
-                         static_cast<WPARAM>(result.status),
+                         static_cast<WPARAM>(reported_status),
                          0);
         }
     }
@@ -464,6 +508,13 @@ void AppLifecycle::mark_environment_changed(const char* reason)
         diagnostics::LogLevel::Debug,
         "environment_changed",
         {{"generation", std::to_string(environment_generation_)}, {"reason", reason}});
+    if (event_queue_ != nullptr) {
+        event_queue_->try_push({window::WindowEventType::Reconcile,
+                                0,
+                                0,
+                                steady_now_ms(),
+                                environment_generation_});
+    }
 }
 
 void AppLifecycle::persist_settings()

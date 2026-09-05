@@ -107,6 +107,10 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_uint(value)) {
             settings.maxManagedWindows = *parsed;
         }
+    } else if (key == "max_consecutive_failures") {
+        if (const auto parsed = parse_uint(value)) {
+            settings.maxConsecutiveFailures = *parsed;
+        }
     }
 }
 
@@ -197,7 +201,8 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
            << "max_moves_per_batch=" << settings.maxMovesPerBatch << '\n'
            << "max_solver_states=" << settings.maxSolverStates << '\n'
            << "max_solve_time_ms=" << settings.maxSolveTimeMs << '\n'
-           << "max_managed_windows=" << settings.maxManagedWindows << '\n';
+           << "max_managed_windows=" << settings.maxManagedWindows << '\n'
+           << "max_consecutive_failures=" << settings.maxConsecutiveFailures << '\n';
     output.flush();
     if (!output) {
         return false;

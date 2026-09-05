@@ -41,6 +41,7 @@ add_library(stage_manager_core STATIC
     src/solver/layout_solver.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
+    src/window/coordinator_health.cpp
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
     src/window/move_applier.cpp
@@ -176,6 +177,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_event_pipeline_tests)
     target_link_libraries(stage_manager_event_pipeline_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_event_pipeline COMMAND stage_manager_event_pipeline_tests)
+
+    add_executable(stage_manager_coordinator_health_tests
+        tests/coordinator_health_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_coordinator_health_tests)
+    target_link_libraries(stage_manager_coordinator_health_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_coordinator_health COMMAND stage_manager_coordinator_health_tests)
 
     add_executable(stage_manager_snapshot_report_tests
         tests/snapshot_report_tests.cpp

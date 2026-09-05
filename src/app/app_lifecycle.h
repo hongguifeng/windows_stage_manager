@@ -17,6 +17,7 @@
 #include "platform/win32/window_mover.h"
 #include "platform/win32/window_provider.h"
 #include "window/move_applier.h"
+#include "window/coordinator_health.h"
 #include "window/mvp_coordinator.h"
 #include "window/tracking_window_provider.h"
 
@@ -39,6 +40,7 @@ private:
     static constexpr wchar_t kMutexName[] = L"Local\\WindowsStageManager.SingleInstance";
     static constexpr wchar_t kMessageWindowClass[] = L"WindowsStageManager.MessageWindow";
     static constexpr UINT kCoordinatorStatusMessage = WM_APP + 2;
+    static constexpr UINT kSafetyTripMessage = WM_APP + 3;
 
     static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
 
@@ -67,6 +69,7 @@ private:
     std::atomic<bool> enabled_{true};
     std::atomic<bool> dry_run_{true};
     diagnostics::RuntimeMetrics runtime_metrics_;
+    window::CoordinatorHealthMonitor health_monitor_;
     bool emergency_hotkey_registered_ = false;
     std::uint64_t environment_generation_ = 0;
     std::unique_ptr<window::EventQueue> event_queue_;
