@@ -29,6 +29,7 @@ New-Item -ItemType Directory -Path $stagingRoot | Out-Null
 try {
     Copy-Item -LiteralPath $executable -Destination $stagingRoot
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\README.md") -Destination $stagingRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\assets") -Destination $stagingRoot -Recurse
     @"
 enabled=true
 dry_run=false

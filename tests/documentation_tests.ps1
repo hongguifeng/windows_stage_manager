@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 $readme = Get-Content -LiteralPath (Join-Path $Workspace "README.md") -Raw -Encoding UTF8
 $guide = Get-Content -LiteralPath (Join-Path $Workspace "USER_GUIDE.md") -Raw -Encoding UTF8
 $limits = Get-Content -LiteralPath (Join-Path $Workspace "KNOWN_LIMITATIONS.md") -Raw -Encoding UTF8
+$feature = Get-Content -LiteralPath (Join-Path $Workspace "assets\feature-overview.svg") -Raw -Encoding UTF8
 $versionHeader = Get-Content -LiteralPath (Join-Path $Workspace "src\app\version.h") -Raw -Encoding UTF8
 $allDocuments = (Get-ChildItem -LiteralPath $Workspace -Filter '*.md' -File |
     ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }) -join "`n"
@@ -11,6 +12,9 @@ $allDocuments = (Get-ChildItem -LiteralPath $Workspace -Filter '*.md' -File |
 if ($readme -notmatch 'dry_run=false') { throw "README lost the active default" }
 if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
 if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
+if ($readme -notmatch 'assets/feature-overview\.svg') { throw "README feature illustration is missing" }
+if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\feature-overview.svg') -PathType Leaf)) { throw "README feature illustration file is missing" }
+if ($feature -notmatch '<svg' -or $feature -notmatch 'viewBox="0 0 1400 780"' -or $feature -notmatch '<title') { throw "README feature illustration is invalid" }
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.svg') -PathType Leaf)) { throw "application icon source is missing" }
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace 'assets\windows-stage-manager.ico') -PathType Leaf)) { throw "application icon file is missing" }
 if ($guide -notmatch 'preferred_exposed_edges=2') { throw "preferred edge behavior is missing" }

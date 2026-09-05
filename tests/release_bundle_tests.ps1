@@ -41,6 +41,9 @@ try {
     Expand-Archive -LiteralPath (Join-Path $testRoot $current.package) -DestinationPath $expanded
     $expandedExecutable = Join-Path $expanded "stage_manager.exe"
     if (-not (Test-Path -LiteralPath $expandedExecutable -PathType Leaf)) { throw "executable missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\feature-overview.svg") -PathType Leaf)) { throw "README illustration missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\windows-stage-manager.svg") -PathType Leaf)) { throw "icon source missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $expanded "assets\windows-stage-manager.ico") -PathType Leaf)) { throw "icon file missing" }
     $module = [StageManagerResourceMethods]::LoadLibraryEx($expandedExecutable, [IntPtr]::Zero, 2)
     if ($module -eq [IntPtr]::Zero) { throw "executable resources could not be loaded" }
     try {
