@@ -24,6 +24,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Use MSVC toolchain (VS2022)
+        uses: ilammy/msvc-dev-cmd@v1.6
+        with:
+          arch: x64
+
       - name: Configure (Debug)
         run: cmake --preset windows-debug
 

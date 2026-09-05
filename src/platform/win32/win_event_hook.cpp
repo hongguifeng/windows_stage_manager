@@ -140,7 +140,7 @@ bool WinEventHook::install_hooks()
         {EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE},
     }};
 
-    for (const auto [minimum, maximum] : ranges) {
+    for (const auto& [minimum, maximum] : ranges) {
         const auto hook = SetWinEventHook(
             minimum,
             maximum,
