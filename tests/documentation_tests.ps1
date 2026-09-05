@@ -22,6 +22,7 @@ function Assert-Match(
 
 $readme = Read-WorkspaceFile "README.md"
 $functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
+$design = Read-WorkspaceFile "docs\SOFTWARE_DESIGN.md"
 $feature = Read-WorkspaceFile "assets\feature-overview.svg"
 $versionHeader = Read-WorkspaceFile "src\app\version.h"
 $settingsHeader = Read-WorkspaceFile "src\app\settings.h"
@@ -39,17 +40,56 @@ $documentVersion = [regex]::Match($functions, '\u9002\u7528\u7248\u672c\uff1a([^
 if (-not $documentVersion.Success -or $documentVersion.Groups[1].Value -ne $version) {
     throw "software feature document version does not match the application"
 }
+$designVersion = [regex]::Match($design, '\u9002\u7528\u7248\u672c\uff1a([^\s]+)')
+if (-not $designVersion.Success -or $designVersion.Groups[1].Value -ne $version) {
+    throw "software design document version does not match the application"
+}
 Assert-Match $readme ([regex]::Escape("-Version $version")) `
     "README release version does not match the application"
 
 Assert-Match $readme 'docs/SOFTWARE_FEATURES\.md' `
     "README does not link to the current software feature document"
+Assert-Match $readme 'docs/SOFTWARE_DESIGN\.md' `
+    "README does not link to the current software design document"
 Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
     "README does not identify the authoritative current document"
 Assert-Match $functions 'As-built' `
     "software feature document is not identified as an as-built document"
 Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
     "software feature document does not distinguish historical documents"
+
+$expectedDocuments = @('SOFTWARE_DESIGN.md', 'SOFTWARE_FEATURES.md')
+$actualDocuments = @(Get-ChildItem -LiteralPath (Join-Path $Workspace 'docs') -Filter '*.md' -File |
+    ForEach-Object { $_.Name } |
+    Sort-Object)
+if (@(Compare-Object $expectedDocuments $actualDocuments).Count -ne 0) {
+    throw "docs must contain only the maintained feature and design documents"
+}
+
+foreach ($pattern in @(
+    'As-built Design',
+    'stage_manager_core',
+    'AppLifecycle::coordinator_loop',
+    'WinEventHook',
+    'EventQueue',
+    'WindowKey',
+    'TrackingWindowProvider',
+    'MvpCoordinator',
+    'VisibilityGoal::TopAndSide',
+    'VisibilityGoal::AnyRecognizableEdge',
+    'requireStableLayout=true',
+    'solve_layout_incrementally',
+    'solve_layout_prioritized',
+    'VerifiedMoveApplier',
+    'InternalMoveTracker',
+    'planned_reorders',
+    'SettingField',
+    'SOFTWARE_FEATURES\.md',
+    'ctest --preset windows-debug',
+    'ctest --preset windows-release'
+)) {
+    Assert-Match $design $pattern "software design document is missing architecture detail: $pattern"
+}
 
 foreach ($pattern in @(
     '\u4e0d\u6539\u53d8\u7a97\u53e3\u5bbd\u5ea6\u6216\u9ad8\u5ea6',

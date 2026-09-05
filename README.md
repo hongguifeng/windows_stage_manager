@@ -66,5 +66,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
 ## 文档
 
 - [软件功能说明（当前实现的唯一基准）](docs/SOFTWARE_FEATURES.md)
+- [软件设计文档（架构、算法与接手指南）](docs/SOFTWARE_DESIGN.md)
 
-`docs` 目录中的其他文件是历史需求、设计或使用资料，可能与当前代码不一致；判断现有功能时以《软件功能说明》和代码为准。
+上述两份文档随当前代码维护：功能边界以《软件功能说明》为准，内部实现与扩展方法以《软件设计文档》为准。
