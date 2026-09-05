@@ -119,12 +119,15 @@ int main()
     CHECK(Win32WindowMover::position_only_flags() ==
           static_cast<std::uint32_t>(SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER |
                                      SWP_NOOWNERZORDER));
+    CHECK(Win32WindowMover::z_order_only_flags() ==
+          static_cast<std::uint32_t>(SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                                     SWP_NOOWNERZORDER));
 
     const HINSTANCE instance = GetModuleHandleW(nullptr);
     CHECK(instance != nullptr);
     CHECK(register_test_class(instance));
     WindowBehavior rejecting_behavior;
-    const HWND reference = CreateWindowExW(WS_EX_NOACTIVATE,
+    const HWND reference = CreateWindowExW(0,
                                            kTestClassName,
                                            L"Window mover reference",
                                            WS_OVERLAPPEDWINDOW,
@@ -221,6 +224,55 @@ int main()
     CHECK((after_target->zIndex < after_reference->zIndex) == target_above_reference);
     CHECK(GetForegroundWindow() != target);
     CHECK(tracker.find(reinterpret_cast<std::uintptr_t>(target)).has_value());
+
+    const auto foreground_before_reorder = GetForegroundWindow();
+    CHECK(foreground_before_reorder != nullptr);
+    CHECK(SetWindowPos(reference, foreground_before_reorder, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
+    CHECK(SetWindowPos(rejecting, reference, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
+    CHECK(SetWindowPos(target, rejecting, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE);
+    const auto reorder_before = provider.capture(SnapshotRefreshReason::Manual);
+    const auto* reorder_target_before = find_snapshot(reorder_before, target);
+    const auto* reorder_reference_before = find_snapshot(reorder_before, reference);
+    CHECK(reorder_target_before != nullptr);
+    CHECK(reorder_reference_before != nullptr);
+    CHECK(reorder_target_before->zIndex > reorder_reference_before->zIndex + 1);
+    const auto target_rect_before_reorder = reorder_target_before->placementRect;
+    const auto reference_rect_before_reorder = reorder_reference_before->placementRect;
+
+    stage_manager::solver::ZOrderPlan reorder_plan;
+    reorder_plan.window = reorder_target_before->key;
+    reorder_plan.insertAfter = reorder_reference_before->key;
+    reorder_plan.fromZIndex = reorder_target_before->zIndex;
+    reorder_plan.toZIndex = reorder_reference_before->zIndex + 1;
+    auto wrong_reference = reorder_plan.insertAfter;
+    ++wrong_reference.processId;
+    CHECK(mover.reorder(reorder_plan.window, wrong_reference).status ==
+          stage_manager::window::NativeReorderStatus::IdentityMismatch);
+
+    InternalMoveTracker reorder_tracker;
+    VerifiedMoveApplier reorder_applier(mover, provider, reorder_tracker);
+    MoveApplyOptions reorder_options = options;
+    reorder_options.transactionId = 2;
+    reorder_options.layoutGeneration = 2;
+    const std::vector reorder_plans = {reorder_plan};
+    const auto reordered = reorder_applier.apply({}, reorder_plans, reorder_options);
+    CHECK(reordered.status == MoveApplyStatus::Applied);
+    CHECK(reordered.appliedReorders.size() == 1);
+    const auto* reorder_target_after = find_snapshot(reordered.finalSnapshot, target);
+    const auto* reorder_reference_after = find_snapshot(reordered.finalSnapshot, reference);
+    CHECK(reorder_target_after != nullptr);
+    CHECK(reorder_reference_after != nullptr);
+    CHECK(reorder_target_after->zIndex == reorder_reference_after->zIndex + 1);
+    CHECK(reorder_target_after->placementRect.left == target_rect_before_reorder.left);
+    CHECK(reorder_target_after->placementRect.top == target_rect_before_reorder.top);
+    CHECK(reorder_reference_after->placementRect.left == reference_rect_before_reorder.left);
+    CHECK(reorder_reference_after->placementRect.top == reference_rect_before_reorder.top);
+    CHECK(!reorder_target_after->topmost);
+    CHECK(!reorder_reference_after->topmost);
+    CHECK(GetForegroundWindow() == foreground_before_reorder);
 
     const auto reject_before = provider.capture(SnapshotRefreshReason::Manual);
     const auto* rejecting_snapshot = find_snapshot(reject_before, rejecting);

@@ -98,6 +98,12 @@ bool preserves_invariant(const WindowSnapshot& snapshot,
         snapshot.topmost == invariant.topmost;
 }
 
+bool same_rectangle(const PixelRect& left, const PixelRect& right) noexcept
+{
+    return left.left == right.left && left.top == right.top &&
+        left.right == right.right && left.bottom == right.bottom;
+}
+
 bool valid_plan(std::span<const solver::MovePlan> plan)
 {
     std::unordered_map<NativeWindowHandle, geometry::Rect> latest_positions;
@@ -121,6 +127,23 @@ bool valid_plan(std::span<const solver::MovePlan> plan)
     return true;
 }
 
+bool valid_reorders(std::span<const solver::ZOrderPlan> reorders)
+{
+    if (reorders.size() > 1) {
+        return false;
+    }
+    for (const auto& reorder : reorders) {
+        if (reorder.window.hwnd == 0 || reorder.window.processId == 0 ||
+            reorder.insertAfter.hwnd == 0 || reorder.insertAfter.processId == 0 ||
+            reorder.window.hwnd == reorder.insertAfter.hwnd ||
+            reorder.fromZIndex < 0 || reorder.toZIndex < 0 ||
+            reorder.fromZIndex <= reorder.toZIndex) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 VerifiedMoveApplier::VerifiedMoveApplier(IWindowMover& mover,
@@ -136,11 +159,14 @@ VerifiedMoveApplier::VerifiedMoveApplier(IWindowMover& mover,
 {
 }
 
-MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> plan,
-                                           const MoveApplyOptions& options)
+MoveApplyResult VerifiedMoveApplier::apply(
+    std::span<const solver::MovePlan> plan,
+    std::span<const solver::ZOrderPlan> reorders,
+    const MoveApplyOptions& options)
 {
     MoveApplyResult result;
-    if (plan.empty() || !valid_plan(plan) ||
+    if ((plan.empty() && reorders.empty()) || !valid_plan(plan) ||
+        !valid_reorders(reorders) ||
         (!options.dryRun &&
          (options.transactionId == 0 || options.layoutGeneration == 0))) {
         return result;
@@ -174,6 +200,87 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
         result.requiresReconcile = true;
         result.finalSnapshot = std::move(snapshot);
         return result;
+    }
+
+    struct ReorderVerification {
+        solver::ZOrderPlan plan;
+        WindowInvariant targetInvariant;
+        WindowInvariant referenceInvariant;
+        PixelRect targetPlacement;
+        PixelRect referencePlacement;
+        std::int32_t referenceZIndex = -1;
+    };
+    std::vector<ReorderVerification> reorder_verifications;
+    reorder_verifications.reserve(reorders.size());
+    for (std::size_t index = 0; index < reorders.size(); ++index) {
+        result.failedReorderIndex = index;
+        const auto& reorder = reorders[index];
+        if (cancelled()) {
+            result.status = MoveApplyStatus::Cancelled;
+            result.requiresReconcile = true;
+            result.finalSnapshot = std::move(snapshot);
+            return result;
+        }
+        const auto* before_target = find_window(snapshot, reorder.window);
+        const auto* before_reference = find_window(snapshot, reorder.insertAfter);
+        if (before_target == nullptr || before_reference == nullptr ||
+            !usable_window(*before_target) || !usable_window(*before_reference) ||
+            !before_target->zOrderKnown || !before_reference->zOrderKnown ||
+            before_target->topmost || before_reference->topmost ||
+            before_reference->zIndex >= before_target->zIndex ||
+            before_target->zIndex != reorder.fromZIndex ||
+            before_reference->zIndex + 1 != reorder.toZIndex) {
+            result.status = MoveApplyStatus::WindowUnavailable;
+            record_failure(reorder.window);
+            result.finalSnapshot = std::move(snapshot);
+            return result;
+        }
+
+        ReorderVerification verification{
+            reorder,
+            invariant_of(*before_target),
+            invariant_of(*before_reference),
+            before_target->placementRect,
+            before_reference->placementRect,
+            before_reference->zIndex,
+        };
+        const auto native_result = mover_.reorder(reorder.window, reorder.insertAfter);
+        if (native_result.status != NativeReorderStatus::Reordered) {
+            result.status = native_result.status == NativeReorderStatus::InvalidWindow
+                ? MoveApplyStatus::WindowDestroyed
+                : MoveApplyStatus::NativeReorderFailed;
+            result.nativeReorderStatus = native_result.status;
+            result.lastError = native_result.lastError;
+            record_failure(reorder.window);
+            result.finalSnapshot = std::move(snapshot);
+            return result;
+        }
+
+        auto after = provider_.capture(SnapshotRefreshReason::Event);
+        const auto* actual_target = usable_snapshot(after)
+            ? find_window(after, reorder.window)
+            : nullptr;
+        const auto* actual_reference = usable_snapshot(after)
+            ? find_window(after, reorder.insertAfter)
+            : nullptr;
+        if (actual_target == nullptr || actual_reference == nullptr ||
+            !usable_window(*actual_target) || !usable_window(*actual_reference) ||
+            !actual_target->zOrderKnown || !actual_reference->zOrderKnown ||
+            actual_reference->zIndex != verification.referenceZIndex ||
+            actual_target->zIndex != actual_reference->zIndex + 1 ||
+            !same_rectangle(actual_target->placementRect, verification.targetPlacement) ||
+            !same_rectangle(actual_reference->placementRect, verification.referencePlacement) ||
+            !preserves_invariant(*actual_target, verification.targetInvariant) ||
+            !preserves_invariant(*actual_reference, verification.referenceInvariant)) {
+            result.status = usable_snapshot(after) ? MoveApplyStatus::ReorderRejected
+                                                   : MoveApplyStatus::SnapshotFailed;
+            record_failure(reorder.window);
+            result.finalSnapshot = std::move(after);
+            return result;
+        }
+        result.appliedReorders.push_back({reorder, actual_target->zIndex});
+        reorder_verifications.push_back(std::move(verification));
+        snapshot = std::move(after);
     }
 
     std::unordered_map<NativeWindowHandle, WindowInvariant> invariants;
@@ -268,6 +375,25 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
         result.finalSnapshot = std::move(final_snapshot);
         return result;
     }
+    for (const auto& verification : reorder_verifications) {
+        const auto* actual_target = find_window(final_snapshot, verification.plan.window);
+        const auto* actual_reference = find_window(
+            final_snapshot, verification.plan.insertAfter);
+        if (actual_target == nullptr || actual_reference == nullptr ||
+            !usable_window(*actual_target) || !usable_window(*actual_reference) ||
+            !actual_target->zOrderKnown || !actual_reference->zOrderKnown ||
+            actual_reference->zIndex != verification.referenceZIndex ||
+            actual_target->zIndex != actual_reference->zIndex + 1 ||
+            !same_rectangle(actual_target->placementRect, verification.targetPlacement) ||
+            !same_rectangle(actual_reference->placementRect, verification.referencePlacement) ||
+            !preserves_invariant(*actual_target, verification.targetInvariant) ||
+            !preserves_invariant(*actual_reference, verification.referenceInvariant)) {
+            result.status = MoveApplyStatus::VerificationFailed;
+            record_failure(verification.plan.window);
+            result.finalSnapshot = std::move(final_snapshot);
+            return result;
+        }
+    }
     for (const auto& [hwnd, expected] : final_positions) {
         const auto plan_iterator = std::find_if(plan.begin(), plan.end(), [hwnd](const auto& move) {
             return move.window.hwnd == hwnd;
@@ -292,6 +418,7 @@ MoveApplyResult VerifiedMoveApplier::apply(std::span<const solver::MovePlan> pla
     }
 
     result.failedMoveIndex = plan.size();
+    result.failedReorderIndex = reorders.size();
     result.status = MoveApplyStatus::Applied;
     result.finalSnapshot = std::move(final_snapshot);
     return result;

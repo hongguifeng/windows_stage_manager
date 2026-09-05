@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/layout_solver.h"
+#include "solver/z_order_solver.h"
 #include "window/internal_move_tracker.h"
 #include "window/move_transaction.h"
 #include "window/window_provider.h"
@@ -25,11 +26,27 @@ struct NativeMoveResult {
     std::uint32_t lastError = 0;
 };
 
+enum class NativeReorderStatus : std::uint8_t {
+    Reordered,
+    InvalidWindow,
+    IdentityMismatch,
+    InvalidReference,
+    UnsafeZOrder,
+    ApiFailure,
+};
+
+struct NativeReorderResult {
+    NativeReorderStatus status = NativeReorderStatus::ApiFailure;
+    std::uint32_t lastError = 0;
+};
+
 class IWindowMover {
 public:
     virtual ~IWindowMover() = default;
     virtual NativeMoveResult move(const WindowKey& window,
                                   const geometry::Rect& destination) = 0;
+    virtual NativeReorderResult reorder(const WindowKey& window,
+                                        const WindowKey& insert_after) = 0;
 };
 
 enum class MoveApplyStatus : std::uint8_t {
@@ -40,7 +57,9 @@ enum class MoveApplyStatus : std::uint8_t {
     WindowUnavailable,
     WindowDestroyed,
     NativeMoveFailed,
+    NativeReorderFailed,
     MoveRejected,
+    ReorderRejected,
     VerificationFailed,
     Cancelled,
     NonCooperative,
@@ -59,15 +78,23 @@ struct AppliedMove {
     PixelRect actualPlacementRect;
 };
 
+struct AppliedReorder {
+    solver::ZOrderPlan plan;
+    std::int32_t actualZIndex = -1;
+};
+
 struct MoveApplyResult {
     MoveApplyStatus status = MoveApplyStatus::InvalidRequest;
     std::size_t failedMoveIndex = 0;
+    std::size_t failedReorderIndex = 0;
     std::uint32_t lastError = 0;
     NativeMoveStatus nativeStatus = NativeMoveStatus::Moved;
+    NativeReorderStatus nativeReorderStatus = NativeReorderStatus::Reordered;
     std::uint32_t windowFailureCount = 0;
     bool transactionNonCooperative = false;
     bool requiresReconcile = false;
     std::vector<AppliedMove> appliedMoves;
+    std::vector<AppliedReorder> appliedReorders;
     WindowSnapshotBatch finalSnapshot;
 };
 
@@ -75,7 +102,14 @@ class IMoveApplier {
 public:
     virtual ~IMoveApplier() = default;
     virtual MoveApplyResult apply(std::span<const solver::MovePlan> plan,
+                                  std::span<const solver::ZOrderPlan> reorders,
                                   const MoveApplyOptions& options) = 0;
+
+    MoveApplyResult apply(std::span<const solver::MovePlan> plan,
+                          const MoveApplyOptions& options)
+    {
+        return apply(plan, {}, options);
+    }
 };
 
 class VerifiedMoveApplier final : public IMoveApplier {
@@ -87,7 +121,14 @@ public:
                         MoveFailureTracker* failure_tracker = nullptr);
 
     MoveApplyResult apply(std::span<const solver::MovePlan> plan,
+                          std::span<const solver::ZOrderPlan> reorders,
                           const MoveApplyOptions& options) override;
+
+    MoveApplyResult apply(std::span<const solver::MovePlan> plan,
+                          const MoveApplyOptions& options)
+    {
+        return apply(plan, {}, options);
+    }
 
 private:
     IWindowMover& mover_;

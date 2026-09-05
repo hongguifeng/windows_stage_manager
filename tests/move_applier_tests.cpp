@@ -85,10 +85,40 @@ public:
         return {stage_manager::window::NativeMoveStatus::Moved, 0};
     }
 
+    stage_manager::window::NativeReorderResult reorder(
+        const stage_manager::window::WindowKey& key,
+        const stage_manager::window::WindowKey& insert_after) override
+    {
+        ++reorderCalls;
+        if (failReorder) {
+            return {stage_manager::window::NativeReorderStatus::ApiFailure, 4321};
+        }
+        auto* target = find(key);
+        auto* reference = find(insert_after);
+        if (target == nullptr) {
+            return {stage_manager::window::NativeReorderStatus::InvalidWindow, 1400};
+        }
+        if (reference == nullptr) {
+            return {stage_manager::window::NativeReorderStatus::InvalidReference, 1400};
+        }
+        const auto target_z = target->zIndex;
+        const auto reference_z = reference->zIndex;
+        for (auto& window : windows) {
+            if (window.zIndex > reference_z && window.zIndex < target_z) {
+                ++window.zIndex;
+            }
+        }
+        target->zIndex = alterReorder ? reference_z + 2 : reference_z + 1;
+        return {stage_manager::window::NativeReorderStatus::Reordered, 0};
+    }
+
     stage_manager::window::WindowSnapshotBatch capture(
         stage_manager::window::SnapshotRefreshReason reason) override
     {
         ++captureCalls;
+        if (onCapture) {
+            onCapture(captureCalls);
+        }
         stage_manager::window::WindowSnapshotBatch batch;
         batch.version = static_cast<std::uint64_t>(captureCalls);
         batch.reason = reason;
@@ -120,9 +150,13 @@ public:
     bool failMove = false;
     bool alterDestination = false;
     bool destroyOnMove = false;
+    bool failReorder = false;
+    bool alterReorder = false;
     std::function<void(int)> onMove;
+    std::function<void(int)> onCapture;
     int captureCalls = 0;
     int moveCalls = 0;
+    int reorderCalls = 0;
 };
 
 } // namespace
@@ -135,6 +169,7 @@ int main()
     using stage_manager::window::MoveApplyOptions;
     using stage_manager::window::MoveApplyStatus;
     using stage_manager::window::NativeMoveStatus;
+    using stage_manager::window::NativeReorderStatus;
     using stage_manager::window::MoveFailureTracker;
     using stage_manager::window::MoveTransactionGuard;
     using stage_manager::window::VerifiedMoveApplier;
@@ -149,6 +184,32 @@ int main()
         make_move(second, {400, 100, 600, 300}, {440, 120, 640, 320}),
     };
 
+    const WindowKey active{3, 103, 1003};
+    stage_manager::solver::ZOrderPlan reorder;
+    reorder.window = second;
+    reorder.insertAfter = active;
+    reorder.fromZIndex = 2;
+    reorder.toZIndex = 1;
+
+    FakeDesktop dry_reorder_desktop;
+    dry_reorder_desktop.windows = {
+        make_snapshot(active, {700, 100, 900, 300}),
+        make_snapshot(first, {100, 100, 300, 300}),
+        make_snapshot(second, {400, 100, 600, 300}),
+    };
+    for (std::size_t index = 0; index < dry_reorder_desktop.windows.size(); ++index) {
+        dry_reorder_desktop.windows[index].zIndex = static_cast<std::int32_t>(index);
+    }
+    InternalMoveTracker dry_reorder_tracker;
+    VerifiedMoveApplier dry_reorder_applier(
+        dry_reorder_desktop, dry_reorder_desktop, dry_reorder_tracker);
+    const std::vector reorder_plan = {reorder};
+    const auto dry_reorder_result = dry_reorder_applier.apply(
+        {}, reorder_plan, MoveApplyOptions{});
+    CHECK(dry_reorder_result.status == MoveApplyStatus::DryRun);
+    CHECK(dry_reorder_desktop.reorderCalls == 0);
+    CHECK(dry_reorder_desktop.captureCalls == 0);
+
     FakeDesktop dry_desktop;
     dry_desktop.windows = {
         make_snapshot(first, {100, 100, 300, 300}),
@@ -161,6 +222,78 @@ int main()
     CHECK(dry_desktop.moveCalls == 0);
     CHECK(dry_desktop.captureCalls == 0);
     CHECK(!dry_tracker.find(first.hwnd));
+
+    FakeDesktop reorder_desktop;
+    reorder_desktop.windows = dry_reorder_desktop.windows;
+    InternalMoveTracker reorder_tracker;
+    VerifiedMoveApplier reorder_applier(
+        reorder_desktop, reorder_desktop, reorder_tracker);
+    MoveApplyOptions reorder_options;
+    reorder_options.dryRun = false;
+    reorder_options.transactionId = 78;
+    reorder_options.layoutGeneration = 10;
+    const auto reordered = reorder_applier.apply({}, reorder_plan, reorder_options);
+    CHECK(reordered.status == MoveApplyStatus::Applied);
+    CHECK(reordered.appliedReorders.size() == 1);
+    CHECK(reordered.appliedReorders[0].plan.window == second);
+    CHECK(reordered.appliedReorders[0].actualZIndex == 1);
+    CHECK(reorder_desktop.reorderCalls == 1);
+    CHECK(reorder_desktop.moveCalls == 0);
+    CHECK(reorder_desktop.captureCalls == 3);
+    CHECK(reorder_desktop.find(active)->zIndex == 0);
+    CHECK(reorder_desktop.find(second)->zIndex == 1);
+    CHECK(reorder_desktop.find(first)->zIndex == 2);
+    CHECK(reorder_desktop.find(active)->placementRect.left == 700);
+    CHECK(reorder_desktop.find(second)->placementRect.left == 400);
+
+    FakeDesktop rejected_reorder_desktop;
+    rejected_reorder_desktop.windows = dry_reorder_desktop.windows;
+    rejected_reorder_desktop.alterReorder = true;
+    InternalMoveTracker rejected_reorder_tracker;
+    VerifiedMoveApplier rejected_reorder_applier(
+        rejected_reorder_desktop, rejected_reorder_desktop, rejected_reorder_tracker);
+    const auto rejected_reorder = rejected_reorder_applier.apply(
+        {}, reorder_plan, reorder_options);
+    CHECK(rejected_reorder.status == MoveApplyStatus::ReorderRejected);
+    CHECK(rejected_reorder.requiresReconcile);
+    CHECK(rejected_reorder.appliedReorders.empty());
+
+    FakeDesktop failed_reorder_desktop;
+    failed_reorder_desktop.windows = dry_reorder_desktop.windows;
+    failed_reorder_desktop.failReorder = true;
+    InternalMoveTracker failed_reorder_tracker;
+    VerifiedMoveApplier failed_reorder_applier(
+        failed_reorder_desktop, failed_reorder_desktop, failed_reorder_tracker);
+    const auto failed_reorder = failed_reorder_applier.apply(
+        {}, reorder_plan, reorder_options);
+    CHECK(failed_reorder.status == MoveApplyStatus::NativeReorderFailed);
+    CHECK(failed_reorder.nativeReorderStatus == NativeReorderStatus::ApiFailure);
+    CHECK(failed_reorder.lastError == 4321);
+
+    FakeDesktop reverted_reorder_desktop;
+    reverted_reorder_desktop.windows = dry_reorder_desktop.windows;
+    reverted_reorder_desktop.onCapture = [
+        &reverted_reorder_desktop, first, second](int capture_count) {
+        if (capture_count == 3) {
+            reverted_reorder_desktop.find(first)->zIndex = 1;
+            reverted_reorder_desktop.find(second)->zIndex = 2;
+        }
+    };
+    InternalMoveTracker reverted_reorder_tracker;
+    VerifiedMoveApplier reverted_reorder_applier(
+        reverted_reorder_desktop, reverted_reorder_desktop, reverted_reorder_tracker);
+    const auto reverted_reorder = reverted_reorder_applier.apply(
+        {}, reorder_plan, reorder_options);
+    CHECK(reverted_reorder.status == MoveApplyStatus::VerificationFailed);
+    CHECK(reverted_reorder.appliedReorders.size() == 1);
+
+    auto topmost_reorder_desktop = dry_reorder_desktop;
+    topmost_reorder_desktop.windows[2].topmost = true;
+    InternalMoveTracker topmost_reorder_tracker;
+    VerifiedMoveApplier topmost_reorder_applier(
+        topmost_reorder_desktop, topmost_reorder_desktop, topmost_reorder_tracker);
+    CHECK(topmost_reorder_applier.apply({}, reorder_plan, reorder_options).status ==
+          MoveApplyStatus::WindowUnavailable);
 
     FakeDesktop desktop;
     desktop.windows = dry_desktop.windows;

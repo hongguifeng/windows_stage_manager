@@ -95,6 +95,36 @@ public:
         return {stage_manager::window::NativeMoveStatus::Moved, 0};
     }
 
+    stage_manager::window::NativeReorderResult reorder(
+        const stage_manager::window::WindowKey& key,
+        const stage_manager::window::WindowKey& insert_after) override
+    {
+        const auto target = std::find_if(windows.begin(), windows.end(), [&key](const auto& item) {
+            return item.key.hwnd == key.hwnd && item.key.processId == key.processId;
+        });
+        const auto reference = std::find_if(
+            windows.begin(), windows.end(), [&insert_after](const auto& item) {
+                return item.key.hwnd == insert_after.hwnd &&
+                    item.key.processId == insert_after.processId;
+            });
+        if (target == windows.end()) {
+            return {stage_manager::window::NativeReorderStatus::InvalidWindow, 1400};
+        }
+        if (reference == windows.end()) {
+            return {stage_manager::window::NativeReorderStatus::InvalidReference, 1400};
+        }
+        const auto target_z = target->zIndex;
+        const auto reference_z = reference->zIndex;
+        for (auto& window : windows) {
+            if (window.zIndex > reference_z && window.zIndex < target_z) {
+                ++window.zIndex;
+            }
+        }
+        target->zIndex = reference_z + 1;
+        ++reorderCalls;
+        return {stage_manager::window::NativeReorderStatus::Reordered, 0};
+    }
+
     std::vector<stage_manager::window::WindowSnapshot> windows;
     std::optional<int> switchMonitorAtCapture;
     std::optional<int> moveWindowAtCapture;
@@ -102,6 +132,7 @@ public:
     std::uintptr_t externallyMovedWindow = 0;
     int captureCalls = 0;
     int moveCalls = 0;
+    int reorderCalls = 0;
 };
 
 stage_manager::app::Settings test_settings()
