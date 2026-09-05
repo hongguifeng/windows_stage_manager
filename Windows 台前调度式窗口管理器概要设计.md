@@ -257,7 +257,7 @@ exposed(zone) = zone - union(visualRect of higher blockers)
 1. 活动窗口位置不被计划修改。
 2. 候选窗口仍属于允许的显示器、虚拟桌面和工作区范围。
 3. 候选窗口尺寸不变，保留最小屏上区域。
-4. 每个受管理窗口至少一个交互区达到 `RepairTargetEdge`。
+4. 每个受管理窗口优先有两个不同边缘的交互区达到 `RepairTargetEdge`；首选目标无解时允许降级为至少一个。
 5. 不改变 Z-order、激活状态和 owner/owned 关系。
 
 所有硬约束通过后，软代价按以下顺序比较：
@@ -313,7 +313,7 @@ solve(snapshot, activeWindow, transaction):
 
 ### 7.4 滞后和布局稳定
 
-当当前交互区仍不低于 `MinExposedEdge` 时不触发修复；触发后候选必须达到 `RepairTargetEdge`。一次拖动事务中，已选择的边方向作为软偏好，除非该方向无解或代价明显更高，否则不切换到另一条边。
+协调器先以 `PreferredExposedEdges=2` 求解；失败后以 `MinimumExposedEdges=1` 重新求解，并记录降级。达到首选数量时不触发修复；只达到最低数量时仍尝试恢复首选数量。一次拖动事务中，已选择的边方向作为软偏好，除非该方向无解或代价明显更高，否则不切换到另一条边。
 
 事务保存 `lastStableLayout` 和 `seenStates`。若新计划使布局质量变差、产生周期或超过时间/移动次数上限，放弃该计划并进入无解/暂停状态。
 

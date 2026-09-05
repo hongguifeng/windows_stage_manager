@@ -58,6 +58,8 @@
 ```text
 MinExposedEdge      = 48 DIP
 MinExposedDepth     = 24 DIP
+PreferredExposedEdges = 2
+MinimumExposedEdges = 1
 RepairTargetEdge    = 64 DIP
 MinOnscreenWidth    = 100 DIP
 MinOnscreenHeight   = 100 DIP
@@ -553,7 +555,7 @@ Verifier
 
 1. 活动窗口矩形与输入相同。
 2. 所有受管理窗口尺寸、显示器、虚拟桌面和 Z-order 合法。
-3. 每个受管理窗口至少一个交互区满足 RepairTargetEdge。
+3. 每个受管理窗口优先至少两个不同边缘的交互区满足 RepairTargetEdge；两边缘无解时至少一个，并标记降级。
 4. 所有窗口满足最小屏上区域。
 5. MovePlan 不包含重复状态或相同窗口的无意义零位移。
 6. 模拟结果与重新计算的违规集合一致。
@@ -645,4 +647,3 @@ api_failure_count
 7. 将所有未完成自动布局路径固定为 DryRun，避免半成品移动真实窗口。
 
 该迭代的验收结果应是：可以在真实 Windows 11 桌面上启动程序，看到稳定的窗口快照和事件日志，并能安全暂停/退出；没有任何窗口被自动移动。
-

@@ -32,6 +32,8 @@ try {
     @"
 enabled=true
 dry_run=false
+preferred_exposed_edges=2
+minimum_exposed_edges=1
 max_managed_windows=20
 max_consecutive_failures=3
 "@ | Set-Content -LiteralPath (Join-Path $stagingRoot "settings.example.ini") -Encoding utf8

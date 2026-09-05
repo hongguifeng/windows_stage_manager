@@ -13,11 +13,13 @@
 ```ini
 enabled=true
 dry_run=false
+preferred_exposed_edges=2
+minimum_exposed_edges=1
 max_managed_windows=20
 max_consecutive_failures=3
 ```
 
-程序开箱即可工作，只改变非活动窗口的位置，不改变尺寸、激活状态或 Z-order。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序。
+程序开箱即可工作，只改变非活动窗口的位置，不改变尺寸、激活状态或 Z-order。默认先尝试让每个受影响窗口保留两个独立的合格边缘；只有该目标无解时才降级为一个边缘。日志中的 `required_exposed_edges` 是本批次实际采用的目标，`edge_goal_degraded=true` 表示发生了降级。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序。
 
 ## 日常操作与故障处理
 
