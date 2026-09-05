@@ -55,9 +55,27 @@ ViolationScanResult scan_visibility_violations(
         Violation violation;
         violation.targetIndex = target_index;
         std::uint32_t exposed_edge_count = 0;
-        const auto zones = geometry::make_interaction_zones(
+        auto zones = geometry::make_interaction_zones(
             target.visualRect, requirements.minimumExposedDepth);
+        if (requirements.minimumExposedEdges > 1) {
+            // Do not count the same exposed corner strip as multiple edges.
+            // For a multi-edge goal, each qualifying segment must extend beyond
+            // the perpendicular edge-depth zones and therefore be independently
+            // visible to the user.
+            zones[0].bounds.top = zones[2].bounds.bottom;
+            zones[0].bounds.bottom = zones[3].bounds.top;
+            zones[1].bounds.top = zones[2].bounds.bottom;
+            zones[1].bounds.bottom = zones[3].bounds.top;
+            zones[2].bounds.left = zones[0].bounds.right;
+            zones[2].bounds.right = zones[1].bounds.left;
+            zones[3].bounds.left = zones[0].bounds.right;
+            zones[3].bounds.right = zones[1].bounds.left;
+        }
         for (const auto& zone : zones) {
+            if (zone.bounds.empty()) {
+                violation.failedEdges.push_back(zone.edge);
+                continue;
+            }
             const auto zone_region = region_of(zone.bounds, requirements.maximumRegionRectangles);
             const auto work_region = region_of(
                 target.workArea, requirements.maximumRegionRectangles);

@@ -233,6 +233,8 @@ int main()
     CHECK(dry_result.solve.status == SolveStatus::Solved);
     CHECK(dry_result.solve.moves.size() == 1);
     CHECK(dry_result.solve.moves[0].window.hwnd == 2);
+    CHECK(dry_result.solve.moves[0].to.left != dry_result.solve.moves[0].from.left);
+    CHECK(dry_result.solve.moves[0].to.top != dry_result.solve.moves[0].from.top);
     CHECK(dry_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(dry.desktop.moveCalls == 0);
     CHECK(dry_result.events.inputCount == 4);
@@ -261,8 +263,14 @@ int main()
     CHECK(chain_result.status == MvpBatchStatus::DryRun);
     CHECK(chain_result.solve.status == SolveStatus::Solved);
     CHECK(chain_result.managedWindowCount == 4);
-    CHECK(chain_result.movedWindowCount == 1);
-    CHECK(chain_result.solve.moves.size() == 1);
+    CHECK(chain_result.movedWindowCount >= 1);
+    CHECK(chain_result.solve.moves.size() >= 1);
+    const auto chain_visibility = stage_manager::solver::scan_visibility_violations(
+        chain_result.solve.finalSnapshot,
+        stage_manager::solver::VisibilityRequirements{48, 24, 128, 2});
+    CHECK(chain_visibility.status ==
+          stage_manager::solver::ViolationScanStatus::Ok);
+    CHECK(chain_visibility.violations.empty());
 
     MvpFixture two_edge_goal;
     two_edge_goal.desktop.windows = {

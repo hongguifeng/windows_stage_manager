@@ -117,6 +117,31 @@ int main()
     CHECK(two_edges_required.violations[0].targetIndex == 3);
     CHECK(two_edges_required.violations[0].failedEdges.size() == 3);
 
+    LayoutSnapshot single_strip_exposure;
+    single_strip_exposure.windows = {
+        make_window(20, {100, 100, 300, 300}, 0, false),
+        make_window(21, {36, 100, 236, 300}, 1, true),
+    };
+    const auto single_strip_two_edge_scan = scan_visibility_violations(
+        single_strip_exposure, VisibilityRequirements{48, 24, 128, 2});
+    CHECK(single_strip_two_edge_scan.status == ViolationScanStatus::Ok);
+    CHECK(single_strip_two_edge_scan.violations.size() == 1);
+    CHECK(single_strip_two_edge_scan.violations[0].targetIndex == 1);
+    CHECK(single_strip_two_edge_scan.violations[0].failedEdges.size() == 3);
+
+    const auto single_strip_one_edge_scan = scan_visibility_violations(
+        single_strip_exposure, VisibilityRequirements{48, 24, 128, 1});
+    CHECK(single_strip_one_edge_scan.status == ViolationScanStatus::Ok);
+    CHECK(single_strip_one_edge_scan.violations.empty());
+
+    auto independent_two_edge_exposure = single_strip_exposure;
+    independent_two_edge_exposure.windows[1].placementRect = {36, 36, 236, 236};
+    independent_two_edge_exposure.windows[1].visualRect = {36, 36, 236, 236};
+    const auto independent_two_edge_scan = scan_visibility_violations(
+        independent_two_edge_exposure, VisibilityRequirements{48, 24, 128, 2});
+    CHECK(independent_two_edge_scan.status == ViolationScanStatus::Ok);
+    CHECK(independent_two_edge_scan.violations.empty());
+
     auto unmanaged_target = covered;
     unmanaged_target.windows[1].managed = false;
     CHECK(scan_visibility_violations(unmanaged_target, requirements).violations.empty());

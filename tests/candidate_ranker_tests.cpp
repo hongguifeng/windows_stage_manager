@@ -95,7 +95,7 @@ int main()
     CHECK((ranked.accepted.front().candidate.placementRect == Rect{164, 164, 364, 364}));
     CHECK(ranked.accepted.front().cost.manhattanDistance == 128);
     CHECK(ranked.accepted.front().cost.visibilityPreference ==
-          VisibilityPreferenceRank::LeftTop);
+          VisibilityPreferenceRank::RightBottom);
     CHECK(ranked.accepted.front().cost.centerDistance == 28);
     CHECK(ranked.accepted.front().cost.stableDistance == 128);
     CHECK(ranked.accepted.front().cost.directionChangePenalty == 1);
@@ -152,7 +152,7 @@ int main()
     CHECK((preference_over_distance.accepted.front().candidate.placementRect ==
            Rect{164, 100, 364, 300}));
     CHECK(preference_over_distance.accepted.front().cost.visibilityPreference ==
-          VisibilityPreferenceRank::RightBottom);
+          VisibilityPreferenceRank::Unranked);
     CHECK(preference_over_distance.accepted.front().cost.centerDistance == 64);
     CHECK(preference_over_distance.accepted.front().cost.manhattanDistance == 64);
     CHECK(preference_over_distance.accepted[1].cost.visibilityPreference ==
