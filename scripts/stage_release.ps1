@@ -44,6 +44,7 @@ max_consecutive_failures=3
         commit = $Commit
         createdUtc = [DateTime]::UtcNow.ToString("o")
         dryRunDefault = $false
+        centerActivatedWindowDefault = $true
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingRoot "manifest.json") -Encoding utf8
 
     $temporaryPackage = "$packagePath.tmp.zip"

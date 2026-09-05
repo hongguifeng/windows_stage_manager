@@ -25,6 +25,7 @@ try {
     if ($settings -notmatch '(?m)^minimum_exposed_edges=1$') { throw "minimum edge count is missing" }
     $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json
     if ($manifest.dryRunDefault -ne $false) { throw "release manifest default mismatch" }
+    if ($manifest.centerActivatedWindowDefault -ne $true) { throw "activation centering manifest default mismatch" }
 } finally {
     $resolved = [IO.Path]::GetFullPath($testRoot)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
