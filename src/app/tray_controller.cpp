@@ -15,6 +15,9 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
     if (field == SettingField::DryRun) {
         return value == 0 ? L"Apply window changes" : L"Preview only (DryRun)";
     }
+    if (field == SettingField::CenterActivatedWindow) {
+        return value == 0 ? L"Off" : L"On";
+    }
     auto text = std::to_wstring(value);
     switch (field) {
     case SettingField::MinimumExposedEdgeDip:
@@ -39,6 +42,7 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
     case SettingField::MaximumConsecutiveFailures:
         return text + L" failures";
     case SettingField::DryRun:
+    case SettingField::CenterActivatedWindow:
     case SettingField::Count:
         return text;
     }
@@ -50,6 +54,8 @@ const wchar_t* field_title(SettingField field) noexcept
     switch (field) {
     case SettingField::DryRun:
         return L"Run mode";
+    case SettingField::CenterActivatedWindow:
+        return L"Center newly activated window";
     case SettingField::MinimumExposedEdgeDip:
         return L"Exposed edge length";
     case SettingField::MinimumExposedDepthDip:

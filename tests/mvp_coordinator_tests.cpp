@@ -469,6 +469,24 @@ int main()
     CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(activated.desktop.moveCalls == 0);
 
+    auto centering_disabled_settings = test_settings();
+    centering_disabled_settings.centerActivatedWindow = false;
+    MvpFixture centering_disabled(centering_disabled_settings);
+    centering_disabled.desktop.windows = {
+        make_window(152, {100, 100, 400, 400}, 0),
+        make_window(153, {100, 100, 400, 400}, 1),
+    };
+    const auto centering_disabled_result =
+        centering_disabled.coordinator.process(foreground_event(152), true, true);
+    CHECK(centering_disabled_result.status == MvpBatchStatus::DryRun);
+    CHECK(!centering_disabled_result.activationCenteringUsed);
+    CHECK(!centering_disabled_result.solve.moves.empty());
+    CHECK(std::none_of(centering_disabled_result.solve.moves.begin(),
+                       centering_disabled_result.solve.moves.end(),
+                       [](const auto& move) { return move.window.hwnd == 152; }));
+    CHECK(centering_disabled_result.solve.moves.front().window.hwnd == 153);
+    CHECK(centering_disabled.desktop.moveCalls == 0);
+
     MvpFixture activation_centering;
     activation_centering.desktop.windows = {
         make_window(160, {0, 0, 200, 200}, 0),

@@ -12,6 +12,7 @@ namespace stage_manager::app {
 
 enum class SettingField : std::uint8_t {
     DryRun,
+    CenterActivatedWindow,
     MinimumExposedEdgeDip,
     MinimumExposedDepthDip,
     PreferredExposedEdges,

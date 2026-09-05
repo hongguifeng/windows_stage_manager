@@ -32,6 +32,7 @@ try {
     @"
 enabled=true
 dry_run=false
+center_activated_window=true
 preferred_exposed_edges=2
 minimum_exposed_edges=1
 max_managed_windows=20

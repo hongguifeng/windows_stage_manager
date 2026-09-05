@@ -21,6 +21,7 @@ int main()
     }
     CHECK(defaults.preferredExposedEdges == 2);
     CHECK(defaults.minimumExposedEdges == 1);
+    CHECK(defaults.centerActivatedWindow);
 
     for (const auto field : stage_manager::app::setting_fields()) {
         const auto choices = stage_manager::app::setting_choices(field);
@@ -46,6 +47,9 @@ int main()
         menu_settings, SettingSelection{SettingField::DryRun, 1}));
     CHECK(menu_settings.dryRun);
     CHECK(stage_manager::app::apply_setting_selection(
+        menu_settings, SettingSelection{SettingField::CenterActivatedWindow, 0}));
+    CHECK(!menu_settings.centerActivatedWindow);
+    CHECK(stage_manager::app::apply_setting_selection(
         menu_settings, SettingSelection{SettingField::MinimumExposedEdges, 4}));
     CHECK(menu_settings.minimumExposedEdges == 4);
     CHECK(menu_settings.preferredExposedEdges == 4);
@@ -62,6 +66,7 @@ int main()
     stage_manager::app::Settings expected;
     expected.enabled = false;
     expected.dryRun = false;
+    expected.centerActivatedWindow = false;
     expected.minExposedEdgeDip = 56;
     expected.preferredExposedEdges = 3;
     expected.minimumExposedEdges = 2;
@@ -74,6 +79,7 @@ int main()
     const auto actual = stage_manager::app::load_settings(settings_path);
     CHECK(actual.enabled == expected.enabled);
     CHECK(actual.dryRun == expected.dryRun);
+    CHECK(actual.centerActivatedWindow == expected.centerActivatedWindow);
     CHECK(actual.minExposedEdgeDip == expected.minExposedEdgeDip);
     CHECK(actual.preferredExposedEdges == expected.preferredExposedEdges);
     CHECK(actual.minimumExposedEdges == expected.minimumExposedEdges);

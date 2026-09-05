@@ -34,6 +34,9 @@ int main()
     const auto preferred_two =
         stage_manager::app::setting_command_id(SettingField::PreferredExposedEdges, 1);
     CHECK(controller.is_setting_checked(preferred_two));
+    const auto centering_on =
+        stage_manager::app::setting_command_id(SettingField::CenterActivatedWindow, 1);
+    CHECK(controller.is_setting_checked(centering_on));
 
     const HMENU menu = stage_manager::app::create_tray_context_menu(settings, true);
     CHECK(menu != nullptr);

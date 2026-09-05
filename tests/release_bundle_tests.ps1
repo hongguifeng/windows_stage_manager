@@ -20,6 +20,7 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $expanded "stage_manager.exe") -PathType Leaf)) { throw "executable missing" }
     $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
     if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
+    if ($settings -notmatch '(?m)^center_activated_window=true$') { throw "activation centering default is missing" }
     if ($settings -notmatch '(?m)^preferred_exposed_edges=2$') { throw "preferred edge count is missing" }
     if ($settings -notmatch '(?m)^minimum_exposed_edges=1$') { throw "minimum edge count is missing" }
     $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json

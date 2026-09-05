@@ -8,6 +8,7 @@ namespace {
 
 constexpr std::array kFields = {
     SettingField::DryRun,
+    SettingField::CenterActivatedWindow,
     SettingField::MinimumExposedEdgeDip,
     SettingField::MinimumExposedDepthDip,
     SettingField::PreferredExposedEdges,
@@ -55,6 +56,7 @@ std::span<const std::uint32_t> setting_choices(SettingField field) noexcept
 {
     switch (field) {
     case SettingField::DryRun:
+    case SettingField::CenterActivatedWindow:
         return kBooleanChoices;
     case SettingField::MinimumExposedEdgeDip:
         return kEdgeLengthChoices;
@@ -93,6 +95,8 @@ std::string_view setting_field_name(SettingField field) noexcept
     switch (field) {
     case SettingField::DryRun:
         return "dry_run";
+    case SettingField::CenterActivatedWindow:
+        return "center_activated_window";
     case SettingField::MinimumExposedEdgeDip:
         return "min_exposed_edge_dip";
     case SettingField::MinimumExposedDepthDip:
@@ -132,6 +136,8 @@ std::uint32_t current_setting_value(const Settings& settings, SettingField field
     switch (field) {
     case SettingField::DryRun:
         return settings.dryRun ? 1u : 0u;
+    case SettingField::CenterActivatedWindow:
+        return settings.centerActivatedWindow ? 1u : 0u;
     case SettingField::MinimumExposedEdgeDip:
         return settings.minExposedEdgeDip;
     case SettingField::MinimumExposedDepthDip:
@@ -200,6 +206,9 @@ bool apply_setting_selection(Settings& settings, const SettingSelection& selecti
     switch (selection.field) {
     case SettingField::DryRun:
         settings.dryRun = selection.value != 0;
+        break;
+    case SettingField::CenterActivatedWindow:
+        settings.centerActivatedWindow = selection.value != 0;
         break;
     case SettingField::MinimumExposedEdgeDip:
         settings.minExposedEdgeDip = selection.value;

@@ -8,6 +8,7 @@ namespace stage_manager::app {
 struct Settings {
     bool enabled = true;
     bool dryRun = false;
+    bool centerActivatedWindow = true;
 
     std::uint32_t minExposedEdgeDip = 48;
     std::uint32_t minExposedDepthDip = 24;

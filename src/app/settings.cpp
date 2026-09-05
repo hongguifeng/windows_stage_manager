@@ -63,6 +63,10 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_bool(value)) {
             settings.dryRun = *parsed;
         }
+    } else if (key == "center_activated_window") {
+        if (const auto parsed = parse_bool(value)) {
+            settings.centerActivatedWindow = *parsed;
+        }
     } else if (key == "min_exposed_edge_dip") {
         if (const auto parsed = parse_uint(value)) {
             settings.minExposedEdgeDip = *parsed;
@@ -199,6 +203,8 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
 
     output << "enabled=" << (settings.enabled ? "true" : "false") << '\n'
            << "dry_run=" << (settings.dryRun ? "true" : "false") << '\n'
+           << "center_activated_window="
+           << (settings.centerActivatedWindow ? "true" : "false") << '\n'
            << "min_exposed_edge_dip=" << settings.minExposedEdgeDip << '\n'
            << "min_exposed_depth_dip=" << settings.minExposedDepthDip << '\n'
            << "preferred_exposed_edges=" << settings.preferredExposedEdges << '\n'

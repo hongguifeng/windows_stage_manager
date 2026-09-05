@@ -242,7 +242,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
                                          });
         starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
         guard_.activate(next_transaction_id_, layout_generation_);
-        return settle(dry_run, std::move(result.events), true);
+        return settle(
+            dry_run, std::move(result.events), settings_.centerActivatedWindow);
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
