@@ -77,6 +77,21 @@ public:
         result.status = stage_manager::window::SnapshotStatus::Ok;
         result.complete = true;
         result.windows = windows;
+        if (omitWindowAtCapture && captureCalls == *omitWindowAtCapture) {
+            std::erase_if(result.windows, [this](const auto& item) {
+                return item.key.hwnd == transientWindow;
+            });
+        }
+        if (failWindowQueriesAtCapture && captureCalls == *failWindowQueriesAtCapture) {
+            const auto iterator = std::find_if(
+                result.windows.begin(), result.windows.end(), [this](const auto& item) {
+                    return item.key.hwnd == transientWindow;
+                });
+            if (iterator != result.windows.end()) {
+                iterator->queryFailures = stage_manager::window::field_bit(
+                    stage_manager::window::SnapshotField::VisualRect);
+            }
+        }
         return result;
     }
 
@@ -137,9 +152,12 @@ public:
     std::optional<int> switchMonitorAtCapture;
     std::optional<int> moveWindowAtCapture;
     std::optional<int> changeZOrderAtCapture;
+    std::optional<int> omitWindowAtCapture;
+    std::optional<int> failWindowQueriesAtCapture;
     std::uintptr_t switchMonitorWindow = 0;
     std::uintptr_t externallyMovedWindow = 0;
     std::uintptr_t zOrderChangedWindow = 0;
+    std::uintptr_t transientWindow = 0;
     int captureCalls = 0;
     int moveCalls = 0;
     int reorderCalls = 0;
@@ -288,8 +306,8 @@ int main()
         {WindowEventType::MoveSizeEnd, 1, 1, 104, 5},
     };
     const auto duplicate_result = dry.coordinator.process(duplicate_end, true, true);
-    CHECK(duplicate_result.status == MvpBatchStatus::Unsatisfiable);
-    CHECK(duplicate_result.solve.status == SolveStatus::Unsatisfiable);
+    CHECK(duplicate_result.status == MvpBatchStatus::DryRun);
+    CHECK(duplicate_result.solve.status == SolveStatus::InvalidSnapshot);
     CHECK(duplicate_result.solve.moves.empty());
 
     MvpFixture chain;
@@ -648,6 +666,71 @@ int main()
     CHECK(activated_by_drag.desktop.windows[0].placementRect.top == 50);
     CHECK(activated_by_drag.desktop.windows[0].placementRect.right == 250);
     CHECK(activated_by_drag.desktop.windows[0].placementRect.bottom == 250);
+
+    MvpFixture activation_capture_retry;
+    activation_capture_retry.desktop.windows = {
+        make_window(167, {0, 0, 200, 200}, 0),
+    };
+    activation_capture_retry.desktop.omitWindowAtCapture = 1;
+    activation_capture_retry.desktop.transientWindow = 167;
+    const auto retried_missing_activation = activation_capture_retry.coordinator.process(
+        foreground_event(167), true, true);
+    CHECK(retried_missing_activation.status == MvpBatchStatus::DryRun);
+    CHECK(retried_missing_activation.activationPlacementUsed);
+    CHECK(activation_capture_retry.desktop.captureCalls == 2);
+
+    MvpFixture activation_query_retry;
+    activation_query_retry.desktop.windows = {
+        make_window(168, {0, 0, 200, 200}, 0),
+    };
+    activation_query_retry.desktop.failWindowQueriesAtCapture = 1;
+    activation_query_retry.desktop.transientWindow = 168;
+    const auto retried_query_activation = activation_query_retry.coordinator.process(
+        foreground_event(168), true, true);
+    CHECK(retried_query_activation.status == MvpBatchStatus::DryRun);
+    CHECK(retried_query_activation.activationPlacementUsed);
+    CHECK(activation_query_retry.desktop.captureCalls == 2);
+
+    MvpFixture activation_snapshot_reuse;
+    activation_snapshot_reuse.desktop.windows = {
+        make_window(169, {0, 0, 200, 200}, 0),
+    };
+    activation_snapshot_reuse.desktop.omitWindowAtCapture = 2;
+    activation_snapshot_reuse.desktop.transientWindow = 169;
+    const auto reused_activation = activation_snapshot_reuse.coordinator.process(
+        foreground_event(169), true, true);
+    CHECK(reused_activation.status == MvpBatchStatus::DryRun);
+    CHECK(reused_activation.activationPlacementUsed);
+    CHECK(activation_snapshot_reuse.desktop.captureCalls == 1);
+
+    const auto switch_after_drag = [](bool include_move_end) {
+        MvpFixture fixture;
+        fixture.desktop.windows = {
+            make_window(181, {0, 0, 200, 200}, 0),
+            make_window(180, {400, 500, 600, 700}, 1),
+        };
+        const std::vector<WindowEvent> start = {
+            {WindowEventType::MoveSizeStart, 180, 1, 100, 1},
+        };
+        const auto started = fixture.coordinator.process(start, true, false);
+        CHECK(started.status == MvpBatchStatus::Dragging);
+        std::vector<WindowEvent> switched;
+        if (include_move_end) {
+            switched.push_back({WindowEventType::MoveSizeEnd, 180, 1, 101, 2});
+        }
+        switched.push_back({WindowEventType::Foreground, 181, 1, 102, 3});
+        const auto result = fixture.coordinator.process(switched, true, false);
+        CHECK(result.status == MvpBatchStatus::Applied ||
+              result.status == MvpBatchStatus::PartiallySolved);
+        CHECK(result.activationPlacementUsed);
+        CHECK(std::any_of(result.solve.moves.begin(), result.solve.moves.end(),
+                          [](const auto& move) { return move.window.hwnd == 181; }));
+        CHECK(fixture.desktop.windows[0].placementRect.left == 400);
+        CHECK(fixture.desktop.windows[0].placementRect.top == 500);
+        return 0;
+    };
+    CHECK(switch_after_drag(true) == 0);
+    CHECK(switch_after_drag(false) == 0);
 
     MvpFixture current_monitor_center;
     auto offset_frame = make_window(165, {1090, 90, 1310, 310}, 0);

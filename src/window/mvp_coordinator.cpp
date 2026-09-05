@@ -144,13 +144,19 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         return result;
     }
 
-    bool should_settle = false;
+    std::optional<NativeWindowHandle> ended_drag_window;
     std::optional<NativeWindowHandle> foreground_window;
+    bool foreground_changed = false;
     for (const auto& event : result.events.events) {
         provider_.handle_event(event);
         if (event.type == WindowEventType::MoveSizeStart) {
             guard_.observe(event);
+            ended_drag_window.reset();
+            foreground_window.reset();
+            foreground_changed = false;
             active_window_ = event.hwnd;
+            foreground_window_ = event.hwnd;
+            dragging_window_ = event.hwnd;
             ++next_transaction_id_;
             ++layout_generation_;
             transaction_seen_states_.clear();
@@ -171,9 +177,13 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             status_ = MvpBatchStatus::Dragging;
         } else if (event.type == WindowEventType::Foreground) {
             foreground_window = event.hwnd;
+            if (event.hwnd != foreground_window_) {
+                foreground_changed = true;
+                foreground_window_ = event.hwnd;
+            }
         } else if (event.type == WindowEventType::MoveSizeEnd &&
-                   event.hwnd == active_window_) {
-            should_settle = true;
+                   dragging_window_ && event.hwnd == *dragging_window_) {
+            ended_drag_window = event.hwnd;
         } else if (event.type == WindowEventType::LocationChange) {
             const auto token = internal_moves_.find(event.hwnd);
             if (token) {
@@ -184,17 +194,38 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         }
     }
 
-    if (should_settle) {
-        return settle(dry_run, std::move(result.events));
-    }
-    if (foreground_window && status_ != MvpBatchStatus::Dragging &&
-        *foreground_window != active_window_) {
+    // A genuine foreground transition supersedes an older move/size transaction.
+    // This also recovers when Windows omits the corresponding MoveSizeEnd event.
+    // A foreground event for the window currently being dragged is intentionally
+    // ignored so a user drag is never replaced by activation placement.
+    if (foreground_window && foreground_changed &&
+        (!dragging_window_ || *foreground_window != *dragging_window_)) {
+        dragging_window_.reset();
         active_window_ = *foreground_window;
         ++next_transaction_id_;
         ++layout_generation_;
         transaction_seen_states_.clear();
         preferred_edge_.reset();
-        const auto initial = capture(SnapshotRefreshReason::Event);
+        std::optional<WindowSnapshotBatch> initial;
+        constexpr int kMaximumCaptureAttempts = 3;
+        for (int attempt = 0; attempt < kMaximumCaptureAttempts; ++attempt) {
+            initial = capture(SnapshotRefreshReason::Event);
+            if (!initial) {
+                continue;
+            }
+            const auto candidate = std::find_if(
+                initial->windows.begin(), initial->windows.end(), [this](const auto& window) {
+                    return window.key.hwnd == active_window_;
+                });
+            if (candidate == initial->windows.end()) {
+                continue;
+            }
+            if (candidate->managed ||
+                classifier_.classify(*candidate, initial->windows).reason !=
+                    UnmanagedReason::ApiQueryFailed) {
+                break;
+            }
+        }
         if (!initial) {
             status_ = MvpBatchStatus::Rebuilding;
             result.status = status_;
@@ -208,7 +239,15 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
         guard_.activate(next_transaction_id_, layout_generation_);
         return settle(
-            dry_run, std::move(result.events), settings_.placeActivatedWindow);
+            dry_run,
+            std::move(result.events),
+            settings_.placeActivatedWindow,
+            std::move(initial));
+    }
+    if (ended_drag_window && dragging_window_ &&
+        *ended_drag_window == *dragging_window_) {
+        dragging_window_.reset();
+        return settle(dry_run, std::move(result.events));
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
@@ -226,7 +265,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
 
 MvpBatchResult MvpCoordinator::settle(bool dry_run,
                                       CoalescedBatch events,
-                                      bool place_activated_window)
+                                      bool place_activated_window,
+                                      std::optional<WindowSnapshotBatch> captured)
 {
     MvpBatchResult result;
     result.events = std::move(events);
@@ -234,7 +274,9 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     result.layoutGeneration = layout_generation_;
     status_ = MvpBatchStatus::Idle;
 
-    auto captured = capture(SnapshotRefreshReason::Event);
+    if (!captured) {
+        captured = capture(SnapshotRefreshReason::Event);
+    }
     if (!captured) {
         status_ = MvpBatchStatus::Rebuilding;
         result.status = status_;

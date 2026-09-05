@@ -77,7 +77,8 @@ private:
     std::optional<WindowSnapshotBatch> capture(SnapshotRefreshReason reason);
     MvpBatchResult settle(bool dry_run,
                           CoalescedBatch events,
-                          bool place_activated_window = false);
+                          bool place_activated_window = false,
+                          std::optional<WindowSnapshotBatch> captured = std::nullopt);
 
     IWindowProvider& provider_;
     IMoveApplier& applier_;
@@ -88,6 +89,8 @@ private:
     EventCoalescer coalescer_;
     MvpBatchStatus status_ = MvpBatchStatus::Idle;
     NativeWindowHandle active_window_ = 0;
+    NativeWindowHandle foreground_window_ = 0;
+    std::optional<NativeWindowHandle> dragging_window_;
     NativeMonitorHandle starting_monitor_ = 0;
     std::uint64_t next_transaction_id_ = 0;
     std::uint64_t layout_generation_ = 0;
