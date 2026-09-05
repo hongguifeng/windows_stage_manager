@@ -4,7 +4,7 @@
 
 A system-tray utility that automatically organizes ordinary desktop windows. When you activate a background window, the app places it at your chosen position and arranges covered windows into a title-bar staircase so that every window retains two clickable edges. It **only moves windows** and never changes their size or Z-order.
 
-![After a background window is activated, it moves to the selected position (horizontally centered and bottom-aligned by default), while covered windows retain two independent clickable edges](assets/feature-overview.svg)
+![After a background window is activated, it moves to the selected position (horizontally centered and bottom-aligned by default), while covered windows retain two independent clickable edges](assets/feature-overview.en.svg)
 
 ## Quick start
 

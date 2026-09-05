@@ -27,6 +27,7 @@ $requiredAgentInstruction = '\u6bcf\u6b21\u66f4\u65b0\u529f\u80fd\u4e4b\u540e\uf
 $functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
 $design = Read-WorkspaceFile "docs\SOFTWARE_DESIGN.md"
 $feature = Read-WorkspaceFile "assets\feature-overview.svg"
+$englishFeature = Read-WorkspaceFile "assets\feature-overview.en.svg"
 $versionHeader = Read-WorkspaceFile "src\app\version.h"
 $settingsHeader = Read-WorkspaceFile "src\app\settings.h"
 $settingsSource = Read-WorkspaceFile "src\app\settings.cpp"
@@ -62,6 +63,8 @@ Assert-Match $englishReadme 'Ctrl\+Alt\+F12' `
     "English README does not document the emergency shortcut"
 Assert-Match $englishReadme 'windows-debug' `
     "English README does not document the build preset"
+Assert-Match $englishReadme 'assets/feature-overview\.en\.svg' `
+    "English README does not use the English feature illustration"
 Assert-Match $readme 'docs/SOFTWARE_DESIGN\.md' `
     "README does not link to the current software design document"
 Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
@@ -201,8 +204,16 @@ if ($feature -notmatch '<svg' -or
     $feature -notmatch '<title') {
     throw "README feature illustration is invalid"
 }
+if ($englishFeature -notmatch '<svg' -or
+    $englishFeature -notmatch 'viewBox="0 0 1400 780"' -or
+    $englishFeature -notmatch '<title' -or
+    $englishFeature -notmatch 'Place the activated window' -or
+    $englishFeature -match '[\u4e00-\u9fff]') {
+    throw "English README feature illustration is missing, invalid, or contains Chinese text"
+}
 foreach ($asset in @(
     'assets\feature-overview.svg',
+    'assets\feature-overview.en.svg',
     'assets\windows-stage-manager.svg',
     'assets\windows-stage-manager.ico'
 )) {

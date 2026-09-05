@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title desc">
+  <title id="title">How Windows Stage Manager organizes windows</title>
+  <desc id="desc">After a background window is activated, it moves to the selected position, centered horizontally and aligned to the bottom by default. Covered windows move closer to the work-area center while retaining two independent clickable edges.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071126"/>
+      <stop offset="1" stop-color="#102553"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eaf3ff"/>
+      <stop offset="1" stop-color="#cfdef5"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#020817" flood-opacity=".28"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0l12 6-12 6z" fill="#7fdbff"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="780" rx="36" fill="url(#page)"/>
+  <g transform="translate(56 45)">
+    <rect width="62" height="62" rx="15" fill="#0b1733" stroke="#22c7f2" stroke-width="3"/>
+    <path d="M15 44V17h29" fill="none" stroke="#ffd166" stroke-width="7" stroke-linecap="round"/>
+    <rect x="25" y="25" width="27" height="25" rx="6" fill="#f7fbff"/>
+    <rect x="25" y="25" width="27" height="8" rx="5" fill="#2764f5"/>
+  </g>
+  <text x="138" y="76" fill="#f7fbff" font-family="Segoe UI, sans-serif" font-size="34" font-weight="700">How the app organizes windows after a click</text>
+  <text x="138" y="110" fill="#9eb7db" font-family="Segoe UI, sans-serif" font-size="19">Respect the active window · Prefer two independent clickable edges · Stay near the center</text>
+
+  <g transform="translate(55 155)">
+    <rect width="395" height="475" rx="28" fill="#12264b" stroke="#264778" stroke-width="2"/>
+    <circle cx="43" cy="43" r="21" fill="#2764f5"/>
+    <text x="43" y="50" text-anchor="middle" fill="white" font-family="Segoe UI, sans-serif" font-size="20" font-weight="700">1</text>
+    <text x="78" y="50" fill="#f7fbff" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Click a covered window</text>
+    <rect x="28" y="91" width="339" height="272" rx="18" fill="url(#screen)"/>
+    <rect x="46" y="327" width="303" height="20" rx="6" fill="#9fb5d4" opacity=".6"/>
+    <g filter="url(#shadow)">
+      <rect x="66" y="140" width="210" height="158" rx="14" fill="#21c7f3"/>
+      <rect x="66" y="140" width="210" height="34" rx="14" fill="#1596ce"/>
+      <text x="84" y="164" fill="white" font-family="Segoe UI, sans-serif" font-size="15">Background window B</text>
+      <rect x="136" y="116" width="204" height="174" rx="14" fill="#f8fbff"/>
+      <rect x="136" y="116" width="204" height="36" rx="14" fill="#2764f5"/>
+      <text x="154" y="141" fill="white" font-family="Segoe UI, sans-serif" font-size="15">Current window A</text>
+    </g>
+    <circle cx="93" cy="221" r="18" fill="#ffd166" stroke="#0b1733" stroke-width="5"/>
+    <path d="M93 212v18M84 221h18" stroke="#0b1733" stroke-width="4" stroke-linecap="round"/>
+    <text x="28" y="407" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Click exposed B. Only an active-window</text>
+    <text x="28" y="437" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">change starts a placement transaction.</text>
+  </g>
+
+  <path d="M468 386h48" stroke="#7fdbff" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(505 155)">
+    <rect width="395" height="475" rx="28" fill="#12264b" stroke="#264778" stroke-width="2"/>
+    <circle cx="43" cy="43" r="21" fill="#2764f5"/>
+    <text x="43" y="50" text-anchor="middle" fill="white" font-family="Segoe UI, sans-serif" font-size="20" font-weight="700">2</text>
+    <text x="78" y="50" fill="#f7fbff" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Place the activated window</text>
+    <rect x="28" y="91" width="339" height="272" rx="18" fill="url(#screen)"/>
+    <path d="M197 104v246M41 350h312" stroke="#6381aa" stroke-width="2" stroke-dasharray="8 8" opacity=".65"/>
+    <g filter="url(#shadow)">
+      <rect x="93" y="191" width="208" height="172" rx="14" fill="#f8fbff"/>
+      <rect x="93" y="191" width="208" height="36" rx="14" fill="#2764f5"/>
+      <text x="111" y="216" fill="white" font-family="Segoe UI, sans-serif" font-size="15">Activated window B</text>
+    </g>
+    <circle cx="197" cy="355" r="10" fill="#ffd166"/>
+    <path d="M197 330v17M167 355h17M210 355h17" stroke="#2764f5" stroke-width="5" stroke-linecap="round"/>
+    <text x="28" y="407" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Default: center + bottom; configurable.</text>
+    <text x="28" y="437" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Active windows stay put after a drag.</text>
+  </g>
+
+  <path d="M918 386h48" stroke="#7fdbff" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(955 155)">
+    <rect width="390" height="475" rx="28" fill="#12264b" stroke="#264778" stroke-width="2"/>
+    <circle cx="43" cy="43" r="21" fill="#2764f5"/>
+    <text x="43" y="50" text-anchor="middle" fill="white" font-family="Segoe UI, sans-serif" font-size="20" font-weight="700">3</text>
+    <text x="78" y="50" fill="#f7fbff" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Expose the other windows</text>
+    <rect x="28" y="91" width="334" height="272" rx="18" fill="url(#screen)"/>
+    <g filter="url(#shadow)">
+      <rect x="62" y="124" width="218" height="192" rx="15" fill="#22c7f2"/>
+      <rect x="80" y="151" width="182" height="147" rx="8" fill="#d9e8f8"/>
+      <path d="M80 151h182M80 151v147" stroke="#ffd166" stroke-width="14" stroke-linecap="round"/>
+      <rect x="126" y="172" width="210" height="164" rx="14" fill="#f8fbff"/>
+      <rect x="126" y="172" width="210" height="36" rx="14" fill="#2764f5"/>
+      <text x="144" y="197" fill="white" font-family="Segoe UI, sans-serif" font-size="15">Active window B</text>
+    </g>
+    <path d="M55 116l32 28" stroke="#ffd166" stroke-width="4" marker-end="url(#arrow)"/>
+    <text x="32" y="111" fill="#6a4b00" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700">Top edge</text>
+    <path d="M53 304l31-24" stroke="#ffd166" stroke-width="4" marker-end="url(#arrow)"/>
+    <text x="31" y="326" fill="#6a4b00" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700">Left edge</text>
+    <text x="28" y="407" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Prefer two independent exposed edges.</text>
+    <text x="28" y="437" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Degrade only if needed; stay near center.</text>
+  </g>
+
+  <g transform="translate(55 665)">
+    <rect width="1290" height="70" rx="20" fill="#0b1733" stroke="#264778" stroke-width="2"/>
+    <circle cx="36" cy="35" r="9" fill="#22c7f2"/>
+    <text x="58" y="43" fill="#cfe1ff" font-family="Segoe UI, sans-serif" font-size="19">One solve, one verification: position only; never resize or change Z-order · top + side → one edge → partial layout</text>
+  </g>
+</svg>

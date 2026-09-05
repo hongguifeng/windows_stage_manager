@@ -69,7 +69,7 @@
 | `src/tools` | 窗口检查与场景运行工具 |
 | `tests` | 与各模块对应的测试和 PowerShell 集成测试 |
 | `scripts` | 发布打包脚本 |
-| `assets` | ICO、SVG 图标和功能示意图 |
+| `assets` | ICO、SVG 图标和中英文功能示意图；两份 README 分别引用 `feature-overview.svg` 与 `feature-overview.en.svg` |
 | `.github/workflows` | Windows 2022 + MSVC 的 CI 构建、测试和发版 |
 
 ## 4. 总体架构
