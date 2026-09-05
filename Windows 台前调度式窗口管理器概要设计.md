@@ -1,6 +1,6 @@
 # Windows 11 台前调度式窗口管理器概要设计
 
-文档版本：1.2
+文档版本：1.3
 对应需求：`Windows 台前调度式窗口管理器需求说明.md`  
 设计目标：先实现可验证、可失败、不会自触发循环的矩形窗口 MVP
 
@@ -53,6 +53,25 @@ Post-move Verification -> Snapshot Store / Diagnostics
 - `Diagnostics`：记录耗时、失败和无解原因。
 
 快照和事务状态由 `CoordinatorThread` 独占写入。其他线程只提交事件或读取不可变快照，避免在 WinEvent 回调中持有跨线程锁。
+
+### 2.2 托盘参数控制面
+
+托盘控制器持有当前 `Settings` 快照，并按字段生成二级选择菜单。命令 ID 由字段编号和预设索引确定，分发后得到强类型的 `SettingSelection { field, value }`；菜单标题包含当前值，匹配项使用 Win32 checked 状态。现有配置不是预设值时，菜单额外显示禁用且勾选的 custom current value，用户仍可切换到任一受支持预设。
+
+参数热更新严格在 UI 消息线程中按下列顺序执行：
+
+```text
+tray setting command
+    -> cancel current MoveTransactionGuard
+    -> stop hook and join CoordinatorThread
+    -> validate selection and normalize dependent settings
+    -> update DryRun and health threshold
+    -> atomically persist settings.ini
+    -> rebuild provider / hook / coordinator with new Settings
+    -> restore Running or Paused tray status
+```
+
+停止并 join 协调器后才修改 `Settings`，因此不需要让配置字段变成跨线程可变共享状态。托盘图标和消息窗口在重建期间保持存在并显示 `Rebuilding`；重启失败显示 `ApiError`。每次成功选择记录 `setting_changed`、字段名和值。
 
 ## 3. 核心数据模型
 
@@ -431,6 +450,8 @@ Discovering -> Idle <-> Dragging -> Settling -> Idle
 ### 12.3 Windows 集成测试
 
 使用可控制的测试窗口覆盖：快速拖动、调整大小、最大化、Snap、前台切换、窗口销毁/重建、置顶窗口、菜单/提示窗口、不同 DPI 和应用拒绝移动。
+
+托盘参数集成测试在隔离的 `LOCALAPPDATA` 下启动真实 `stage_manager.exe`，向其消息窗口发送参数命令，验证配置落盘、结构化日志、内部管理器热重建、DryRun 恢复和正常退出。
 
 ### 12.4 验收日志
 

@@ -2,7 +2,7 @@
 
 这是一个 Windows 11 后台窗口管理器：用户结束拖动或点击切换前台窗口后，它检查同一显示器上的 2–20 个普通窗口，优先为被遮挡窗口保留两个可点击边缘，确实无解时降级为一个。程序不会调整窗口尺寸或活动窗口；只有所有位置方案都无解时，才会从最深的局部层级开始尝试安全的 Z-order 调整，尽量保持最近使用的上层窗口顺序不变。
 
-> 开箱默认值：`dry_run=false`。启动后会在拖动结束时自动移动符合条件的非活动窗口。若只想观察计划，请先在配置中设置 `dry_run=true`。
+> 开箱默认值：`dry_run=false`。启动后会在拖动结束时自动移动符合条件的非活动窗口。若只想观察计划，右键托盘图标，在 `Settings > Run mode` 中选择 `Preview only (DryRun)`，无需编辑配置文件或重启程序。
 
 ## 构建与测试
 
@@ -18,16 +18,16 @@ ctest --preset windows-debug --output-on-failure
 
 ## 运行
 
-启动 `build\release\stage_manager.exe`。托盘菜单可暂停或恢复管理；紧急停用快捷键为 `Ctrl+Alt+F12`。配置与日志默认位于 `%LOCALAPPDATA%\WindowsStageManager`。
+启动 `build\release\stage_manager.exe`。托盘菜单可暂停或恢复管理；`Settings` 子菜单可直接修改全部运行参数，当前值显示在菜单标题中并被勾选，选择后立即保存和生效。紧急停用快捷键为 `Ctrl+Alt+F12`。持久化配置与日志默认位于 `%LOCALAPPDATA%\WindowsStageManager`，正常使用不需要手动编辑 `settings.ini`。
 
-如需先验证规则，可启用 DryRun 并结合日志检查计划。真实应用仍保留紧急停用、故障熔断、活动窗口保护以及位置/尺寸/Z-order 后验验证。
+如需先验证规则，可从托盘启用 DryRun 并结合日志检查计划。真实应用仍保留紧急停用、故障熔断、活动窗口保护以及位置/尺寸/Z-order 后验验证。
 
 ## 发布暂存
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.1.0-rc9 -Commit (git rev-parse --short HEAD)
+  -Version 0.1.0-rc10 -Commit (git rev-parse --short HEAD)
 ```
 
 脚本生成版本化 ZIP、`current.json`，并在提升下一版本时把上一版本记录保存为 `rollback.json`。
