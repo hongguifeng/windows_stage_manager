@@ -392,7 +392,7 @@ int main()
     CHECK(activation_z_order_result.solve.moves.size() == 1);
     CHECK(activation_z_order_result.solve.moves[0].window.hwnd == 201);
     CHECK((activation_z_order_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{50, 300, 950, 400}));
+           stage_manager::geometry::Rect{50, 600, 950, 700}));
     CHECK(activation_z_order.desktop.reorderCalls == 0);
     CHECK(activation_z_order.desktop.moveCalls == 0);
 
@@ -500,7 +500,7 @@ int main()
     CHECK(activated_result.solve.moves.size() == 1);
     CHECK(activated_result.solve.moves[0].window.hwnd == 150);
     CHECK((activated_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{350, 200, 650, 500}));
+           stage_manager::geometry::Rect{350, 400, 650, 700}));
     CHECK(activated_result.activationCenteringUsed);
     CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(activated.desktop.moveCalls == 0);
@@ -534,7 +534,7 @@ int main()
     CHECK(centered_result.solve.moves.size() == 1);
     CHECK(centered_result.solve.moves[0].window.hwnd == 160);
     CHECK((centered_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{400, 250, 600, 450}));
+           stage_manager::geometry::Rect{400, 500, 600, 700}));
     CHECK(activation_centering.desktop.moveCalls == 1);
 
     const auto duplicate_foreground =
@@ -583,12 +583,12 @@ int main()
     CHECK(current_monitor_result.activationCenteringUsed);
     CHECK(current_monitor_result.solve.moves.size() == 1);
     CHECK((current_monitor_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{1390, 240, 1610, 460}));
+           stage_manager::geometry::Rect{1390, 490, 1610, 710}));
     CHECK(current_monitor_center.desktop.moveCalls == 0);
 
     MvpFixture already_centered;
     already_centered.desktop.windows = {
-        make_window(161, {400, 250, 600, 450}, 0),
+        make_window(161, {400, 500, 600, 700}, 0),
     };
     const auto already_centered_result =
         already_centered.coordinator.process(foreground_event(161), true, false);
@@ -597,6 +597,18 @@ int main()
     CHECK(already_centered_result.solve.moves.empty());
     CHECK(!already_centered_result.activationCenteringUsed);
     CHECK(already_centered.desktop.moveCalls == 0);
+
+    MvpFixture over_tall_activation;
+    over_tall_activation.desktop.windows = {
+        make_window(166, {0, 100, 200, 900}, 0),
+    };
+    const auto over_tall_result = over_tall_activation.coordinator.process(
+        foreground_event(166), true, true);
+    CHECK(over_tall_result.status == MvpBatchStatus::DryRun);
+    CHECK(over_tall_result.activationCenteringUsed);
+    CHECK(over_tall_result.solve.moves.size() == 1);
+    CHECK((over_tall_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{400, 0, 600, 800}));
 
     MvpFixture center_and_repair;
     center_and_repair.desktop.windows = {
@@ -608,12 +620,11 @@ int main()
     CHECK(center_and_repair_result.status == MvpBatchStatus::DryRun);
     CHECK(center_and_repair_result.solve.status == SolveStatus::Solved);
     CHECK(center_and_repair_result.activationCenteringUsed);
-    CHECK(center_and_repair_result.solve.moves.size() == 2);
+    CHECK(center_and_repair_result.solve.moves.size() == 1);
     CHECK(center_and_repair_result.solve.moves[0].window.hwnd == 162);
     CHECK((center_and_repair_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{350, 200, 650, 500}));
-    CHECK(center_and_repair_result.solve.moves[1].window.hwnd == 163);
-    CHECK(center_and_repair_result.movedWindowCount == 2);
+           stage_manager::geometry::Rect{350, 400, 650, 700}));
+    CHECK(center_and_repair_result.movedWindowCount == 1);
     CHECK(center_and_repair.desktop.moveCalls == 0);
 
     auto one_move_settings = test_settings();
@@ -622,9 +633,9 @@ int main()
     center_budget.desktop.windows = center_and_repair.desktop.windows;
     const auto center_budget_result =
         center_budget.coordinator.process(foreground_event(162), true, true);
-    CHECK(center_budget_result.status == MvpBatchStatus::Unsatisfiable);
-    CHECK(!center_budget_result.activationCenteringUsed);
-    CHECK(center_budget_result.solve.moves.size() <= 1);
+    CHECK(center_budget_result.status == MvpBatchStatus::DryRun);
+    CHECK(center_budget_result.activationCenteringUsed);
+    CHECK(center_budget_result.solve.moves.size() == 1);
     CHECK(center_budget.desktop.moveCalls == 0);
 
     MvpFixture live;

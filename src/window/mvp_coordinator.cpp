@@ -83,15 +83,16 @@ std::optional<geometry::Edge> move_direction(const solver::MovePlan& move) noexc
     return delta_y < 0 ? geometry::Edge::Top : geometry::Edge::Bottom;
 }
 
-std::optional<geometry::Rect> centered_placement(
+std::optional<geometry::Rect> activated_placement(
     const solver::LayoutWindow& window) noexcept
 {
     const auto window_center_x = std::midpoint(window.visualRect.left, window.visualRect.right);
-    const auto window_center_y = std::midpoint(window.visualRect.top, window.visualRect.bottom);
     const auto work_center_x = std::midpoint(window.workArea.left, window.workArea.right);
-    const auto work_center_y = std::midpoint(window.workArea.top, window.workArea.bottom);
+    const auto delta_y = window.visualRect.height() > window.workArea.height()
+        ? window.workArea.top - window.visualRect.top
+        : window.workArea.bottom - window.visualRect.bottom;
     return window.placementRect.translated(
-        work_center_x - window_center_x, work_center_y - window_center_y);
+        work_center_x - window_center_x, delta_y);
 }
 
 } // namespace
@@ -357,7 +358,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     std::optional<solver::MovePlan> activation_move;
     if (center_activated_window) {
         auto& active_item = layout.windows[*active_index];
-        const auto centered = centered_placement(active_item);
+        const auto centered = activated_placement(active_item);
         if (centered && *centered != active_item.placementRect) {
             const auto delta_x = centered->left - active_item.placementRect.left;
             const auto delta_y = centered->top - active_item.placementRect.top;
