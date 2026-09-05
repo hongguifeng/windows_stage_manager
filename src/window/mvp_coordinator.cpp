@@ -476,6 +476,27 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             solved = true;
         }
     }
+    if (!solved && activation_move) {
+        // Activation placement is an independent user-facing action. A peer
+        // visibility failure must not silently cancel it.
+        policy.ranking.visibility.goal = solver::VisibilityGoal::AnyRecognizableEdge;
+        result.affordanceGoal = solver::VisibilityGoal::AnyRecognizableEdge;
+        result.affordanceGoalDegraded = true;
+        const auto remaining = solver::scan_visibility_violations(
+            full_layout, policy.ranking.visibility);
+        if (remaining.status == solver::ViolationScanStatus::Ok) {
+            result.solve.status = remaining.violations.empty()
+                ? solver::SolveStatus::Solved
+                : solver::SolveStatus::PartiallySolved;
+            result.solve.moves = {*activation_move};
+            result.solve.violations = remaining.violations;
+            result.solve.finalSnapshot = full_layout;
+            result.solve.finalState = solver::hash_layout(full_layout);
+            result.activationPlacementUsed = true;
+            result.partialLayoutUsed = !remaining.violations.empty();
+            solved = true;
+        }
+    }
     if (transaction_seen_states_.empty()) {
         transaction_seen_states_.push_back(observed_state);
     }

@@ -400,6 +400,47 @@ int main()
     CHECK(immutable_z_order.desktop.windows[2].zIndex == 2);
     CHECK(immutable_z_order.desktop.windows[3].zIndex == 3);
 
+    MvpFixture activation_without_peer_solution(z_order_settings);
+    activation_without_peer_solution.desktop.windows = make_z_order_layout();
+    activation_without_peer_solution.desktop.windows[0].placementRect =
+        {0, 300, 900, 400};
+    activation_without_peer_solution.desktop.windows[0].visualRect =
+        {0, 300, 900, 400};
+    const auto activation_only_dry = activation_without_peer_solution.coordinator.process(
+        foreground_event(201), true, true);
+    CHECK(activation_only_dry.status == MvpBatchStatus::DryRun);
+    CHECK(activation_only_dry.solve.status == SolveStatus::PartiallySolved);
+    CHECK(activation_only_dry.activationPlacementUsed);
+    CHECK(activation_only_dry.partialLayoutUsed);
+    CHECK(activation_only_dry.solve.moves.size() == 1);
+    CHECK(activation_only_dry.solve.moves[0].window.hwnd == 201);
+    CHECK((activation_only_dry.solve.moves[0].to ==
+           stage_manager::geometry::Rect{50, 600, 950, 700}));
+    CHECK(!activation_only_dry.solve.violations.empty());
+    CHECK(activation_without_peer_solution.desktop.moveCalls == 0);
+    CHECK(activation_without_peer_solution.desktop.reorderCalls == 0);
+
+    MvpFixture activation_without_peer_solution_live(z_order_settings);
+    activation_without_peer_solution_live.desktop.windows = make_z_order_layout();
+    activation_without_peer_solution_live.desktop.windows[0].placementRect =
+        {0, 300, 900, 400};
+    activation_without_peer_solution_live.desktop.windows[0].visualRect =
+        {0, 300, 900, 400};
+    const auto activation_only_live =
+        activation_without_peer_solution_live.coordinator.process(
+            foreground_event(201), true, false);
+    CHECK(activation_only_live.status == MvpBatchStatus::PartiallySolved);
+    CHECK(activation_only_live.solve.status == SolveStatus::PartiallySolved);
+    CHECK(activation_only_live.activationPlacementUsed);
+    CHECK(activation_only_live.apply.status ==
+          stage_manager::window::MoveApplyStatus::Applied);
+    CHECK(activation_only_live.apply.appliedMoves.size() == 1);
+    CHECK(activation_without_peer_solution_live.desktop.moveCalls == 1);
+    CHECK(activation_without_peer_solution_live.desktop.reorderCalls == 0);
+    CHECK(activation_without_peer_solution_live.desktop.windows[0].placementRect.left == 50);
+    CHECK(activation_without_peer_solution_live.desktop.windows[0].placementRect.top == 600);
+    CHECK(activation_without_peer_solution_live.desktop.windows[0].zIndex == 0);
+
     MvpFixture crowded;
     auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);
     fixed_blocker.ownerHwnd = 999;
