@@ -21,7 +21,7 @@ max_consecutive_failures=3
 
 程序开箱即可工作，不改变窗口尺寸或活动窗口。默认先尝试让每个受影响窗口保留两个独立的合格边缘；只有该目标无解时才降级为一个边缘。合法候选的边缘组合按 `left+top > right+bottom > top-only > unranked` 排序，该顺序优先于移动距离。
 
-协调器会先完成所有纯位置求解；只有两边缘和单边缘的位置方案都明确无解时，才启用 Z-order fallback。fallback 采用 bottom-first（最底层优先）策略：只提升一个受管理的非活动、非置顶窗口到活动窗口正下方，并按当前 `zIndex` 从最底层向上尝试；底层候选能形成完整合法布局时，不再尝试或调整更高层窗口。活动窗口不会被重排，也不会被候选窗口越过。日志中的 `required_exposed_edges` 是本批次实际采用的目标，`edge_goal_degraded=true` 表示边缘数降级，`z_order_fallback_used=true` 表示使用了该回退；`planned_reorders` 和 `applied_reorders` 分别记录计划和已验证的重排数。
+协调器会先完成所有纯位置求解；只有两边缘和单边缘的位置方案都明确无解时，才启用 Z-order fallback。fallback 采用 top-prefix（上层前缀保护）优先、bottom-first（同边界内最底层目标优先）的策略：先只允许最深层的局部顺序变化，若无解才逐层向上扩大可变化区间；在同一个插入边界内，从最底层目标窗口开始尝试。目标只会提升到当前求解所需的最深安全层级，不再默认提升到活动窗口正下方。深层局部重排能形成完整合法布局时，不会触及更上层窗口；活动窗口不会被重排，也不会被候选窗口越过。日志中的 `required_exposed_edges` 是本批次实际采用的目标，`edge_goal_degraded=true` 表示边缘数降级，`z_order_fallback_used=true` 表示使用了该回退；`planned_reorders` 和 `applied_reorders` 分别记录计划和已验证的重排数。
 
 拖动结束和点击切换前台窗口都会触发布局检查。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序；DryRun 会生成移动和重排计划，但不会调用 Win32 修改窗口。
 

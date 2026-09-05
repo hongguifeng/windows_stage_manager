@@ -14,6 +14,7 @@ if ($guide -notmatch 'edge_goal_degraded') { throw "edge degradation diagnostics
 if (-not $guide.Contains('left+top > right+bottom > top-only > unranked')) { throw "edge preference order is missing" }
 if ($guide -notmatch 'z_order_fallback_used') { throw "Z-order fallback diagnostics are missing" }
 if ($guide -notmatch 'bottom-first') { throw "bottom-first Z-order policy is missing" }
+if ($guide -notmatch 'top-prefix') { throw "top-prefix Z-order policy is missing" }
 if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
 if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }
 if ($limits -notmatch 'UAC') { throw "privilege limitation is missing" }
