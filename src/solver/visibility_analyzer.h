@@ -19,6 +19,7 @@ struct VisibilityRequirements {
     std::uint64_t minimumExposedLength = 48;
     std::uint64_t minimumExposedDepth = 24;
     std::size_t maximumRegionRectangles = 1024;
+    std::uint32_t minimumExposedEdges = 1;
 };
 
 struct Violation {

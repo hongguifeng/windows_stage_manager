@@ -99,6 +99,24 @@ int main()
     CHECK(no_violation.status == ViolationScanStatus::Ok);
     CHECK(no_violation.violations.empty());
 
+    LayoutSnapshot one_edge_exposed;
+    one_edge_exposed.windows = {
+        make_window(10, {100, 100, 300, 124}, 0, false),
+        make_window(11, {100, 276, 300, 300}, 1, false),
+        make_window(12, {100, 124, 276, 276}, 2, false),
+        make_window(13, {100, 100, 300, 300}, 3, true),
+    };
+    const auto one_edge_allowed = scan_visibility_violations(
+        one_edge_exposed, VisibilityRequirements{48, 24, 128, 1});
+    CHECK(one_edge_allowed.status == ViolationScanStatus::Ok);
+    CHECK(one_edge_allowed.violations.empty());
+    const auto two_edges_required = scan_visibility_violations(
+        one_edge_exposed, VisibilityRequirements{48, 24, 128, 2});
+    CHECK(two_edges_required.status == ViolationScanStatus::Ok);
+    CHECK(two_edges_required.violations.size() == 1);
+    CHECK(two_edges_required.violations[0].targetIndex == 3);
+    CHECK(two_edges_required.violations[0].failedEdges.size() == 3);
+
     auto unmanaged_target = covered;
     unmanaged_target.windows[1].managed = false;
     CHECK(scan_visibility_violations(unmanaged_target, requirements).violations.empty());
@@ -123,6 +141,10 @@ int main()
     CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 0}).status ==
           ViolationScanStatus::InvalidSnapshot);
     CHECK(scan_visibility_violations(covered, VisibilityRequirements{0, 24, 128}).status ==
+          ViolationScanStatus::InvalidSnapshot);
+    CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 128, 0}).status ==
+          ViolationScanStatus::InvalidSnapshot);
+    CHECK(scan_visibility_violations(covered, VisibilityRequirements{48, 24, 128, 5}).status ==
           ViolationScanStatus::InvalidSnapshot);
     auto fixed_target = covered;
     fixed_target.windows[1].movable = false;

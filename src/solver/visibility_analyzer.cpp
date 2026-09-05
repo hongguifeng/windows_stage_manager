@@ -34,7 +34,9 @@ ViolationScanResult scan_visibility_violations(
     ViolationScanResult result;
     if (requirements.minimumExposedLength == 0 ||
         requirements.minimumExposedDepth == 0 ||
-        requirements.maximumRegionRectangles == 0) {
+        requirements.maximumRegionRectangles == 0 ||
+        requirements.minimumExposedEdges == 0 ||
+        requirements.minimumExposedEdges > 4) {
         result.status = ViolationScanStatus::InvalidSnapshot;
         return result;
     }
@@ -52,6 +54,7 @@ ViolationScanResult scan_visibility_violations(
 
         Violation violation;
         violation.targetIndex = target_index;
+        std::uint32_t exposed_edge_count = 0;
         const auto zones = geometry::make_interaction_zones(
             target.visualRect, requirements.minimumExposedDepth);
         for (const auto& zone : zones) {
@@ -116,10 +119,12 @@ ViolationScanResult scan_visibility_violations(
                                                     requirements.minimumExposedLength,
                                                     requirements.minimumExposedDepth)) {
                 violation.failedEdges.push_back(zone.edge);
+            } else {
+                ++exposed_edge_count;
             }
         }
 
-        if (violation.failedEdges.size() == 4) {
+        if (exposed_edge_count < requirements.minimumExposedEdges) {
             std::sort(violation.blockerIndices.begin(),
                       violation.blockerIndices.end(),
                       [&snapshot](std::size_t left, std::size_t right) {
