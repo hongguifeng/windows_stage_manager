@@ -92,6 +92,13 @@ if(WIN32)
     target_link_libraries(window_inspector PRIVATE stage_manager_core)
 endif()
 
+add_executable(scenario_runner
+    src/tools/scenario_runner.cpp
+)
+
+stage_manager_target_defaults(scenario_runner)
+target_link_libraries(scenario_runner PRIVATE stage_manager_core)
+
 if(STAGE_MANAGER_BUILD_TESTS)
     enable_testing()
 
@@ -249,6 +256,9 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_solver_property_tests)
     target_link_libraries(stage_manager_solver_property_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_solver_property COMMAND stage_manager_solver_property_tests)
+
+    add_test(NAME stage_manager_scenario_runner
+        COMMAND scenario_runner --iterations 2 --seed 151068710)
 
     add_executable(stage_manager_move_applier_tests
         tests/move_applier_tests.cpp
