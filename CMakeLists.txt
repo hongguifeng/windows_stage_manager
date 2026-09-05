@@ -43,6 +43,7 @@ add_library(stage_manager_core STATIC
     src/solver/z_order_solver.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
+    src/window/activation_placement.cpp
     src/window/coordinator_health.cpp
     src/window/reconcile_scheduler.cpp
     src/window/internal_move_tracker.cpp
@@ -306,6 +307,14 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_mvp_coordinator_tests)
     target_link_libraries(stage_manager_mvp_coordinator_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_mvp_coordinator COMMAND stage_manager_mvp_coordinator_tests)
+
+    add_executable(stage_manager_activation_placement_tests
+        tests/activation_placement_tests.cpp
+    )
+
+    stage_manager_target_defaults(stage_manager_activation_placement_tests)
+    target_link_libraries(stage_manager_activation_placement_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_activation_placement COMMAND stage_manager_activation_placement_tests)
 
     if(WIN32)
         add_test(NAME stage_manager_release_bundle

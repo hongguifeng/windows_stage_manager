@@ -34,6 +34,8 @@ try {
 enabled=true
 dry_run=false
 place_activated_window=true
+activation_horizontal_alignment=1
+activation_vertical_alignment=2
 affordance_preset=1
 top_depth_dip=32
 left_depth_dip=40
@@ -49,6 +51,8 @@ max_consecutive_failures=3
         createdUtc = [DateTime]::UtcNow.ToString("o")
         dryRunDefault = $false
         placeActivatedWindowDefault = $true
+        activationHorizontalAlignmentDefault = "center"
+        activationVerticalAlignmentDefault = "bottom"
         affordancePresetDefault = "balanced"
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingRoot "manifest.json") -Encoding utf8
 

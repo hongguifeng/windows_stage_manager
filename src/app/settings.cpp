@@ -67,6 +67,20 @@ void load_key(Settings& settings, std::string_view key, std::string_view value)
         if (const auto parsed = parse_bool(value)) {
             settings.placeActivatedWindow = *parsed;
         }
+    } else if (key == "activation_horizontal_alignment") {
+        if (const auto parsed = parse_uint(value);
+            parsed && *parsed <= static_cast<std::uint32_t>(
+                ActivationHorizontalAlignment::Right)) {
+            settings.activationHorizontalAlignment =
+                static_cast<ActivationHorizontalAlignment>(*parsed);
+        }
+    } else if (key == "activation_vertical_alignment") {
+        if (const auto parsed = parse_uint(value);
+            parsed && *parsed <= static_cast<std::uint32_t>(
+                ActivationVerticalAlignment::Bottom)) {
+            settings.activationVerticalAlignment =
+                static_cast<ActivationVerticalAlignment>(*parsed);
+        }
     } else if (key == "affordance_preset") {
         if (const auto parsed = parse_uint(value)) {
             if (*parsed <= static_cast<std::uint32_t>(AffordancePreset::Custom)) {
@@ -318,6 +332,10 @@ bool save_settings(const Settings& settings, const std::filesystem::path& path)
            << "dry_run=" << (settings.dryRun ? "true" : "false") << '\n'
            << "place_activated_window="
            << (settings.placeActivatedWindow ? "true" : "false") << '\n'
+           << "activation_horizontal_alignment=" << static_cast<std::uint32_t>(
+                  settings.activationHorizontalAlignment) << '\n'
+           << "activation_vertical_alignment=" << static_cast<std::uint32_t>(
+                  settings.activationVerticalAlignment) << '\n'
            << "affordance_preset=" << static_cast<std::uint32_t>(
                   settings.affordancePreset) << '\n'
            << "top_minimum_length_dip=" << settings.topMinimumLengthDip << '\n'

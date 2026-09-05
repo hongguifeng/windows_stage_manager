@@ -21,6 +21,10 @@ int main()
     }
     CHECK(defaults.affordancePreset == stage_manager::app::AffordancePreset::Balanced);
     CHECK(defaults.placeActivatedWindow);
+    CHECK(defaults.activationHorizontalAlignment ==
+          stage_manager::app::ActivationHorizontalAlignment::Center);
+    CHECK(defaults.activationVerticalAlignment ==
+          stage_manager::app::ActivationVerticalAlignment::Bottom);
     CHECK(defaults.topDepthDip < defaults.leftDepthDip);
     CHECK(defaults.leftDepthDip < defaults.rightDepthDip);
     CHECK(defaults.bottomMinimumLengthDip > defaults.topMinimumLengthDip);
@@ -61,6 +65,19 @@ int main()
         menu_settings, SettingSelection{SettingField::PlaceActivatedWindow, 0}));
     CHECK(!menu_settings.placeActivatedWindow);
     CHECK(stage_manager::app::apply_setting_selection(
+        menu_settings,
+        SettingSelection{SettingField::ActivationHorizontalAlignment, 2}));
+    CHECK(menu_settings.activationHorizontalAlignment ==
+          stage_manager::app::ActivationHorizontalAlignment::Right);
+    CHECK(stage_manager::app::apply_setting_selection(
+        menu_settings,
+        SettingSelection{SettingField::ActivationVerticalAlignment, 1}));
+    CHECK(menu_settings.activationVerticalAlignment ==
+          stage_manager::app::ActivationVerticalAlignment::Center);
+    CHECK(!stage_manager::app::apply_setting_selection(
+        menu_settings,
+        SettingSelection{SettingField::ActivationVerticalAlignment, 3}));
+    CHECK(stage_manager::app::apply_setting_selection(
         menu_settings, SettingSelection{SettingField::AffordancePreset, 2}));
     CHECK(menu_settings.affordancePreset == stage_manager::app::AffordancePreset::Prominent);
     CHECK(menu_settings.rightDepthDip == 80);
@@ -91,6 +108,10 @@ int main()
     expected.enabled = false;
     expected.dryRun = false;
     expected.placeActivatedWindow = false;
+    expected.activationHorizontalAlignment =
+        stage_manager::app::ActivationHorizontalAlignment::Right;
+    expected.activationVerticalAlignment =
+        stage_manager::app::ActivationVerticalAlignment::Top;
     expected.affordancePreset = stage_manager::app::AffordancePreset::Custom;
     expected.topMinimumLengthDip = 156;
     expected.topMaximumLengthDip = 256;
@@ -106,6 +127,8 @@ int main()
     CHECK(actual.enabled == expected.enabled);
     CHECK(actual.dryRun == expected.dryRun);
     CHECK(actual.placeActivatedWindow == expected.placeActivatedWindow);
+    CHECK(actual.activationHorizontalAlignment == expected.activationHorizontalAlignment);
+    CHECK(actual.activationVerticalAlignment == expected.activationVerticalAlignment);
     CHECK(actual.affordancePreset == expected.affordancePreset);
     CHECK(actual.topMinimumLengthDip == expected.topMinimumLengthDip);
     CHECK(actual.topMaximumLengthDip == expected.topMaximumLengthDip);

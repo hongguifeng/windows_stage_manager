@@ -39,6 +39,8 @@ enum class SettingField : std::uint8_t {
     MaximumSolveTimeMs,
     MaximumManagedWindows,
     MaximumConsecutiveFailures,
+    ActivationHorizontalAlignment,
+    ActivationVerticalAlignment,
     Count,
 };
 

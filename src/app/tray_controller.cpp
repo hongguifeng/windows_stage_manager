@@ -26,6 +26,20 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
     if (field == SettingField::PlaceActivatedWindow) {
         return value == 0 ? L"\u5173\u95ed" : L"\u5f00\u542f";
     }
+    if (field == SettingField::ActivationHorizontalAlignment) {
+        switch (static_cast<ActivationHorizontalAlignment>(value)) {
+        case ActivationHorizontalAlignment::Left: return L"\u9760\u5de6";
+        case ActivationHorizontalAlignment::Center: return L"\u6c34\u5e73\u5c45\u4e2d";
+        case ActivationHorizontalAlignment::Right: return L"\u9760\u53f3";
+        }
+    }
+    if (field == SettingField::ActivationVerticalAlignment) {
+        switch (static_cast<ActivationVerticalAlignment>(value)) {
+        case ActivationVerticalAlignment::Top: return L"\u9760\u4e0a";
+        case ActivationVerticalAlignment::Center: return L"\u5782\u76f4\u5c45\u4e2d";
+        case ActivationVerticalAlignment::Bottom: return L"\u9760\u4e0b";
+        }
+    }
     if (field == SettingField::AffordancePreset) {
         switch (static_cast<AffordancePreset>(value)) {
         case AffordancePreset::Compact: return L"\u7d27\u51d1";
@@ -70,6 +84,8 @@ std::wstring choice_text(SettingField field, std::uint32_t value)
         return text + L" \u6b21\u5931\u8d25";
     case SettingField::DryRun:
     case SettingField::PlaceActivatedWindow:
+    case SettingField::ActivationHorizontalAlignment:
+    case SettingField::ActivationVerticalAlignment:
     case SettingField::AffordancePreset:
     case SettingField::Count:
         return text;
@@ -82,7 +98,9 @@ const wchar_t* field_title(SettingField field) noexcept
     switch (field) {
     case SettingField::DryRun:
         return L"\u8fd0\u884c\u6a21\u5f0f";
-    case SettingField::PlaceActivatedWindow: return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u9760\u4e0b\u5c45\u4e2d";
+    case SettingField::PlaceActivatedWindow: return L"\u81ea\u52a8\u653e\u7f6e\u65b0\u6fc0\u6d3b\u7a97\u53e3";
+    case SettingField::ActivationHorizontalAlignment: return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u6c34\u5e73\u4f4d\u7f6e";
+    case SettingField::ActivationVerticalAlignment: return L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5782\u76f4\u4f4d\u7f6e";
     case SettingField::AffordancePreset: return L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe";
     case SettingField::TopMinimumLengthDip: return L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6";
     case SettingField::TopMaximumLengthDip: return L"\u9876\u90e8\u6700\u5927\u957f\u5ea6";

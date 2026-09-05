@@ -525,6 +525,35 @@ int main()
     CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(activated.desktop.moveCalls == 0);
 
+    auto right_bottom_settings = test_settings();
+    right_bottom_settings.activationHorizontalAlignment =
+        stage_manager::app::ActivationHorizontalAlignment::Right;
+    right_bottom_settings.activationVerticalAlignment =
+        stage_manager::app::ActivationVerticalAlignment::Bottom;
+    MvpFixture right_bottom(right_bottom_settings);
+    right_bottom.desktop.windows = {make_window(154, {0, 0, 200, 200}, 0)};
+    const auto right_bottom_result =
+        right_bottom.coordinator.process(foreground_event(154), true, false);
+    CHECK(right_bottom_result.status == MvpBatchStatus::Applied);
+    CHECK(right_bottom_result.activationPlacementUsed);
+    CHECK(right_bottom_result.solve.moves.size() == 1);
+    CHECK((right_bottom_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{800, 500, 1000, 700}));
+    CHECK(right_bottom.desktop.moveCalls == 1);
+
+    auto centered_settings = test_settings();
+    centered_settings.activationHorizontalAlignment =
+        stage_manager::app::ActivationHorizontalAlignment::Center;
+    centered_settings.activationVerticalAlignment =
+        stage_manager::app::ActivationVerticalAlignment::Center;
+    MvpFixture fully_centered(centered_settings);
+    fully_centered.desktop.windows = {make_window(155, {0, 0, 200, 200}, 0)};
+    const auto fully_centered_result =
+        fully_centered.coordinator.process(foreground_event(155), true, true);
+    CHECK(fully_centered_result.status == MvpBatchStatus::DryRun);
+    CHECK((fully_centered_result.solve.moves[0].to ==
+           stage_manager::geometry::Rect{400, 250, 600, 450}));
+
     auto centering_disabled_settings = test_settings();
     centering_disabled_settings.placeActivatedWindow = false;
     MvpFixture centering_disabled(centering_disabled_settings);

@@ -21,6 +21,14 @@ int main()
     CHECK(dip_fields == 14);
     CHECK(stage_manager::app::setting_help(SettingField::TopDepthDip).dipValue);
     CHECK(!stage_manager::app::setting_help(SettingField::MaximumSolveTimeMs).dipValue);
+    CHECK(stage_manager::app::setting_choices(
+        SettingField::ActivationHorizontalAlignment).size() == 3);
+    CHECK(stage_manager::app::setting_choices(
+        SettingField::ActivationVerticalAlignment).size() == 3);
+    CHECK(stage_manager::app::setting_help(
+        SettingField::ActivationHorizontalAlignment).title[0] != L'\0');
+    CHECK(stage_manager::app::setting_help(
+        SettingField::ActivationVerticalAlignment).title[0] != L'\0');
 
     stage_manager::app::Settings settings;
     settings.topMinimumLengthDip = 96;

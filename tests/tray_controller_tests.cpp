@@ -41,6 +41,14 @@ int main()
     const auto placement_on =
         stage_manager::app::setting_command_id(SettingField::PlaceActivatedWindow, 1);
     CHECK(controller.is_setting_checked(placement_on));
+    const auto horizontal_center =
+        stage_manager::app::setting_command_id(
+            SettingField::ActivationHorizontalAlignment, 1);
+    const auto vertical_bottom =
+        stage_manager::app::setting_command_id(
+            SettingField::ActivationVerticalAlignment, 2);
+    CHECK(controller.is_setting_checked(horizontal_center));
+    CHECK(controller.is_setting_checked(vertical_bottom));
     const auto custom_edge_command =
         stage_manager::app::custom_setting_command_id(SettingField::TopDepthDip);
     const auto custom_action = controller.handle_command(custom_edge_command);
@@ -70,7 +78,11 @@ int main()
     CHECK(GetMenuItemCount(run_mode_menu) == 2);
     CHECK((GetMenuState(run_mode_menu, active_command, MF_BYCOMMAND) & MF_CHECKED) != 0);
     CHECK((GetMenuState(run_mode_menu, dry_run_command, MF_BYCOMMAND) & MF_CHECKED) == 0);
-    const HMENU top_depth_menu = GetSubMenu(settings_menu, 5);
+    CHECK(GetMenuStringW(settings_menu, 2, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text).find(L"\u6c34\u5e73\u4f4d\u7f6e") != std::wstring::npos);
+    CHECK(GetMenuStringW(settings_menu, 3, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text).find(L"\u5782\u76f4\u4f4d\u7f6e") != std::wstring::npos);
+    const HMENU top_depth_menu = GetSubMenu(settings_menu, 7);
     CHECK(top_depth_menu != nullptr);
     CHECK(GetMenuItemCount(top_depth_menu) == 8);
     CHECK(GetMenuStringW(top_depth_menu,

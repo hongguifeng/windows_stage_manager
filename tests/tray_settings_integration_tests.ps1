@@ -140,6 +140,7 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("windows-stage-manager-tray-" 
 $settingsPath = Join-Path $testRoot 'WindowsStageManager\settings.ini'
 $logPath = Join-Path $testRoot 'WindowsStageManager\logs\manager.log'
 $previousLocalAppData = $env:LOCALAPPDATA
+$previousTestInstanceId = $env:WINDOWS_STAGE_MANAGER_TEST_INSTANCE_ID
 $process = $null
 $window = [IntPtr]::Zero
 
@@ -148,6 +149,7 @@ try {
     [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($settingsPath)) | Out-Null
     [IO.File]::WriteAllText($settingsPath, "enabled=false`r`ndry_run=false`r`n")
     $env:LOCALAPPDATA = $testRoot
+    $env:WINDOWS_STAGE_MANAGER_TEST_INSTANCE_ID = [Guid]::NewGuid().ToString('N')
     $process = Start-Process -FilePath $Executable -PassThru
 
     Wait-Until -FailureMessage 'message-only window was not created' -Condition {
@@ -179,6 +181,21 @@ try {
         $script:window, 0x0111, [IntPtr]2000, [IntPtr]::Zero) | Out-Null
     Wait-Until -FailureMessage 'DryRun=false was not persisted' -Condition {
         (Get-Content -Raw -LiteralPath $settingsPath) -match '(?m)^dry_run=false\r?$'
+    }
+
+    # Select horizontal right and vertical center through the live tray menu.
+    # The alignment fields are appended to the stable command model as fields 28 and 29.
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x0111, [IntPtr]2450, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'horizontal activation alignment was not persisted' -Condition {
+        (Get-Content -Raw -LiteralPath $settingsPath) -match
+            '(?m)^activation_horizontal_alignment=2\r?$'
+    }
+    [StageManagerNativeMethods]::SendMessage(
+        $script:window, 0x0111, [IntPtr]2465, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'vertical activation alignment was not persisted' -Condition {
+        (Get-Content -Raw -LiteralPath $settingsPath) -match
+            '(?m)^activation_vertical_alignment=1\r?$'
     }
 
     # Open the custom-value dialog for MaximumManagedWindows and enter 7.
@@ -227,8 +244,8 @@ try {
         throw 'process exited while rebuilding after the custom setting change'
     }
 
-    # Open the visual settings dialog, select the top fallback depth,
-    # choose 64 DIP, and verify both the controls and live persistence path.
+    # Open the visual settings dialog. Change horizontal and vertical placement,
+    # then select the top fallback depth and choose 64 DIP.
     if (-not [StageManagerNativeMethods]::PostMessage(
         $script:window, 0x0111, [IntPtr]1003, [IntPtr]::Zero)) {
         throw 'visual settings command could not be posted'
@@ -246,8 +263,24 @@ try {
         throw 'visual settings dialog is missing required controls'
     }
     # LB_SETCURSEL = 0x0186; LBN_SELCHANGE = 1 in the high word.
+    # Horizontal and vertical placement are list positions 2 and 3.
     [StageManagerNativeMethods]::SendMessage(
-        $fields, 0x0186, [IntPtr]5, [IntPtr]::Zero) | Out-Null
+        $fields, 0x0186, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:settingsDialog, 0x0111, [IntPtr]66637, [IntPtr]::Zero) | Out-Null
+    # Change horizontal placement from right to left.
+    [StageManagerNativeMethods]::SendMessage(
+        $valueControl, 0x014E, [IntPtr]0, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $fields, 0x0186, [IntPtr]3, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:settingsDialog, 0x0111, [IntPtr]66637, [IntPtr]::Zero) | Out-Null
+    # Change vertical placement from center to top.
+    [StageManagerNativeMethods]::SendMessage(
+        $valueControl, 0x014E, [IntPtr]0, [IntPtr]::Zero) | Out-Null
+    # Top fallback depth is list position 7 after the two placement fields.
+    [StageManagerNativeMethods]::SendMessage(
+        $fields, 0x0186, [IntPtr]7, [IntPtr]::Zero) | Out-Null
     [StageManagerNativeMethods]::SendMessage(
         $script:settingsDialog, 0x0111, [IntPtr]66637, [IntPtr]::Zero) | Out-Null
     # CB_SETCURSEL = 0x014E; 64 DIP is preset index 4 for this field.
@@ -261,7 +294,9 @@ try {
     Wait-Until -FailureMessage 'visual settings value was not persisted' -Condition {
         $content = Get-Content -Raw -LiteralPath $settingsPath
         $content -match '(?m)^top_depth_dip=64\r?$' -and
-            $content -match '(?m)^affordance_preset=3\r?$'
+            $content -match '(?m)^affordance_preset=3\r?$' -and
+            $content -match '(?m)^activation_horizontal_alignment=0\r?$' -and
+            $content -match '(?m)^activation_vertical_alignment=0\r?$'
     }
     Wait-Until -FailureMessage 'visual settings change was not logged' -Condition {
         (Get-Content -Raw -LiteralPath $logPath) -match 'settings_dialog_applied'
@@ -292,6 +327,7 @@ catch {
 }
 finally {
     $env:LOCALAPPDATA = $previousLocalAppData
+    $env:WINDOWS_STAGE_MANAGER_TEST_INSTANCE_ID = $previousTestInstanceId
     if ($null -ne $process -and -not $process.HasExited) {
         $process.Kill()
         $process.WaitForExit()

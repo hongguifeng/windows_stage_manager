@@ -10,7 +10,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cwctype>
+#include <iterator>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace stage_manager::app {
@@ -45,6 +48,23 @@ std::uint64_t steady_now_ms() noexcept
 {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+std::wstring single_instance_mutex_name(std::wstring_view default_name)
+{
+    constexpr wchar_t kTestInstanceVariable[] =
+        L"WINDOWS_STAGE_MANAGER_TEST_INSTANCE_ID";
+    wchar_t suffix[65]{};
+    const auto length = GetEnvironmentVariableW(
+        kTestInstanceVariable, suffix, static_cast<DWORD>(std::size(suffix)));
+    if (length == 0 || length >= std::size(suffix) ||
+        !std::all_of(suffix, suffix + length, [](wchar_t character) {
+            return std::iswalnum(character) != 0 || character == L'-' ||
+                character == L'_';
+        })) {
+        return std::wstring(default_name);
+    }
+    return std::wstring(default_name) + L"." + suffix;
 }
 
 } // namespace
@@ -121,7 +141,8 @@ std::uint64_t AppLifecycle::environment_generation() const noexcept
 
 bool AppLifecycle::acquire_single_instance()
 {
-    instance_mutex_ = CreateMutexW(nullptr, TRUE, kMutexName);
+    const auto mutex_name = single_instance_mutex_name(kMutexName);
+    instance_mutex_ = CreateMutexW(nullptr, TRUE, mutex_name.c_str());
     if (instance_mutex_ == nullptr) {
         return false;
     }

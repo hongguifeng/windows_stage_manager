@@ -12,10 +12,26 @@ enum class AffordancePreset : std::uint32_t {
     Custom = 3,
 };
 
+enum class ActivationHorizontalAlignment : std::uint32_t {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+};
+
+enum class ActivationVerticalAlignment : std::uint32_t {
+    Top = 0,
+    Center = 1,
+    Bottom = 2,
+};
+
 struct Settings {
     bool enabled = true;
     bool dryRun = false;
     bool placeActivatedWindow = true;
+    ActivationHorizontalAlignment activationHorizontalAlignment =
+        ActivationHorizontalAlignment::Center;
+    ActivationVerticalAlignment activationVerticalAlignment =
+        ActivationVerticalAlignment::Bottom;
     AffordancePreset affordancePreset = AffordancePreset::Balanced;
 
     std::uint32_t topMinimumLengthDip = 120;

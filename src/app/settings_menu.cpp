@@ -9,6 +9,8 @@ namespace {
 constexpr std::array kFields = {
     SettingField::DryRun,
     SettingField::PlaceActivatedWindow,
+    SettingField::ActivationHorizontalAlignment,
+    SettingField::ActivationVerticalAlignment,
     SettingField::AffordancePreset,
     SettingField::TopMinimumLengthDip,
     SettingField::TopMaximumLengthDip,
@@ -38,6 +40,7 @@ constexpr std::array kFields = {
 };
 
 constexpr std::array<std::uint32_t, 2> kBooleanChoices = {0, 1};
+constexpr std::array<std::uint32_t, 3> kAlignmentChoices = {0, 1, 2};
 constexpr std::array<std::uint32_t, 3> kPresetChoices = {0, 1, 2};
 constexpr std::array<std::uint32_t, 6> kLengthChoices = {96, 120, 160, 180, 240, 300};
 constexpr std::array<std::uint32_t, 6> kDepthChoices = {28, 32, 40, 48, 64, 80};
@@ -101,6 +104,14 @@ bool apply_setting_value(Settings& settings, const SettingSelection& selection) 
     case SettingField::DryRun: settings.dryRun = selection.value != 0; break;
     case SettingField::PlaceActivatedWindow:
         settings.placeActivatedWindow = selection.value != 0;
+        break;
+    case SettingField::ActivationHorizontalAlignment:
+        settings.activationHorizontalAlignment =
+            static_cast<ActivationHorizontalAlignment>(selection.value);
+        break;
+    case SettingField::ActivationVerticalAlignment:
+        settings.activationVerticalAlignment =
+            static_cast<ActivationVerticalAlignment>(selection.value);
         break;
     case SettingField::AffordancePreset:
         if (selection.value > static_cast<std::uint32_t>(AffordancePreset::Prominent)) {
@@ -174,6 +185,10 @@ std::span<const std::uint32_t> setting_choices(SettingField field) noexcept
     if (field == SettingField::DryRun || field == SettingField::PlaceActivatedWindow) {
         return kBooleanChoices;
     }
+    if (field == SettingField::ActivationHorizontalAlignment ||
+        field == SettingField::ActivationVerticalAlignment) {
+        return kAlignmentChoices;
+    }
     if (field == SettingField::AffordancePreset) return kPresetChoices;
     if (is_minimum_length(field) || is_maximum_length(field)) return kLengthChoices;
     if (is_depth(field)) return kDepthChoices;
@@ -204,7 +219,8 @@ std::string_view setting_field_name(SettingField field) noexcept
         "bottom_length_percent", "min_onscreen_width_dip", "min_onscreen_height_dip",
         "event_coalesce_window_ms", "reconcile_interval_ms", "max_moves_per_batch",
         "max_solver_states", "max_solve_time_ms", "max_managed_windows",
-        "max_consecutive_failures"};
+        "max_consecutive_failures", "activation_horizontal_alignment",
+        "activation_vertical_alignment"};
     const auto index = static_cast<std::size_t>(field);
     return index < names.size() ? names[index] : "unknown";
 }
@@ -214,6 +230,10 @@ std::uint32_t current_setting_value(const Settings& settings, SettingField field
     switch (field) {
     case SettingField::DryRun: return settings.dryRun ? 1u : 0u;
     case SettingField::PlaceActivatedWindow: return settings.placeActivatedWindow ? 1u : 0u;
+    case SettingField::ActivationHorizontalAlignment:
+        return static_cast<std::uint32_t>(settings.activationHorizontalAlignment);
+    case SettingField::ActivationVerticalAlignment:
+        return static_cast<std::uint32_t>(settings.activationVerticalAlignment);
     case SettingField::AffordancePreset: return static_cast<std::uint32_t>(settings.affordancePreset);
     case SettingField::TopMinimumLengthDip: return settings.topMinimumLengthDip;
     case SettingField::TopMaximumLengthDip: return settings.topMaximumLengthDip;

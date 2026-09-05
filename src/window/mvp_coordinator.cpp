@@ -1,11 +1,11 @@
 #include "window/mvp_coordinator.h"
 
 #include "geometry/dpi.h"
+#include "window/activation_placement.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <utility>
 #include <unordered_set>
 #include <vector>
@@ -81,18 +81,6 @@ std::optional<geometry::Edge> move_direction(const solver::MovePlan& move) noexc
         return delta_x < 0 ? geometry::Edge::Left : geometry::Edge::Right;
     }
     return delta_y < 0 ? geometry::Edge::Top : geometry::Edge::Bottom;
-}
-
-std::optional<geometry::Rect> activated_placement(
-    const solver::LayoutWindow& window) noexcept
-{
-    const auto window_center_x = std::midpoint(window.visualRect.left, window.visualRect.right);
-    const auto work_center_x = std::midpoint(window.workArea.left, window.workArea.right);
-    const auto delta_y = window.visualRect.height() > window.workArea.height()
-        ? window.workArea.top - window.visualRect.top
-        : window.workArea.bottom - window.visualRect.bottom;
-    return window.placementRect.translated(
-        work_center_x - window_center_x, delta_y);
 }
 
 } // namespace
@@ -358,19 +346,22 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     std::optional<solver::MovePlan> activation_move;
     if (place_activated_window) {
         auto& active_item = layout.windows[*active_index];
-        const auto centered = activated_placement(active_item);
-        if (centered && *centered != active_item.placementRect) {
-            const auto delta_x = centered->left - active_item.placementRect.left;
-            const auto delta_y = centered->top - active_item.placementRect.top;
+        const auto placement = calculate_activated_placement(
+            active_item,
+            settings_.activationHorizontalAlignment,
+            settings_.activationVerticalAlignment);
+        if (placement && *placement != active_item.placementRect) {
+            const auto delta_x = placement->left - active_item.placementRect.left;
+            const auto delta_y = placement->top - active_item.placementRect.top;
             const auto centered_visual = active_item.visualRect.translated(delta_x, delta_y);
             if (centered_visual) {
                 solver::MovePlan move;
                 move.window = active_item.key;
                 move.from = active_item.placementRect;
-                move.to = *centered;
+                move.to = *placement;
                 move.cost.movedWindowCount = 1;
                 move.cost.centerDistance = 0;
-                active_item.placementRect = *centered;
+                active_item.placementRect = *placement;
                 active_item.visualRect = *centered_visual;
                 activation_move = move;
             }

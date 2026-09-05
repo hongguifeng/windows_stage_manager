@@ -3,7 +3,11 @@ param([Parameter(Mandatory = $true)][string]$Workspace)
 $ErrorActionPreference = "Stop"
 
 function Read-WorkspaceFile([string]$RelativePath) {
-    return Get-Content -LiteralPath (Join-Path $Workspace $RelativePath) -Raw -Encoding UTF8
+    $path = Join-Path $Workspace $RelativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        $path = Join-Path (Join-Path $Workspace 'docs') $RelativePath
+    }
+    return Get-Content -LiteralPath $path -Raw -Encoding UTF8
 }
 
 $readme = Read-WorkspaceFile "README.md"
@@ -13,7 +17,12 @@ $todo = Read-WorkspaceFile "TODO.md"
 $feature = Read-WorkspaceFile "assets\feature-overview.svg"
 $versionHeader = Read-WorkspaceFile "src\app\version.h"
 
-$markdownDocuments = Get-ChildItem -LiteralPath $Workspace -Filter '*.md' -File | ForEach-Object {
+$markdownRoots = @($Workspace)
+$docsRoot = Join-Path $Workspace 'docs'
+if (Test-Path -LiteralPath $docsRoot -PathType Container) {
+    $markdownRoots += $docsRoot
+}
+$markdownDocuments = Get-ChildItem -LiteralPath $markdownRoots -Filter '*.md' -File | ForEach-Object {
     [PSCustomObject]@{
         Path = $_.FullName
         Text = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
@@ -55,6 +64,14 @@ $maintainedDocuments = @(
 ) -join "`n"
 
 if ($readme -notmatch 'dry_run=false') { throw "README lost the active default" }
+if ($readme -notmatch 'activation_horizontal_alignment=1' -or
+    $readme -notmatch 'activation_vertical_alignment=2') {
+    throw "README lost configurable activation alignment defaults"
+}
+if ($readme -notmatch '\u6c34\u5e73\u53ef\u9009\u9760\u5de6\u3001\u5c45\u4e2d\u3001\u9760\u53f3' -or
+    $readme -notmatch '\u7ad6\u76f4\u53ef\u9009\u9760\u4e0a\u3001\u5c45\u4e2d\u3001\u9760\u4e0b') {
+    throw "README lost activation alignment choices"
+}
 if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
 if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
 if ($readme -notmatch 'assets/feature-overview\.svg') { throw "README feature illustration is missing" }

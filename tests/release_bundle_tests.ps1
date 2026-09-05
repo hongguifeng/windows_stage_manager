@@ -57,12 +57,16 @@ try {
     $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
     if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
     if ($settings -notmatch '(?m)^place_activated_window=true$') { throw "activation placement default is missing" }
+    if ($settings -notmatch '(?m)^activation_horizontal_alignment=1$') { throw "horizontal activation alignment is missing" }
+    if ($settings -notmatch '(?m)^activation_vertical_alignment=2$') { throw "vertical activation alignment is missing" }
     if ($settings -notmatch '(?m)^affordance_preset=1$') { throw "balanced affordance preset is missing" }
     if ($settings -notmatch '(?m)^top_depth_dip=32$') { throw "top affordance is missing" }
     if ($settings -notmatch '(?m)^right_depth_dip=64$') { throw "right affordance is missing" }
     $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json
     if ($manifest.dryRunDefault -ne $false) { throw "release manifest default mismatch" }
     if ($manifest.placeActivatedWindowDefault -ne $true) { throw "activation placement manifest default mismatch" }
+    if ($manifest.activationHorizontalAlignmentDefault -ne "center") { throw "horizontal activation alignment manifest mismatch" }
+    if ($manifest.activationVerticalAlignmentDefault -ne "bottom") { throw "vertical activation alignment manifest mismatch" }
     if ($manifest.affordancePresetDefault -ne "balanced") { throw "affordance preset manifest mismatch" }
 } finally {
     $resolved = [IO.Path]::GetFullPath($testRoot)
