@@ -168,6 +168,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     }
 
     bool should_settle = false;
+    std::optional<NativeWindowHandle> foreground_window;
     for (const auto& event : result.events.events) {
         provider_.handle_event(event);
         if (event.type == WindowEventType::MoveSizeStart) {
@@ -191,6 +192,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
             guard_.activate(next_transaction_id_, layout_generation_);
             status_ = MvpBatchStatus::Dragging;
+        } else if (event.type == WindowEventType::Foreground) {
+            foreground_window = event.hwnd;
         } else if (event.type == WindowEventType::MoveSizeEnd &&
                    event.hwnd == active_window_) {
             should_settle = true;
@@ -205,6 +208,27 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     }
 
     if (should_settle) {
+        return settle(dry_run, std::move(result.events));
+    }
+    if (foreground_window && status_ != MvpBatchStatus::Dragging) {
+        active_window_ = *foreground_window;
+        ++next_transaction_id_;
+        ++layout_generation_;
+        transaction_seen_states_.clear();
+        preferred_edge_.reset();
+        const auto initial = capture(SnapshotRefreshReason::Event);
+        if (!initial) {
+            status_ = MvpBatchStatus::Rebuilding;
+            result.status = status_;
+            result.reason = MvpSuspendReason::SnapshotUnavailable;
+            return result;
+        }
+        const auto active = std::find_if(initial->windows.begin(), initial->windows.end(),
+                                         [this](const auto& window) {
+                                             return window.key.hwnd == active_window_;
+                                         });
+        starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
+        guard_.activate(next_transaction_id_, layout_generation_);
         return settle(dry_run, std::move(result.events));
     }
     if (result.events.requiresFullReconcile) {

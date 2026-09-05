@@ -147,6 +147,12 @@ std::vector<stage_manager::window::WindowEvent> drag_events(std::uintptr_t activ
     };
 }
 
+std::vector<stage_manager::window::WindowEvent> foreground_event(std::uintptr_t active)
+{
+    using stage_manager::window::WindowEventType;
+    return {{WindowEventType::Foreground, active, 1, 100, 1}};
+}
+
 } // namespace
 
 int main()
@@ -319,6 +325,22 @@ int main()
     CHECK(coverage_result.managedWindowCount == 2);
     CHECK(coverage_result.solve.moves.size() == 1);
     CHECK(coverage_result.solve.moves[0].window.hwnd == 142);
+
+    MvpFixture activated;
+    activated.desktop.windows = {
+        make_window(150, {100, 100, 400, 400}, 0),
+        make_window(151, {100, 100, 400, 400}, 1),
+    };
+    const auto activated_result =
+        activated.coordinator.process(foreground_event(150), true, true);
+    CHECK(activated_result.status == MvpBatchStatus::DryRun);
+    CHECK(activated_result.solve.status == SolveStatus::Solved);
+    CHECK(activated_result.transactionId == 1);
+    CHECK(activated_result.managedWindowCount == 2);
+    CHECK(activated_result.solve.moves.size() == 1);
+    CHECK(activated_result.solve.moves[0].window.hwnd == 151);
+    CHECK(activated_result.apply.status == stage_manager::window::MoveApplyStatus::DryRun);
+    CHECK(activated.desktop.moveCalls == 0);
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;
