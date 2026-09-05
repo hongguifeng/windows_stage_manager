@@ -36,6 +36,9 @@ public static class StageManagerNativeMethods
     public static extern bool PostMessage(
         IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool SetWindowText(IntPtr window, string text);
+
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
@@ -80,6 +83,29 @@ public static class StageManagerNativeMethods
             if (processId == expectedProcessId && IsWindowVisible(window) &&
                 className.ToString() == "#32770" &&
                 windowText.ToString() == "\u81ea\u5b9a\u4e49\u53c2\u6570")
+            {
+                found = window;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static IntPtr FindSettingsDialog(uint expectedProcessId)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows(delegate(IntPtr window, IntPtr ignored)
+        {
+            var className = new StringBuilder(256);
+            var windowText = new StringBuilder(256);
+            uint processId;
+            GetClassName(window, className, className.Capacity);
+            GetWindowText(window, windowText, windowText.Capacity);
+            GetWindowThreadProcessId(window, out processId);
+            if (processId == expectedProcessId && IsWindowVisible(window) &&
+                className.ToString() == "#32770" &&
+                windowText.ToString() == "\u7a97\u53e3\u7ba1\u7406\u5668\u8bbe\u7f6e")
             {
                 found = window;
                 return false;
@@ -199,6 +225,46 @@ try {
     }
     if ($process.HasExited) {
         throw 'process exited while rebuilding after the custom setting change'
+    }
+
+    # Open the visual settings dialog, select the exposed-edge DIP field,
+    # enter 80, and verify both the controls and live persistence path.
+    if (-not [StageManagerNativeMethods]::PostMessage(
+        $script:window, 0x0111, [IntPtr]1003, [IntPtr]::Zero)) {
+        throw 'visual settings command could not be posted'
+    }
+    $settingsDialog = [IntPtr]::Zero
+    Wait-Until -FailureMessage 'visual settings dialog was not created' -Condition {
+        $script:settingsDialog = [StageManagerNativeMethods]::FindSettingsDialog($process.Id)
+        $script:settingsDialog -ne [IntPtr]::Zero
+    }
+    $fields = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1101)
+    $valueControl = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1104)
+    $preview = [StageManagerNativeMethods]::GetDlgItem($script:settingsDialog, 1106)
+    if ($fields -eq [IntPtr]::Zero -or $valueControl -eq [IntPtr]::Zero -or
+        $preview -eq [IntPtr]::Zero) {
+        throw 'visual settings dialog is missing required controls'
+    }
+    # LB_SETCURSEL = 0x0186; LBN_SELCHANGE = 1 in the high word.
+    [StageManagerNativeMethods]::SendMessage(
+        $fields, 0x0186, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:settingsDialog, 0x0111, [IntPtr]66637, [IntPtr]::Zero) | Out-Null
+    # CB_SETCURSEL = 0x014E; 80 DIP is preset index 3 for this field.
+    [StageManagerNativeMethods]::SendMessage(
+        $valueControl, 0x014E, [IntPtr]3, [IntPtr]::Zero) | Out-Null
+    [StageManagerNativeMethods]::SendMessage(
+        $script:settingsDialog, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+    Wait-Until -FailureMessage 'visual settings dialog did not close' -Condition {
+        -not [StageManagerNativeMethods]::IsWindow($script:settingsDialog)
+    }
+    Wait-Until -FailureMessage 'visual settings value was not persisted' -Condition {
+        $content = Get-Content -Raw -LiteralPath $settingsPath
+        $content -match '(?m)^min_exposed_edge_dip=80\r?$' -and
+            $content -match '(?m)^repair_target_edge_dip=80\r?$'
+    }
+    Wait-Until -FailureMessage 'visual settings change was not logged' -Condition {
+        (Get-Content -Raw -LiteralPath $logPath) -match 'settings_dialog_applied'
     }
 
     # Tray Exit command.

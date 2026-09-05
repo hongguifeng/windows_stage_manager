@@ -19,6 +19,7 @@ enum class TrayActionType {
     ApplySetting,
     RequestCustomSetting,
     ApplyCustomSetting,
+    OpenSettings,
     Exit,
 };
 
@@ -65,6 +66,7 @@ public:
     static constexpr UINT kTrayCallbackMessage = WM_APP + 1;
     static constexpr UINT kCommandToggle = 1001;
     static constexpr UINT kCommandExit = 1002;
+    static constexpr UINT kCommandSettings = 1003;
 
 private:
     void show_context_menu();

@@ -65,6 +65,7 @@ stage_manager_target_defaults(stage_manager_core)
 add_executable(stage_manager WIN32
     src/app/main.cpp
     src/app/app_lifecycle.cpp
+    src/app/settings_dialog.cpp
     src/app/tray_controller.cpp
 )
 
@@ -79,7 +80,7 @@ target_link_libraries(stage_manager PRIVATE stage_manager_core)
 
 if(WIN32)
     target_link_libraries(stage_manager_core PUBLIC user32 dwmapi ole32)
-    target_link_libraries(stage_manager PRIVATE shell32)
+    target_link_libraries(stage_manager PRIVATE shell32 gdi32)
     if(MSVC)
         target_link_options(stage_manager PRIVATE /MANIFEST:NO)
     endif()
@@ -150,6 +151,20 @@ if(STAGE_MANAGER_BUILD_TESTS)
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/tray_settings_integration_tests.ps1
                 -Executable $<TARGET_FILE:stage_manager>)
+
+        add_executable(stage_manager_settings_dialog_tests
+            tests/settings_dialog_tests.cpp
+            src/app/settings_dialog.cpp
+            src/app/resources.rc
+        )
+
+        stage_manager_target_defaults(stage_manager_settings_dialog_tests)
+        target_link_libraries(stage_manager_settings_dialog_tests PRIVATE
+            stage_manager_core user32 gdi32)
+        if(MSVC)
+            target_link_options(stage_manager_settings_dialog_tests PRIVATE /MANIFEST:NO)
+        endif()
+        add_test(NAME stage_manager_settings_dialog COMMAND stage_manager_settings_dialog_tests)
 
         add_executable(stage_manager_win_event_tests
             tests/win_event_hook_tests.cpp

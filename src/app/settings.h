@@ -25,6 +25,8 @@ struct Settings {
     std::uint32_t maxSolveTimeMs = 16;
     std::uint32_t maxManagedWindows = 20;
     std::uint32_t maxConsecutiveFailures = 3;
+
+    constexpr bool operator==(const Settings&) const noexcept = default;
 };
 
 std::filesystem::path default_settings_path();

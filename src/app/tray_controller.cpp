@@ -233,6 +233,10 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
     const HMENU settings_menu = CreatePopupMenu();
+    AppendMenuW(menu,
+                MF_STRING,
+                TrayController::kCommandSettings,
+                L"\u6253\u5f00\u53ef\u89c6\u5316\u8bbe\u7f6e\u2026");
     if (settings_menu != nullptr) {
         for (const auto field : setting_fields()) {
             append_setting_menu(settings_menu, settings, field);
@@ -240,7 +244,7 @@ HMENU create_tray_context_menu(const Settings& settings, bool enabled)
         if (!AppendMenuW(menu,
                          MF_POPUP | MF_STRING,
                          reinterpret_cast<UINT_PTR>(settings_menu),
-                         L"\u53c2\u6570\u8bbe\u7f6e")) {
+                         L"\u5feb\u901f\u53c2\u6570\u8bbe\u7f6e")) {
             DestroyMenu(settings_menu);
         }
     }
@@ -367,6 +371,8 @@ TrayAction TrayController::handle_command(WPARAM command)
         return {TrayActionType::ToggleEnabled, std::nullopt};
     case kCommandExit:
         return {TrayActionType::Exit, std::nullopt};
+    case kCommandSettings:
+        return {TrayActionType::OpenSettings, std::nullopt};
     default:
         if (const auto selection = decode_setting_command(LOWORD(command))) {
             return {TrayActionType::ApplySetting, selection};

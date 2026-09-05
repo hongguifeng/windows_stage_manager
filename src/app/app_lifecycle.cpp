@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "app/resource.h"
+#include "app/settings_dialog.h"
 #include "diagnostics/logger.h"
 #include "app/version.h"
 #include "window/reconcile_scheduler.h"
@@ -339,6 +340,35 @@ void AppLifecycle::handle_tray_action(TrayAction action)
             "setting_changed",
             {{"field", setting_field_name(action.setting->field)},
              {"value", std::to_string(action.setting->value)}});
+        if (!start_window_manager()) {
+            tray_.set_status(TrayStatus::ApiError);
+            diagnostics::Logger::instance().log(
+                diagnostics::LogLevel::Error, "window_manager_restart_failed");
+            return;
+        }
+        tray_.set_status(enabled_.load() ? TrayStatus::Running : TrayStatus::Paused);
+        return;
+    }
+    case TrayActionType::OpenSettings: {
+        const auto updated = prompt_settings_dialog(message_window_, settings_);
+        if (!updated || *updated == settings_) {
+            return;
+        }
+        tray_.set_status(TrayStatus::Rebuilding);
+        if (move_guard_ != nullptr) {
+            move_guard_->cancel();
+        }
+        stop_window_manager();
+        settings_ = *updated;
+        enabled_.store(settings_.enabled);
+        dry_run_.store(settings_.dryRun);
+        health_monitor_.set_failure_threshold(settings_.maxConsecutiveFailures);
+        health_monitor_.reset();
+        persist_settings();
+        tray_.set_settings(settings_);
+        tray_.set_enabled(enabled_.load());
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Info, "settings_dialog_applied");
         if (!start_window_manager()) {
             tray_.set_status(TrayStatus::ApiError);
             diagnostics::Logger::instance().log(

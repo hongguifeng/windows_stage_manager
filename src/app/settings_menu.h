@@ -62,5 +62,6 @@ std::optional<SettingField> decode_custom_setting_command(std::uint32_t command)
 bool apply_setting_selection(Settings& settings, const SettingSelection& selection) noexcept;
 bool apply_custom_setting_selection(
     Settings& settings, const SettingSelection& selection) noexcept;
+bool apply_setting_input(Settings& settings, const SettingSelection& selection) noexcept;
 
 } // namespace stage_manager::app

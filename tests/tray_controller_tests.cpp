@@ -16,6 +16,8 @@ int main()
           TrayActionType::ToggleEnabled);
     CHECK(controller.handle_command(TrayController::kCommandExit).type ==
           TrayActionType::Exit);
+    CHECK(controller.handle_command(TrayController::kCommandSettings).type ==
+          TrayActionType::OpenSettings);
     CHECK(controller.handle_callback(WM_LBUTTONUP).type == TrayActionType::ToggleEnabled);
     CHECK(controller.handle_callback(WM_RBUTTONUP).type == TrayActionType::None);
     CHECK(controller.handle_command(9999).type == TrayActionType::None);
@@ -49,15 +51,17 @@ int main()
 
     const HMENU menu = stage_manager::app::create_tray_context_menu(settings, true);
     CHECK(menu != nullptr);
-    CHECK(GetMenuItemCount(menu) == 5);
+    CHECK(GetMenuItemCount(menu) == 6);
     wchar_t menu_text[128]{};
     CHECK(GetMenuStringW(menu, 0, menu_text, 128, MF_BYPOSITION) > 0);
     CHECK(std::wstring(menu_text) == L"\u6682\u505c\u7ba1\u7406");
     CHECK(GetMenuStringW(menu, 2, menu_text, 128, MF_BYPOSITION) > 0);
-    CHECK(std::wstring(menu_text) == L"\u53c2\u6570\u8bbe\u7f6e");
-    CHECK(GetMenuStringW(menu, 4, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"\u6253\u5f00\u53ef\u89c6\u5316\u8bbe\u7f6e\u2026");
+    CHECK(GetMenuStringW(menu, 3, menu_text, 128, MF_BYPOSITION) > 0);
+    CHECK(std::wstring(menu_text) == L"\u5feb\u901f\u53c2\u6570\u8bbe\u7f6e");
+    CHECK(GetMenuStringW(menu, 5, menu_text, 128, MF_BYPOSITION) > 0);
     CHECK(std::wstring(menu_text) == L"\u9000\u51fa");
-    const HMENU settings_menu = GetSubMenu(menu, 2);
+    const HMENU settings_menu = GetSubMenu(menu, 3);
     CHECK(settings_menu != nullptr);
     CHECK(GetMenuItemCount(settings_menu) ==
           static_cast<int>(stage_manager::app::setting_fields().size()));

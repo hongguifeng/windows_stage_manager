@@ -82,6 +82,14 @@ int main()
         menu_settings, SettingSelection{SettingField::MaximumManagedWindows, 21}));
     CHECK(!stage_manager::app::apply_custom_setting_selection(
         menu_settings, SettingSelection{SettingField::DryRun, 1}));
+    CHECK(stage_manager::app::apply_setting_input(
+        menu_settings, SettingSelection{SettingField::DryRun, 0}));
+    CHECK(!menu_settings.dryRun);
+    CHECK(stage_manager::app::apply_setting_input(
+        menu_settings, SettingSelection{SettingField::MinimumExposedEdgeDip, 101}));
+    CHECK(menu_settings.minExposedEdgeDip == 101);
+    CHECK(!stage_manager::app::apply_setting_input(
+        menu_settings, SettingSelection{SettingField::PreferredExposedEdges, 5}));
 
     stage_manager::app::Settings expected;
     expected.enabled = false;

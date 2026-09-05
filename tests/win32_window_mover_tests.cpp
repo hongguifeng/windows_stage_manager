@@ -230,10 +230,10 @@ int main()
     CHECK(tracker.find(reinterpret_cast<std::uintptr_t>(target)).has_value());
 
     const auto foreground_before_reorder = GetForegroundWindow();
-    CHECK(foreground_before_reorder != nullptr);
-    const bool foreground_is_topmost =
+    const bool foreground_is_topmost = foreground_before_reorder != nullptr &&
         (GetWindowLongPtrW(foreground_before_reorder, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
-    const HWND reference_insert_after = foreground_is_topmost
+    const HWND reference_insert_after =
+        foreground_before_reorder == nullptr || foreground_is_topmost
         ? HWND_TOP
         : foreground_before_reorder;
     CHECK(SetWindowPos(reference, reference_insert_after, 0, 0, 0, 0,

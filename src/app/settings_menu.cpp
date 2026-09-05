@@ -336,4 +336,14 @@ bool apply_custom_setting_selection(
     return apply_setting_value(settings, selection);
 }
 
+bool apply_setting_input(Settings& settings, const SettingSelection& selection) noexcept
+{
+    if (contains_choice(selection.field, selection.value)) {
+        return apply_setting_value(settings, selection);
+    }
+    const auto range = custom_setting_range(selection.field);
+    return range && selection.value >= range->minimum &&
+        selection.value <= range->maximum && apply_setting_value(settings, selection);
+}
+
 } // namespace stage_manager::app
