@@ -116,5 +116,5 @@
 
 ## 第十二迭代：RC15 发布
 
-- [-] M17-01 提升版本和发布资料到 `0.1.0-rc15`，完成 Debug/Release 全量验证并独立提交。commit: 待本次验证提交
-- [ ] M17-02 生成候选发布包，对包内 EXE 执行托盘/设置集成测试并记录 SHA-256。
+- [x] M17-01 提升版本和发布资料到 `0.1.0-rc15`，完成 Debug/Release 全量验证并独立提交。commit: d19a771
+- [x] M17-02 生成候选发布包，对包内 EXE 执行托盘/设置集成测试并记录 SHA-256。source commit: d19a771；SHA-256: `3E0FB61F0FCCA37DB9030D40CF8FB626B66A8BA3DF93A4DFC55F8315ACEF374C`

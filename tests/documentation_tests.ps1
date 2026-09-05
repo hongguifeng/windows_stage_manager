@@ -118,6 +118,11 @@ foreach ($commit in @('15e7429', '45db15e', 'f94b87d', '835d319')) {
 if ($todo -notmatch 'M16-01' -or $todo -notmatch 'M16-05') {
     throw "M16 TODO section is missing"
 }
+if ($todo -notmatch 'M17-01' -or
+    $todo -notmatch 'd19a771' -or
+    $todo -notmatch '3E0FB61F0FCCA37DB9030D40CF8FB626B66A8BA3DF93A4DFC55F8315ACEF374C') {
+    throw "RC15 release trace is missing"
+}
 if ($acceptance -notmatch 'MVP-A23' -or
     $acceptance -notmatch 'activation_placement_used=true' -or
     $acceptance -notmatch '\u6c34\u5e73\u5c45\u4e2d\u5e76\u4e0e\u5f53\u524d\u663e\u793a\u5668\u5de5\u4f5c\u533a\u5e95\u90e8\u5bf9\u9f50') {
