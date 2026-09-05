@@ -227,6 +227,9 @@ int main()
     CHECK(dry_result.events.coalescedLocationCount == 1);
     CHECK(dry_result.managedWindowCount == 3);
     CHECK(dry_result.movedWindowCount == 1);
+    CHECK(!dry_result.zOrderFallbackUsed);
+    CHECK(dry_result.reorderedWindowCount == 0);
+    CHECK(dry.desktop.reorderCalls == 0);
     const std::vector<WindowEvent> duplicate_end = {
         {WindowEventType::MoveSizeEnd, 1, 1, 104, 5},
     };
@@ -283,6 +286,55 @@ int main()
     CHECK(one_edge_result.requiredExposedEdges == 1);
     CHECK(one_edge_result.solve.status == SolveStatus::NoViolation);
     CHECK(one_edge_result.solve.moves.empty());
+
+    auto z_order_settings = test_settings();
+    z_order_settings.maxManagedWindows = 2;
+    z_order_settings.minOnscreenWidthDip = 900;
+    z_order_settings.minOnscreenHeightDip = 100;
+    auto make_z_order_layout = [] {
+        auto blocker = make_window(202, {0, 0, 1000, 700}, 1);
+        blocker.ownerHwnd = 999;
+        return std::vector{
+            make_window(201, {50, 300, 950, 400}, 0),
+            blocker,
+            make_window(203, {50, 50, 950, 650}, 2),
+        };
+    };
+
+    MvpFixture z_order_dry(z_order_settings);
+    z_order_dry.desktop.windows = make_z_order_layout();
+    const auto z_order_dry_result =
+        z_order_dry.coordinator.process(drag_events(201), true, true);
+    CHECK(z_order_dry_result.status == MvpBatchStatus::DryRun);
+    CHECK(z_order_dry_result.zOrderFallbackUsed);
+    CHECK(!z_order_dry_result.edgeGoalDegraded);
+    CHECK(z_order_dry_result.requiredExposedEdges == 2);
+    CHECK(z_order_dry_result.reorderedWindowCount == 1);
+    CHECK(z_order_dry_result.zOrderSolve.candidatesTried == 1);
+    CHECK(z_order_dry_result.zOrderSolve.reorders[0].window.hwnd == 203);
+    CHECK(z_order_dry_result.zOrderSolve.reorders[0].insertAfter.hwnd == 201);
+    CHECK(z_order_dry_result.solve.status == SolveStatus::NoViolation);
+    CHECK(z_order_dry_result.solve.moves.empty());
+    CHECK(z_order_dry_result.apply.status ==
+          stage_manager::window::MoveApplyStatus::DryRun);
+    CHECK(z_order_dry.desktop.reorderCalls == 0);
+    CHECK(z_order_dry.desktop.moveCalls == 0);
+
+    MvpFixture z_order_live(z_order_settings);
+    z_order_live.desktop.windows = make_z_order_layout();
+    const auto z_order_live_result =
+        z_order_live.coordinator.process(drag_events(201), true, false);
+    CHECK(z_order_live_result.status == MvpBatchStatus::Applied);
+    CHECK(z_order_live_result.zOrderFallbackUsed);
+    CHECK(z_order_live_result.apply.status ==
+          stage_manager::window::MoveApplyStatus::Applied);
+    CHECK(z_order_live_result.apply.appliedReorders.size() == 1);
+    CHECK(z_order_live_result.apply.appliedMoves.empty());
+    CHECK(z_order_live.desktop.reorderCalls == 1);
+    CHECK(z_order_live.desktop.moveCalls == 0);
+    CHECK(z_order_live.desktop.windows[0].zIndex == 0);
+    CHECK(z_order_live.desktop.windows[2].zIndex == 1);
+    CHECK(z_order_live.desktop.windows[1].zIndex == 2);
 
     MvpFixture crowded;
     auto fixed_blocker = make_window(22, {0, 0, 1000, 700}, 2);

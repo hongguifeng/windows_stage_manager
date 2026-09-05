@@ -2,6 +2,7 @@
 
 #include "app/settings.h"
 #include "solver/layout_solver.h"
+#include "solver/z_order_solver.h"
 #include "window/event_coalescer.h"
 #include "window/move_applier.h"
 #include "window/move_transaction.h"
@@ -48,12 +49,15 @@ struct MvpBatchResult {
     std::uint64_t layoutGeneration = 0;
     CoalescedBatch events;
     solver::SolveResult solve;
+    solver::ZOrderSolveResult zOrderSolve;
     MoveApplyResult apply;
     std::size_t managedWindowCount = 0;
     std::size_t movedWindowCount = 0;
+    std::size_t reorderedWindowCount = 0;
     bool fallbackUsed = false;
     std::uint32_t requiredExposedEdges = 1;
     bool edgeGoalDegraded = false;
+    bool zOrderFallbackUsed = false;
 };
 
 class MvpCoordinator final {

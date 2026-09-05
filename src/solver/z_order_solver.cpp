@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <numeric>
 #include <optional>
-#include <span>
 #include <vector>
 
 namespace stage_manager::solver {
@@ -31,19 +30,18 @@ std::optional<std::vector<std::size_t>> ordered_indices(const LayoutSnapshot& sn
 }
 
 LayoutSnapshot promote_after_active(const LayoutSnapshot& initial,
-                                    std::span<const std::size_t> original_order,
                                     std::size_t active_index,
                                     std::size_t target_index)
 {
-    std::vector<std::size_t> order(original_order.begin(), original_order.end());
-    order.erase(std::find(order.begin(), order.end(), target_index));
-    const auto active = std::find(order.begin(), order.end(), active_index);
-    order.insert(active + 1, target_index);
-
     auto reordered = initial;
-    for (std::size_t z_index = 0; z_index < order.size(); ++z_index) {
-        reordered.windows[order[z_index]].zIndex = static_cast<std::int32_t>(z_index);
+    const auto active_z = initial.windows[active_index].zIndex;
+    const auto target_z = initial.windows[target_index].zIndex;
+    for (auto& window : reordered.windows) {
+        if (window.zIndex > active_z && window.zIndex < target_z) {
+            ++window.zIndex;
+        }
     }
+    reordered.windows[target_index].zIndex = active_z + 1;
     return reordered;
 }
 
@@ -94,8 +92,7 @@ ZOrderSolveResult solve_z_order_fallback(const LayoutSnapshot& initial,
             continue;
         }
         ++candidates_tried;
-        auto reordered = promote_after_active(
-            initial, *order, active_window_index, target_index);
+        auto reordered = promote_after_active(initial, active_window_index, target_index);
         auto solved = solve_layout(reordered, policy, clock);
         if (solved.status == SolveStatus::InvalidSnapshot ||
             solved.status == SolveStatus::GeometryTooComplex ||

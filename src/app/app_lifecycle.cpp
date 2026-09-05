@@ -393,6 +393,8 @@ void AppLifecycle::coordinator_loop()
         observation.solverStates = result.solve.statesVisited;
         observation.plannedMoves = result.solve.moves.size();
         observation.appliedMoves = result.apply.appliedMoves.size();
+        observation.plannedReorders = result.zOrderSolve.reorders.size();
+        observation.appliedReorders = result.apply.appliedReorders.size();
         observation.droppedEvents = dropped_delta;
         observation.durationUs = static_cast<std::uint64_t>(batch_duration.count());
         observation.queueDepth = queue_depth;
@@ -401,6 +403,7 @@ void AppLifecycle::coordinator_loop()
         observation.solverFailure = result.status == window::MvpBatchStatus::Unsatisfiable;
         observation.apiFailure = result.status == window::MvpBatchStatus::ApiError ||
             result.reason == window::MvpSuspendReason::SnapshotUnavailable;
+        observation.zOrderFallback = result.zOrderFallbackUsed;
         runtime_metrics_.record(observation);
         const auto health_action = health_monitor_.observe(result.status, result.reason);
         if (health_action == window::HealthAction::DisableAutomation &&
@@ -429,11 +432,16 @@ void AppLifecycle::coordinator_loop()
         const auto solver_states = std::to_string(result.solve.statesVisited);
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
+        const auto planned_reorders = std::to_string(result.zOrderSolve.reorders.size());
+        const auto applied_reorders = std::to_string(result.apply.appliedReorders.size());
         const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
                                                        : std::string_view{"false"};
         const auto required_exposed_edges = std::to_string(result.requiredExposedEdges);
         const auto edge_goal_degraded = result.edgeGoalDegraded ? std::string_view{"true"}
                                                                 : std::string_view{"false"};
+        const auto z_order_fallback_used = result.zOrderFallbackUsed
+            ? std::string_view{"true"}
+            : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
         const auto queue_depth_text = std::to_string(queue_depth);
         const auto total_batches = std::to_string(metrics.batches);
@@ -452,9 +460,12 @@ void AppLifecycle::coordinator_loop()
              {"solver_states", solver_states},
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
+             {"planned_reorders", planned_reorders},
+             {"applied_reorders", applied_reorders},
              {"fallback_used", fallback_used},
              {"required_exposed_edges", required_exposed_edges},
              {"edge_goal_degraded", edge_goal_degraded},
+             {"z_order_fallback_used", z_order_fallback_used},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

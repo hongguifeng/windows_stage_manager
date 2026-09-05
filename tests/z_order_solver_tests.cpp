@@ -84,6 +84,19 @@ int main()
               bottom_result.finalSnapshot, policy.ranking.visibility).violations.empty());
     CHECK(bottom_result.finalSnapshot.windows[0].zIndex == 0);
 
+    auto gapped_z_order = bottom_succeeds;
+    gapped_z_order.windows[0].zIndex = 5;
+    gapped_z_order.windows[1].zIndex = 6;
+    gapped_z_order.windows[2].zIndex = 8;
+    gapped_z_order.windows[3].zIndex = 10;
+    const auto gapped_result = solve_z_order_fallback(gapped_z_order, policy, 0);
+    CHECK(gapped_result.status == SolveStatus::Solved);
+    CHECK(gapped_result.reorders[0].toZIndex == 6);
+    CHECK(gapped_result.finalSnapshot.windows[0].zIndex == 5);
+    CHECK(gapped_result.finalSnapshot.windows[3].zIndex == 6);
+    CHECK(gapped_result.finalSnapshot.windows[1].zIndex == 7);
+    CHECK(gapped_result.finalSnapshot.windows[2].zIndex == 9);
+
     LayoutSnapshot next_candidate_succeeds;
     next_candidate_succeeds.windows = {
         make_window(10, {400, 400, 480, 480}, 0),

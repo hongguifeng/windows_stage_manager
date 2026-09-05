@@ -30,6 +30,8 @@ int main()
                 observation.solverStates = 3;
                 observation.plannedMoves = 2;
                 observation.appliedMoves = 1;
+                observation.plannedReorders = 1;
+                observation.appliedReorders = batch % 2;
                 observation.droppedEvents = batch % 10 == 0 ? 1 : 0;
                 observation.durationUs = thread_index * kBatchesPerThread + batch;
                 observation.queueDepth = static_cast<std::size_t>(thread_index + 4);
@@ -37,6 +39,7 @@ int main()
                 observation.dryRun = batch % 2 == 0;
                 observation.solverFailure = batch % 20 == 0;
                 observation.apiFailure = batch % 100 == 0;
+                observation.zOrderFallback = batch % 4 == 0;
                 metrics.record(observation);
             }
         });
@@ -53,11 +56,14 @@ int main()
     CHECK(result.solverStates == batches * 3);
     CHECK(result.plannedMoves == batches * 2);
     CHECK(result.appliedMoves == batches);
+    CHECK(result.plannedReorders == batches);
+    CHECK(result.appliedReorders == batches / 2);
     CHECK(result.droppedEvents == kThreads * 100);
     CHECK(result.reconciliationBatches == kThreads * 100);
     CHECK(result.dryRunBatches == batches / 2);
     CHECK(result.solverFailures == kThreads * 50);
     CHECK(result.apiFailures == kThreads * 10);
+    CHECK(result.zOrderFallbackBatches == batches / 4);
     CHECK(result.maximumQueueDepth == 7);
     CHECK(result.maximumBatchDurationUs == batches - 1);
     return 0;

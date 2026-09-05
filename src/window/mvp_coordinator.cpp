@@ -346,6 +346,7 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         item.visible = window.visible && !window.iconic && !window.cloaked;
         item.blocksVisibility = item.visible && window.currentDesktop;
         item.currentDesktop = window.currentDesktop;
+        item.topmost = window.topmost;
         if (window.key.hwnd == active->key.hwnd) {
             active_index = layout.windows.size();
         }
@@ -425,19 +426,48 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
         return false;
     };
 
-    if (!attempt_goal(preferred_exposed_edges) &&
-        minimum_exposed_edges < preferred_exposed_edges) {
+    auto solved = attempt_goal(preferred_exposed_edges);
+    if (!solved && minimum_exposed_edges < preferred_exposed_edges) {
         result.edgeGoalDegraded = true;
-        static_cast<void>(attempt_goal(minimum_exposed_edges));
+        solved = attempt_goal(minimum_exposed_edges);
+    }
+    if (!solved && result.solve.status == solver::SolveStatus::Unsatisfiable) {
+        result.fallbackUsed = false;
+        result.managedWindowCount = full_managed_count;
+        managed_handles = full_managed_handles;
+        layout = full_layout;
+        const auto attempt_z_order = [&](std::uint32_t exposed_edges) {
+            policy.ranking.visibility.minimumExposedEdges = exposed_edges;
+            result.requiredExposedEdges = exposed_edges;
+            result.zOrderSolve = solver::solve_z_order_fallback(
+                full_layout, policy, *active_index);
+            if (result.zOrderSolve.status != solver::SolveStatus::Solved) {
+                return false;
+            }
+            result.solve = result.zOrderSolve.positionSolve;
+            result.zOrderFallbackUsed = true;
+            result.reorderedWindowCount = result.zOrderSolve.reorders.size();
+            return true;
+        };
+
+        result.edgeGoalDegraded = false;
+        solved = attempt_z_order(preferred_exposed_edges);
+        if (!solved && minimum_exposed_edges < preferred_exposed_edges &&
+            result.zOrderSolve.status == solver::SolveStatus::Unsatisfiable) {
+            result.edgeGoalDegraded = true;
+            solved = attempt_z_order(minimum_exposed_edges);
+        }
     }
     if (transaction_seen_states_.empty()) {
         transaction_seen_states_.push_back(solver::hash_layout(layout));
     }
-    if (result.solve.status == solver::SolveStatus::NoViolation) {
+    if (result.solve.status == solver::SolveStatus::NoViolation &&
+        !result.zOrderFallbackUsed) {
         result.status = status_;
         return result;
     }
-    if (result.solve.status != solver::SolveStatus::Solved) {
+    if (result.solve.status != solver::SolveStatus::Solved &&
+        result.solve.status != solver::SolveStatus::NoViolation) {
         status_ = MvpBatchStatus::Unsatisfiable;
         result.status = status_;
         result.reason = MvpSuspendReason::SolverFailure;
@@ -465,11 +495,14 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
     options.dryRun = dry_run;
     options.transactionId = next_transaction_id_;
     options.layoutGeneration = layout_generation_;
-    result.apply = applier_.apply(result.solve.moves, options);
+    result.apply = applier_.apply(
+        result.solve.moves, result.zOrderSolve.reorders, options);
     if (result.apply.status == MoveApplyStatus::DryRun) {
         status_ = MvpBatchStatus::DryRun;
     } else if (result.apply.status == MoveApplyStatus::Applied) {
-        auto verified_layout = layout;
+        auto verified_layout = result.zOrderFallbackUsed
+            ? result.zOrderSolve.finalSnapshot
+            : layout;
         bool verification_failed = false;
         for (auto& item : verified_layout.windows) {
             const auto actual = std::find_if(
@@ -495,6 +528,8 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run, CoalescedBatch events)
             item.visible = actual->visible && !actual->iconic && !actual->cloaked;
             item.blocksVisibility = item.visible && actual->currentDesktop;
             item.currentDesktop = actual->currentDesktop;
+            item.zIndex = actual->zIndex;
+            item.topmost = actual->topmost;
         }
         const auto verification = solver::scan_visibility_violations(
             verified_layout, policy.ranking.visibility);

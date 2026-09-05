@@ -23,6 +23,8 @@ void RuntimeMetrics::record(const BatchObservation& observation) noexcept
     solver_states_.fetch_add(observation.solverStates, std::memory_order_relaxed);
     planned_moves_.fetch_add(observation.plannedMoves, std::memory_order_relaxed);
     applied_moves_.fetch_add(observation.appliedMoves, std::memory_order_relaxed);
+    planned_reorders_.fetch_add(observation.plannedReorders, std::memory_order_relaxed);
+    applied_reorders_.fetch_add(observation.appliedReorders, std::memory_order_relaxed);
     dropped_events_.fetch_add(observation.droppedEvents, std::memory_order_relaxed);
     reconciliation_batches_.fetch_add(
         observation.reconciliation ? 1 : 0, std::memory_order_relaxed);
@@ -31,6 +33,8 @@ void RuntimeMetrics::record(const BatchObservation& observation) noexcept
                                std::memory_order_relaxed);
     api_failures_.fetch_add(observation.apiFailure ? 1 : 0,
                             std::memory_order_relaxed);
+    z_order_fallback_batches_.fetch_add(observation.zOrderFallback ? 1 : 0,
+                                        std::memory_order_relaxed);
     update_maximum(maximum_queue_depth_, observation.queueDepth);
     update_maximum(maximum_batch_duration_us_, observation.durationUs);
 }
@@ -45,11 +49,15 @@ RuntimeMetricsSnapshot RuntimeMetrics::snapshot() const noexcept
     result.solverStates = solver_states_.load(std::memory_order_relaxed);
     result.plannedMoves = planned_moves_.load(std::memory_order_relaxed);
     result.appliedMoves = applied_moves_.load(std::memory_order_relaxed);
+    result.plannedReorders = planned_reorders_.load(std::memory_order_relaxed);
+    result.appliedReorders = applied_reorders_.load(std::memory_order_relaxed);
     result.droppedEvents = dropped_events_.load(std::memory_order_relaxed);
     result.reconciliationBatches = reconciliation_batches_.load(std::memory_order_relaxed);
     result.dryRunBatches = dry_run_batches_.load(std::memory_order_relaxed);
     result.solverFailures = solver_failures_.load(std::memory_order_relaxed);
     result.apiFailures = api_failures_.load(std::memory_order_relaxed);
+    result.zOrderFallbackBatches =
+        z_order_fallback_batches_.load(std::memory_order_relaxed);
     result.maximumQueueDepth = maximum_queue_depth_.load(std::memory_order_relaxed);
     result.maximumBatchDurationUs =
         maximum_batch_duration_us_.load(std::memory_order_relaxed);
