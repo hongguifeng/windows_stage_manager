@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+
+jobs:
+  build-and-package:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure (Debug)
+        run: cmake --preset windows-debug
+
+      - name: Build (Debug)
+        run: cmake --build --preset windows-debug
+
+      - name: Test (Debug)
+        run: ctest --preset windows-debug --output-on-failure
+
+      - name: Configure (Release)
+        run: cmake --preset windows-release
+
+      - name: Build (Release)
+        run: cmake --build --preset windows-release
+
+      - name: Test (Release)
+        run: ctest --preset windows-release --output-on-failure
+
+      - name: Determine version
+        id: version
+        run: |
+          $sha = (git rev-parse --short HEAD)
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $version = $env:GITHUB_REF.Substring("refs/tags/".Length)
+            # strip a leading "v"
+            if ($version -match '^v') { $version = $version.Substring(1) }
+            if (-not $version) { $version = "0.1.0" }
+          } else {
+            $version = "0.1.0-$sha"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Packaging version: $version (commit $sha)"
+
+      - name: Package release
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
+            -BuildDirectory build\release `
+            -OutputDirectory artifacts\ci `
+            -Version "${{ steps.version.outputs.version }}" `
+            -Commit "$((git rev-parse --short HEAD))"
+
+      - name: Upload release package
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindowsStageManager-${{ steps.version.outputs.version }}
+          path: |
+            artifacts/ci/WindowsStageManager-*.zip
+            artifacts/ci/manifest.json
+            artifacts/ci/current.json
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zip = Get-ChildItem artifacts\ci\WindowsStageManager-*.zip
+          gh release create "v$version" "$zip" `
+            --title "WindowsStageManager $version" `
+            --notes "Auto-built by CI from commit $(git rev-parse --short HEAD)." `
+            --generate-notes
