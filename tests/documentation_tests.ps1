@@ -21,6 +21,8 @@ function Assert-Match(
 }
 
 $readme = Read-WorkspaceFile "README.md"
+$agentInstructions = Read-WorkspaceFile "AGENTS.md"
+$requiredAgentInstruction = '\u6bcf\u6b21\u66f4\u65b0\u529f\u80fd\u4e4b\u540e\uff0c\u90fd\u8981\u540c\u6b65\u4fee\u6539\u4ee3\u7801\u6587\u6863\u3002'
 $functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
 $design = Read-WorkspaceFile "docs\SOFTWARE_DESIGN.md"
 $feature = Read-WorkspaceFile "assets\feature-overview.svg"
@@ -53,6 +55,8 @@ Assert-Match $readme 'docs/SOFTWARE_DESIGN\.md' `
     "README does not link to the current software design document"
 Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
     "README does not identify the authoritative current document"
+Assert-Match $agentInstructions $requiredAgentInstruction `
+    "AGENTS.md does not require documentation updates after feature changes"
 Assert-Match $functions 'As-built' `
     "software feature document is not identified as an as-built document"
 Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
