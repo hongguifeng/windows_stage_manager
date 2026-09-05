@@ -21,6 +21,7 @@ function Assert-Match(
 }
 
 $readme = Read-WorkspaceFile "README.md"
+$englishReadme = Read-WorkspaceFile "README.en.md"
 $agentInstructions = Read-WorkspaceFile "AGENTS.md"
 $requiredAgentInstruction = '\u6bcf\u6b21\u66f4\u65b0\u529f\u80fd\u4e4b\u540e\uff0c\u90fd\u8981\u540c\u6b65\u4fee\u6539\u4ee3\u7801\u6587\u6863\u3002'
 $functions = Read-WorkspaceFile "docs\SOFTWARE_FEATURES.md"
@@ -51,6 +52,16 @@ Assert-Match $readme ([regex]::Escape("-Version $version")) `
 
 Assert-Match $readme 'docs/SOFTWARE_FEATURES\.md' `
     "README does not link to the current software feature document"
+Assert-Match $readme 'README\.en\.md' `
+    "Chinese README does not link to the English README"
+Assert-Match $englishReadme 'README\.md' `
+    "English README does not link to the Chinese README"
+Assert-Match $englishReadme 'place_activated_window=true' `
+    "English README does not document activated-window placement"
+Assert-Match $englishReadme 'Ctrl\+Alt\+F12' `
+    "English README does not document the emergency shortcut"
+Assert-Match $englishReadme 'windows-debug' `
+    "English README does not document the build preset"
 Assert-Match $readme 'docs/SOFTWARE_DESIGN\.md' `
     "README does not link to the current software design document"
 Assert-Match $readme '\u5f53\u524d\u5b9e\u73b0\u7684\u552f\u4e00\u57fa\u51c6' `
