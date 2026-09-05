@@ -2,7 +2,7 @@
 
 这是一个 Windows 11 后台窗口管理器：用户结束拖动后，它检查同一显示器上的 2–20 个普通窗口，并为被遮挡窗口保留可点击的交互边缘。程序不会调整窗口尺寸、Z-order 或活动窗口。
 
-> 安全默认值：`dry_run=true`。默认只计算和记录移动计划，不会移动真实窗口。只有用户明确把配置改为 `dry_run=false` 后才会调用窗口移动 API。
+> 开箱默认值：`dry_run=false`。启动后会在拖动结束时自动移动符合条件的非活动窗口。若只想观察计划，请先在配置中设置 `dry_run=true`。
 
 ## 构建与测试
 
@@ -20,14 +20,14 @@ ctest --preset windows-debug --output-on-failure
 
 启动 `build\release\stage_manager.exe`。托盘菜单可暂停或恢复管理；紧急停用快捷键为 `Ctrl+Alt+F12`。配置与日志默认位于 `%LOCALAPPDATA%\WindowsStageManager`。
 
-首次试用请保持 DryRun，结合日志确认候选窗口与计划正确。真实移动仅应用于可丢弃内容的测试窗口。
+如需先验证规则，可启用 DryRun 并结合日志检查计划。真实应用仍保留紧急停用、故障熔断、活动窗口保护以及位置/尺寸/Z-order 后验验证。
 
 ## 发布暂存
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.1.0-rc1 -Commit (git rev-parse --short HEAD)
+  -Version 0.1.0-rc2 -Commit (git rev-parse --short HEAD)
 ```
 
 脚本生成版本化 ZIP、`current.json`，并在提升下一版本时把上一版本记录保存为 `rollback.json`。

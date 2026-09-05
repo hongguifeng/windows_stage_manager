@@ -5,7 +5,8 @@ $readme = Get-Content -LiteralPath (Join-Path $Workspace "README.md") -Raw -Enco
 $guide = Get-Content -LiteralPath (Join-Path $Workspace "USER_GUIDE.md") -Raw -Encoding UTF8
 $limits = Get-Content -LiteralPath (Join-Path $Workspace "KNOWN_LIMITATIONS.md") -Raw -Encoding UTF8
 
-if ($readme -notmatch 'dry_run=true') { throw "README lost the safe DryRun default" }
+if ($readme -notmatch 'dry_run=false') { throw "README lost the active default" }
+if ($guide -notmatch 'dry_run=false') { throw "guide lost the active default" }
 if ($readme -notmatch 'stage_release\.ps1') { throw "README release command is missing" }
 if ($guide -notmatch 'Ctrl\+Alt\+F12') { throw "emergency disable instructions are missing" }
 if ($guide -notmatch 'rollback\.json') { throw "rollback instructions are missing" }

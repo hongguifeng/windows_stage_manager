@@ -13,6 +13,11 @@ int main()
     std::error_code error;
     std::filesystem::remove_all(root, error);
 
+    const auto defaults = stage_manager::app::load_settings(root / "missing.ini");
+    if (defaults.dryRun) {
+        return 1;
+    }
+
     stage_manager::app::Settings expected;
     expected.enabled = false;
     expected.dryRun = false;

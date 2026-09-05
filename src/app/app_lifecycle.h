@@ -67,7 +67,7 @@ private:
     Settings settings_;
     std::filesystem::path settings_path_;
     std::atomic<bool> enabled_{true};
-    std::atomic<bool> dry_run_{true};
+    std::atomic<bool> dry_run_{false};
     diagnostics::RuntimeMetrics runtime_metrics_;
     window::CoordinatorHealthMonitor health_monitor_;
     bool emergency_hotkey_registered_ = false;

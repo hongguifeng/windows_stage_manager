@@ -3,8 +3,8 @@
 ## 首次启动
 
 1. 解压版本化发布包并启动 `stage_manager.exe`。
-2. 程序常驻系统托盘；默认 `dry_run=true`，此时只记录计划，不移动窗口。
-3. 打开 `%LOCALAPPDATA%\WindowsStageManager\logs\manager.log`，确认 `application_start` 中 `dry_run="true"`。
+2. 程序常驻系统托盘；默认 `dry_run=false`，拖动结束后会自动整理符合条件的非活动窗口。
+3. 打开 `%LOCALAPPDATA%\WindowsStageManager\logs\manager.log`，可确认 `application_start` 中的实际 `dry_run` 值。
 
 ## 配置
 
@@ -12,12 +12,12 @@
 
 ```ini
 enabled=true
-dry_run=true
+dry_run=false
 max_managed_windows=20
 max_consecutive_failures=3
 ```
 
-只有在完成 DryRun 验收且明确接受真实窗口移动后，才把 `dry_run` 改为 `false` 并重启程序。程序只改变非活动窗口的位置，不改变尺寸、激活状态或 Z-order。
+程序开箱即可工作，只改变非活动窗口的位置，不改变尺寸、激活状态或 Z-order。若希望先观察计划或排查问题，将 `dry_run` 改为 `true` 并重启程序。
 
 ## 日常操作与故障处理
 

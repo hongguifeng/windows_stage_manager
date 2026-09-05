@@ -19,7 +19,9 @@ try {
     Expand-Archive -LiteralPath (Join-Path $testRoot $current.package) -DestinationPath $expanded
     if (-not (Test-Path -LiteralPath (Join-Path $expanded "stage_manager.exe") -PathType Leaf)) { throw "executable missing" }
     $settings = Get-Content -LiteralPath (Join-Path $expanded "settings.example.ini") -Raw
-    if ($settings -notmatch '(?m)^dry_run=true$') { throw "release default is not dry-run" }
+    if ($settings -notmatch '(?m)^dry_run=false$') { throw "release default is not active" }
+    $manifest = Get-Content -LiteralPath (Join-Path $expanded "manifest.json") -Raw | ConvertFrom-Json
+    if ($manifest.dryRunDefault -ne $false) { throw "release manifest default mismatch" }
 } finally {
     $resolved = [IO.Path]::GetFullPath($testRoot)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

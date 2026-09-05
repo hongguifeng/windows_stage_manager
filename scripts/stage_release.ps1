@@ -31,7 +31,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\README.md") -Destination $stagingRoot
     @"
 enabled=true
-dry_run=true
+dry_run=false
 max_managed_windows=20
 max_consecutive_failures=3
 "@ | Set-Content -LiteralPath (Join-Path $stagingRoot "settings.example.ini") -Encoding utf8
@@ -40,7 +40,7 @@ max_consecutive_failures=3
         version = $Version
         commit = $Commit
         createdUtc = [DateTime]::UtcNow.ToString("o")
-        dryRunDefault = $true
+        dryRunDefault = $false
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingRoot "manifest.json") -Encoding utf8
 
     $temporaryPackage = "$packagePath.tmp.zip"
