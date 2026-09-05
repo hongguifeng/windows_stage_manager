@@ -56,12 +56,14 @@ std::uint32_t direction_change_penalty(
 
 CandidateCost calculate_cost(const LayoutWindow& target,
                              const PlacementCandidate& candidate,
+                             VisibilityPreferenceRank visibility_preference,
                              std::optional<geometry::Edge> preferred_edge)
 {
     const auto& stable_rect = target.lastStableRect.empty()
         ? target.placementRect
         : target.lastStableRect;
     CandidateCost cost;
+    cost.visibilityPreference = visibility_preference;
     cost.movedWindowCount = candidate.deltaX == 0 && candidate.deltaY == 0 ? 0u : 1u;
     cost.manhattanDistance = saturating_add(unsigned_distance(candidate.deltaX, 0),
                                             unsigned_distance(candidate.deltaY, 0));
@@ -79,7 +81,8 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
 {
     const auto& left_cost = left.cost;
     const auto& right_cost = right.cost;
-    return std::tie(left_cost.movedWindowCount,
+    return std::tie(left_cost.visibilityPreference,
+                    left_cost.movedWindowCount,
                     left_cost.manhattanDistance,
                     left_cost.stableDistance,
                     left_cost.boundaryDistance,
@@ -89,7 +92,8 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
                     left_cost.left,
                     left_cost.top,
                     left.originalIndex) <
-        std::tie(right_cost.movedWindowCount,
+        std::tie(right_cost.visibilityPreference,
+                 right_cost.movedWindowCount,
                  right_cost.manhattanDistance,
                  right_cost.stableDistance,
                  right_cost.boundaryDistance,
@@ -109,6 +113,69 @@ bool contains_target_violation(std::span<const Violation> violations, std::size_
 }
 
 } // namespace
+
+std::optional<VisibilityPreferenceRank> visibility_preference_rank(
+    const LayoutSnapshot& snapshot,
+    std::size_t target_index,
+    const VisibilityRequirements& requirements)
+{
+    if (target_index >= snapshot.windows.size()) {
+        return std::nullopt;
+    }
+    const auto& target = snapshot.windows[target_index];
+    if (!target.visible || !target.currentDesktop || target.visualRect.empty()) {
+        return std::nullopt;
+    }
+
+    auto probe = snapshot;
+    for (std::size_t index = 0; index < probe.windows.size(); ++index) {
+        probe.windows[index].managed = index == target_index;
+    }
+    auto probe_requirements = requirements;
+    probe_requirements.minimumExposedEdges = 4;
+    const auto scan = scan_visibility_violations(probe, probe_requirements);
+    if (scan.status != ViolationScanStatus::Ok) {
+        return std::nullopt;
+    }
+
+    bool left = true;
+    bool right = true;
+    bool top = true;
+    bool bottom = true;
+    const auto violation = std::find_if(
+        scan.violations.begin(), scan.violations.end(), [target_index](const auto& item) {
+            return item.targetIndex == target_index;
+        });
+    if (violation != scan.violations.end()) {
+        for (const auto edge : violation->failedEdges) {
+            switch (edge) {
+            case geometry::Edge::Left:
+                left = false;
+                break;
+            case geometry::Edge::Right:
+                right = false;
+                break;
+            case geometry::Edge::Top:
+                top = false;
+                break;
+            case geometry::Edge::Bottom:
+                bottom = false;
+                break;
+            }
+        }
+    }
+
+    if (left && top) {
+        return VisibilityPreferenceRank::LeftTop;
+    }
+    if (right && bottom) {
+        return VisibilityPreferenceRank::RightBottom;
+    }
+    if (top && !left && !right && !bottom) {
+        return VisibilityPreferenceRank::TopOnly;
+    }
+    return VisibilityPreferenceRank::Unranked;
+}
 
 CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
                                        const Violation& violation,
@@ -190,10 +257,20 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
             continue;
         }
 
+        const auto visibility_preference = visibility_preference_rank(
+            simulated, violation.targetIndex, policy.visibility);
+        if (!visibility_preference) {
+            result.status = CandidateRankingStatus::InvalidInput;
+            result.accepted.clear();
+            result.rejected.clear();
+            return result;
+        }
+
         RankedCandidate ranked;
         ranked.originalIndex = candidate_index;
         ranked.candidate = candidate;
-        ranked.cost = calculate_cost(target, candidate, policy.preferredEdge);
+        ranked.cost = calculate_cost(
+            target, candidate, *visibility_preference, policy.preferredEdge);
         ranked.simulatedSnapshot = std::move(simulated);
         ranked.remainingViolations = scan.violations;
         result.accepted.push_back(std::move(ranked));

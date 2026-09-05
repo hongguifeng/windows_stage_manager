@@ -29,6 +29,13 @@ enum class CandidateRankingStatus : std::uint8_t {
     GeometryTooComplex,
 };
 
+enum class VisibilityPreferenceRank : std::uint8_t {
+    LeftTop = 0,
+    RightBottom = 1,
+    TopOnly = 2,
+    Unranked = 3,
+};
+
 struct CandidateRankingPolicy {
     VisibilityRequirements visibility;
     std::uint64_t minimumOnscreenWidth = 100;
@@ -39,6 +46,7 @@ struct CandidateRankingPolicy {
 };
 
 struct CandidateCost {
+    VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unranked;
     std::uint32_t movedWindowCount = 0;
     std::uint64_t manhattanDistance = 0;
     std::uint64_t stableDistance = 0;
@@ -75,5 +83,10 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
                                        const Violation& violation,
                                        std::span<const PlacementCandidate> candidates,
                                        const CandidateRankingPolicy& policy);
+
+std::optional<VisibilityPreferenceRank> visibility_preference_rank(
+    const LayoutSnapshot& snapshot,
+    std::size_t target_index,
+    const VisibilityRequirements& requirements);
 
 } // namespace stage_manager::solver
