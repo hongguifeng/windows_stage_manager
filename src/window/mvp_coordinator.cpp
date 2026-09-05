@@ -145,6 +145,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     result.events = coalescer_.coalesce(events);
     if (!enabled) {
         guard_.cancel();
+        suppressed_activation_window_.reset();
         dragging_window_.reset();
         dragging_start_rect_.reset();
         dragging_started_by_activation_ = false;
@@ -195,6 +196,10 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
             if (active != initial->windows.end()) {
                 dragging_start_rect_ = active->placementRect;
+                if (active->managed && suppressed_activation_window_ &&
+                    active->key.hwnd != *suppressed_activation_window_) {
+                    suppressed_activation_window_.reset();
+                }
             }
             guard_.activate(next_transaction_id_, layout_generation_);
             status_ = MvpBatchStatus::Dragging;
@@ -219,6 +224,10 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             } else if (dragging_window_ && event.hwnd == *dragging_window_) {
                 dragging_location_change_seen_ = true;
             }
+        } else if (event.type == WindowEventType::Destroy &&
+                   suppressed_activation_window_ &&
+                   event.hwnd == *suppressed_activation_window_) {
+            suppressed_activation_window_.reset();
         } else if (event.type == WindowEventType::HookError) {
             status_ = MvpBatchStatus::Rebuilding;
         }
@@ -228,13 +237,20 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     // This also recovers when Windows omits the corresponding MoveSizeEnd event.
     // A foreground event for the window currently being dragged is intentionally
     // ignored so a user drag is never replaced by activation placement.
-    if (foreground_window && foreground_changed && foreground_suppresses_layout) {
+    const bool returns_to_suppressed_activation = foreground_window &&
+        suppressed_activation_window_ &&
+        *foreground_window == *suppressed_activation_window_;
+    if (foreground_window && foreground_changed &&
+        (foreground_suppresses_layout || returns_to_suppressed_activation)) {
         guard_.cancel();
         dragging_window_.reset();
         dragging_start_rect_.reset();
         dragging_started_by_activation_ = false;
         dragging_location_change_seen_ = false;
         active_window_ = *foreground_window;
+        if (foreground_suppresses_layout) {
+            suppressed_activation_window_ = *foreground_window;
+        }
         status_ = MvpBatchStatus::Idle;
         result.status = status_;
         result.transactionId = next_transaction_id_;
@@ -284,6 +300,11 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
                                              return window.key.hwnd == active_window_;
                                          });
         starting_monitor_ = active == initial->windows.end() ? 0 : active->monitor;
+        if (active != initial->windows.end() && active->managed &&
+            suppressed_activation_window_ &&
+            active->key.hwnd != *suppressed_activation_window_) {
+            suppressed_activation_window_.reset();
+        }
         guard_.activate(next_transaction_id_, layout_generation_);
         return settle(
             dry_run,

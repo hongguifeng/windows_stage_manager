@@ -92,6 +92,7 @@ private:
     MvpBatchStatus status_ = MvpBatchStatus::Idle;
     NativeWindowHandle active_window_ = 0;
     NativeWindowHandle foreground_window_ = 0;
+    std::optional<NativeWindowHandle> suppressed_activation_window_;
     std::optional<NativeWindowHandle> dragging_window_;
     std::optional<PixelRect> dragging_start_rect_;
     bool dragging_started_by_activation_ = false;

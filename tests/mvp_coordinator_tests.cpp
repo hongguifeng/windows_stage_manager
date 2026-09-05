@@ -746,17 +746,33 @@ int main()
     CHECK(right_click_activation.desktop.captureCalls == 0);
     CHECK(right_click_activation.desktop.moveCalls == 0);
 
+    const auto context_menu_foreground = right_click_activation.coordinator.process(
+        foreground_event(999), true, false);
+    CHECK(context_menu_foreground.status == MvpBatchStatus::Suspended);
+    CHECK(context_menu_foreground.reason == MvpSuspendReason::ActiveWindowUnavailable);
+    CHECK(!context_menu_foreground.activationLayoutSuppressed);
+    CHECK(right_click_activation.desktop.captureCalls == 3);
+    CHECK(right_click_activation.desktop.moveCalls == 0);
+    const auto context_menu_closed = right_click_activation.coordinator.process(
+        foreground_event(190), true, false);
+    CHECK(context_menu_closed.status == MvpBatchStatus::Idle);
+    CHECK(context_menu_closed.activationLayoutSuppressed);
+    CHECK(!context_menu_closed.activationPlacementUsed);
+    CHECK(context_menu_closed.transactionId == context_menu_foreground.transactionId);
+    CHECK(right_click_activation.desktop.captureCalls == 3);
+    CHECK(right_click_activation.desktop.moveCalls == 0);
+
     const std::vector<WindowEvent> right_click_second = {
         {WindowEventType::Foreground, 191, 1, 101, 2, true},
     };
     const auto right_click_second_result = right_click_activation.coordinator.process(
         right_click_second, true, false);
     CHECK(right_click_second_result.activationLayoutSuppressed);
-    CHECK(right_click_activation.desktop.captureCalls == 0);
+    CHECK(right_click_activation.desktop.captureCalls == 3);
     CHECK(right_click_activation.desktop.moveCalls == 0);
     const auto later_left_click = right_click_activation.coordinator.process(
         foreground_event(190), true, false);
-    CHECK(later_left_click.transactionId == 1);
+    CHECK(later_left_click.transactionId == 2);
     CHECK(later_left_click.activationPlacementUsed);
     CHECK(right_click_activation.desktop.captureCalls >= 2);
     CHECK(right_click_activation.desktop.moveCalls >= 1);
