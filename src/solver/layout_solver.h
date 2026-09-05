@@ -30,7 +30,6 @@ struct SolverLimits {
 struct SolverPolicy {
     CandidateRankingPolicy ranking;
     SolverLimits limits;
-    std::uint64_t repairTargetLength = 64;
 };
 
 struct MovePlan {

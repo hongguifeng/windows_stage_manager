@@ -67,8 +67,7 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
     const auto start = clock.now_ms();
     if (policy.limits.maximumMoves == 0 || policy.limits.maximumStates == 0 ||
         policy.limits.maximumElapsedMs == 0 ||
-        policy.limits.maximumCandidatesPerViolation == 0 ||
-        policy.repairTargetLength == 0) {
+        policy.limits.maximumCandidatesPerViolation == 0) {
         return terminal_result(
             SolveStatus::InvalidSnapshot, initial, {}, {}, 0, start, clock);
     }
@@ -142,7 +141,7 @@ SolveResult solve_layout(const LayoutSnapshot& initial,
         const auto& violation = scan.violations.front();
         const auto generated = generate_candidates(node.snapshot,
                                                    violation,
-                                                   policy.repairTargetLength,
+                                                   policy.ranking.visibility,
                                                    policy.limits.maximumCandidatesPerViolation);
         if (generated.status == CandidateGenerationStatus::TooComplex) {
             return terminal_result(SolveStatus::GeometryTooComplex,

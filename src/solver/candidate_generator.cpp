@@ -76,13 +76,11 @@ bool add_candidate(CandidateGenerationResult& result,
 
 CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                                                const Violation& violation,
-                                               std::uint64_t repair_target_length,
+                                               const VisibilityRequirements& requirements,
                                                std::size_t maximum_candidates)
 {
     CandidateGenerationResult result;
-    if (violation.targetIndex >= snapshot.windows.size() || maximum_candidates == 0 ||
-        repair_target_length >
-            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    if (violation.targetIndex >= snapshot.windows.size() || maximum_candidates == 0) {
         result.status = CandidateGenerationStatus::InvalidInput;
         return result;
     }
@@ -92,9 +90,27 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
         result.status = CandidateGenerationStatus::InvalidInput;
         return result;
     }
-    const auto repair = static_cast<std::int64_t>(repair_target_length);
+    const auto affordances = resolve_edge_affordances(target, requirements);
+    if (std::any_of(affordances.begin(), affordances.end(), [](const auto& affordance) {
+            return affordance.depth == 0 ||
+                affordance.depth > static_cast<std::uint64_t>(
+                    std::numeric_limits<std::int64_t>::max());
+        })) {
+        result.status = CandidateGenerationStatus::InvalidInput;
+        return result;
+    }
+    const auto left_depth = static_cast<std::int64_t>(affordances[0].depth);
+    const auto right_depth = static_cast<std::int64_t>(affordances[1].depth);
+    const auto top_depth = static_cast<std::int64_t>(affordances[2].depth);
+    const auto bottom_depth = static_cast<std::int64_t>(affordances[3].depth);
     std::vector<AxisOffset> x_offsets = {{0, CandidateSource::Current}};
     std::vector<AxisOffset> y_offsets = {{0, CandidateSource::Current}};
+
+    if (!add_candidate(result, target, 0, 0, CandidateSource::Current, maximum_candidates)) {
+        result.status = CandidateGenerationStatus::TooComplex;
+        result.candidates.clear();
+        return result;
+    }
 
     for (const auto blocker_index : violation.blockerIndices) {
         if (blocker_index >= snapshot.windows.size() ||
@@ -103,10 +119,10 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
             return result;
         }
         const auto& blocker = snapshot.windows[blocker_index].visualRect;
-        const auto left_edge = checked_subtract(blocker.left, repair);
-        const auto right_edge = checked_add(blocker.right, repair);
-        const auto top_edge = checked_subtract(blocker.top, repair);
-        const auto bottom_edge = checked_add(blocker.bottom, repair);
+        const auto left_edge = checked_subtract(blocker.left, left_depth);
+        const auto right_edge = checked_add(blocker.right, right_depth);
+        const auto top_edge = checked_subtract(blocker.top, top_depth);
+        const auto bottom_edge = checked_add(blocker.bottom, bottom_depth);
         if (left_edge) {
             if (const auto delta = checked_subtract(*left_edge, target.visualRect.left)) {
                 add_offset(x_offsets, *delta, CandidateSource::BlockerEdge);
@@ -127,6 +143,41 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                 add_offset(y_offsets, *delta, CandidateSource::BlockerEdge);
             }
         }
+
+        if (left_edge && top_edge) {
+            const auto delta_x = checked_subtract(*left_edge, target.visualRect.left);
+            const auto delta_y = checked_subtract(*top_edge, target.visualRect.top);
+            if (delta_x && delta_y &&
+                !add_candidate(result,
+                               target,
+                               *delta_x,
+                               *delta_y,
+                               CandidateSource::BlockerEdge |
+                                   CandidateSource::CombinedAxes |
+                                   CandidateSource::TopLeftChannel,
+                               maximum_candidates)) {
+                result.status = CandidateGenerationStatus::TooComplex;
+                result.candidates.clear();
+                return result;
+            }
+        }
+        if (right_edge && top_edge) {
+            const auto delta_x = checked_subtract(*right_edge, target.visualRect.right);
+            const auto delta_y = checked_subtract(*top_edge, target.visualRect.top);
+            if (delta_x && delta_y &&
+                !add_candidate(result,
+                               target,
+                               *delta_x,
+                               *delta_y,
+                               CandidateSource::BlockerEdge |
+                                   CandidateSource::CombinedAxes |
+                                   CandidateSource::TopRightChannel,
+                               maximum_candidates)) {
+                result.status = CandidateGenerationStatus::TooComplex;
+                result.candidates.clear();
+                return result;
+            }
+        }
     }
 
     if (const auto delta = checked_subtract(target.workArea.left, target.placementRect.left)) {
@@ -142,11 +193,6 @@ CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
         add_offset(y_offsets, *delta, CandidateSource::WorkAreaEdge);
     }
 
-    if (!add_candidate(result, target, 0, 0, CandidateSource::Current, maximum_candidates)) {
-        result.status = CandidateGenerationStatus::TooComplex;
-        result.candidates.clear();
-        return result;
-    }
     for (const auto& x_offset : x_offsets) {
         if (x_offset.value != 0 &&
             !add_candidate(result,

@@ -89,7 +89,8 @@ int main()
     const auto requirements = test_requirements();
     const auto violations = scan_visibility_violations(snapshot, requirements);
     CHECK(violations.violations.size() == 1);
-    const auto generated = generate_candidates(snapshot, violations.violations[0], 64, 128);
+    const auto generated = generate_candidates(
+        snapshot, violations.violations[0], requirements, 128);
     CHECK(generated.status == CandidateGenerationStatus::Ok);
 
     CandidateRankingPolicy policy;
@@ -104,12 +105,12 @@ int main()
         snapshot, violations.violations[0], generated.candidates, policy);
     CHECK(ranked.status == CandidateRankingStatus::Ok);
     CHECK(!ranked.accepted.empty());
-    CHECK((ranked.accepted.front().candidate.placementRect == Rect{0, 164, 200, 364}));
-    CHECK(ranked.accepted.front().cost.manhattanDistance == 164);
+    CHECK((ranked.accepted.front().candidate.placementRect == Rect{76, 76, 276, 276}));
+    CHECK(ranked.accepted.front().cost.manhattanDistance == 48);
     CHECK(ranked.accepted.front().cost.visibilityPreference ==
           VisibilityPreferenceRank::TopLeft);
-    CHECK(ranked.accepted.front().cost.centerDistance == 164);
-    CHECK(ranked.accepted.front().cost.stableDistance == 164);
+    CHECK(ranked.accepted.front().cost.centerDistance == 148);
+    CHECK(ranked.accepted.front().cost.stableDistance == 48);
     CHECK(ranked.accepted.front().cost.directionChangePenalty == 0);
     CHECK(ranked.accepted.front().remainingViolations.empty());
     CHECK(rejected_for(ranked, 0, HardConstraintFailure::TargetStillViolated));
@@ -149,7 +150,7 @@ int main()
         snapshot, violations.violations[0], generated.candidates, no_preference_policy);
     CHECK(!coordinate_tie_break.accepted.empty());
     CHECK((coordinate_tie_break.accepted.front().candidate.placementRect ==
-           Rect{0, 164, 200, 364}));
+           Rect{76, 76, 276, 276}));
 
     const std::vector<PlacementCandidate> preference_over_distance_candidates = {
         {{164, 100, 364, 300}, 64, 0, CandidateSource::BlockerEdge},

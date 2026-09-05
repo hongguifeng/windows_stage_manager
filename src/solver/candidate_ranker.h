@@ -50,6 +50,8 @@ struct CandidateRankingPolicy {
 
 struct CandidateCost {
     VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unrecognized;
+    std::uint32_t channelImbalance = 0;
+    std::uint32_t channelAlternationPenalty = 0;
     std::uint64_t centerDistance = 0;
     std::uint32_t movedWindowCount = 0;
     std::uint64_t manhattanDistance = 0;

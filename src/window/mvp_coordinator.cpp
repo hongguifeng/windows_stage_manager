@@ -414,8 +414,6 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     policy.limits.maximumMoves = std::max(remaining_position_moves, 1u);
     policy.limits.maximumStates = settings_.maxSolverStates;
     policy.limits.maximumElapsedMs = settings_.maxSolveTimeMs;
-    policy.repairTargetLength = static_cast<std::uint64_t>(
-        geometry::scale_dip_ceil(settings_.repairTargetEdgeDip, dpi));
     const auto full_layout = layout;
     const auto full_managed_handles = managed_handles;
     const auto full_managed_count = result.managedWindowCount;

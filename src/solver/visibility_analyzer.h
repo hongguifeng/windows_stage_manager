@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -58,6 +59,11 @@ struct EdgeVisibility {
     }
 };
 
+struct PixelEdgeAffordance {
+    std::uint64_t length = 0;
+    std::uint64_t depth = 0;
+};
+
 struct Violation {
     std::size_t targetIndex = 0;
     std::vector<std::size_t> blockerIndices;
@@ -76,5 +82,8 @@ std::optional<EdgeVisibility> analyze_window_visibility(
     const LayoutSnapshot& snapshot,
     std::size_t target_index,
     const VisibilityRequirements& requirements);
+
+std::array<PixelEdgeAffordance, 4> resolve_edge_affordances(
+    const LayoutWindow& target, const VisibilityRequirements& requirements);
 
 } // namespace stage_manager::solver

@@ -92,13 +92,17 @@ std::uint32_t direction_change_penalty(
 CandidateCost calculate_cost(const LayoutWindow& target,
                              const PlacementCandidate& candidate,
                              VisibilityPreferenceRank visibility_preference,
-                             std::optional<geometry::Edge> preferred_edge)
+                             std::optional<geometry::Edge> preferred_edge,
+                             std::uint32_t channel_imbalance,
+                             std::uint32_t channel_alternation_penalty)
 {
     const auto& stable_rect = target.lastStableRect.empty()
         ? target.placementRect
         : target.lastStableRect;
     CandidateCost cost;
     cost.visibilityPreference = visibility_preference;
+    cost.channelImbalance = channel_imbalance;
+    cost.channelAlternationPenalty = channel_alternation_penalty;
     cost.centerDistance = center_distance(candidate.placementRect, target.workArea);
     cost.movedWindowCount = candidate.deltaX == 0 && candidate.deltaY == 0 ? 0u : 1u;
     cost.manhattanDistance = saturating_add(unsigned_distance(candidate.deltaX, 0),
@@ -117,7 +121,14 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
 {
     const auto& left_cost = left.cost;
     const auto& right_cost = right.cost;
-    return std::tie(left_cost.visibilityPreference,
+    const auto visibility_tier = [](VisibilityPreferenceRank rank) {
+        return rank == VisibilityPreferenceRank::TopRight
+            ? VisibilityPreferenceRank::TopLeft
+            : rank;
+    };
+    return std::make_tuple(visibility_tier(left_cost.visibilityPreference),
+                    left_cost.channelImbalance,
+                    left_cost.channelAlternationPenalty,
                     left_cost.centerDistance,
                     left_cost.movedWindowCount,
                     left_cost.manhattanDistance,
@@ -129,7 +140,9 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
                     left_cost.left,
                     left_cost.top,
                     left.originalIndex) <
-        std::tie(right_cost.visibilityPreference,
+        std::make_tuple(visibility_tier(right_cost.visibilityPreference),
+                 right_cost.channelImbalance,
+                 right_cost.channelAlternationPenalty,
                  right_cost.centerDistance,
                  right_cost.movedWindowCount,
                  right_cost.manhattanDistance,
@@ -148,6 +161,33 @@ bool contains_target_violation(std::span<const Violation> violations, std::size_
     return std::any_of(violations.begin(), violations.end(), [target_index](const auto& violation) {
         return violation.targetIndex == target_index;
     });
+}
+
+std::pair<std::uint32_t, std::uint32_t> channel_loads(
+    const LayoutSnapshot& snapshot,
+    const VisibilityRequirements& requirements,
+    std::size_t target_index,
+    std::optional<std::size_t> active_index)
+{
+    std::uint32_t left = 0;
+    std::uint32_t right = 0;
+    for (std::size_t index = 0; index < snapshot.windows.size(); ++index) {
+        if (index == target_index || (active_index && index == *active_index) ||
+            !snapshot.windows[index].managed ||
+            snapshot.windows[index].zIndex >= snapshot.windows[target_index].zIndex) {
+            continue;
+        }
+        const auto visibility = analyze_window_visibility(snapshot, index, requirements);
+        if (!visibility) {
+            continue;
+        }
+        if (visibility->topLeft && !visibility->topRight) {
+            ++left;
+        } else if (visibility->topRight && !visibility->topLeft) {
+            ++right;
+        }
+    }
+    return {left, right};
 }
 
 } // namespace
@@ -209,6 +249,8 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
     }
 
     const auto& target = snapshot.windows[violation.targetIndex];
+    const auto base_channel_loads = channel_loads(
+        snapshot, policy.visibility, violation.targetIndex, policy.activeWindowIndex);
     for (std::size_t candidate_index = 0; candidate_index < candidates.size(); ++candidate_index) {
         const auto& candidate = candidates[candidate_index];
         const auto reject = [&result, candidate_index](HardConstraintFailure failure) {
@@ -280,11 +322,35 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
             return result;
         }
 
+        auto [left_load, right_load] = base_channel_loads;
+        const bool target_left = *visibility_preference == VisibilityPreferenceRank::TopLeft;
+        const bool target_right = *visibility_preference == VisibilityPreferenceRank::TopRight;
+        const bool prefer_left = left_load == right_load
+            ? target.zIndex % 2 != 0
+            : left_load < right_load;
+        if (target_left) {
+            ++left_load;
+        } else if (target_right) {
+            ++right_load;
+        }
+        const auto channel_imbalance = left_load >= right_load
+            ? left_load - right_load
+            : right_load - left_load;
+        const auto alternation_penalty = (target_left || target_right) &&
+                target_left != prefer_left
+            ? 1u
+            : 0u;
+
         RankedCandidate ranked;
         ranked.originalIndex = candidate_index;
         ranked.candidate = candidate;
         ranked.cost = calculate_cost(
-            target, candidate, *visibility_preference, policy.preferredEdge);
+            target,
+            candidate,
+            *visibility_preference,
+            policy.preferredEdge,
+            channel_imbalance,
+            alternation_penalty);
         ranked.simulatedSnapshot = std::move(simulated);
         ranked.remainingViolations = scan.violations;
         result.accepted.push_back(std::move(ranked));

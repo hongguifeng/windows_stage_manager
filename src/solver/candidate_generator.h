@@ -15,6 +15,8 @@ enum class CandidateSource : std::uint32_t {
     BlockerEdge = 1u << 1,
     WorkAreaEdge = 1u << 2,
     CombinedAxes = 1u << 3,
+    TopLeftChannel = 1u << 4,
+    TopRightChannel = 1u << 5,
 };
 
 constexpr CandidateSource operator|(CandidateSource left, CandidateSource right) noexcept
@@ -43,7 +45,7 @@ struct CandidateGenerationResult {
 
 CandidateGenerationResult generate_candidates(const LayoutSnapshot& snapshot,
                                                const Violation& violation,
-                                               std::uint64_t repair_target_length,
+                                               const VisibilityRequirements& requirements,
                                                std::size_t maximum_candidates = 512);
 
 } // namespace stage_manager::solver

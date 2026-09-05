@@ -5,18 +5,12 @@
 
 #include <algorithm>
 #include <array>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace stage_manager::solver {
 namespace {
-
-struct PixelEdgeRule {
-    std::uint64_t length = 0;
-    std::uint64_t depth = 0;
-};
 
 std::optional<geometry::Region> region_of(const geometry::Rect& rectangle,
                                           std::size_t maximum_rectangles)
@@ -46,9 +40,9 @@ bool valid_requirements(const VisibilityRequirements& requirements) noexcept
         requirements.maximumRegionRectangles > 0;
 }
 
-PixelEdgeRule pixel_rule(const LayoutWindow& target,
-                         const EdgeAffordanceRule& rule,
-                         geometry::Edge edge)
+PixelEdgeAffordance pixel_rule(const LayoutWindow& target,
+                               const EdgeAffordanceRule& rule,
+                               geometry::Edge edge)
 {
     const auto dpi = target.dpi == 0 ? 96u : target.dpi;
     const auto axis_length = edge == geometry::Edge::Left || edge == geometry::Edge::Right
@@ -59,7 +53,7 @@ PixelEdgeRule pixel_rule(const LayoutWindow& target,
     const auto maximum = static_cast<std::uint64_t>(
         geometry::scale_dip_ceil(rule.maximumLengthDip, dpi));
     const auto proportional = axis_length * rule.lengthPercent / 100;
-    PixelEdgeRule result;
+    PixelEdgeAffordance result;
     result.length = std::min(axis_length, std::clamp(proportional, minimum, maximum));
     result.depth = edge == geometry::Edge::Top && target.titleBarHeight > 0
         ? target.titleBarHeight
@@ -69,17 +63,6 @@ PixelEdgeRule pixel_rule(const LayoutWindow& target,
         : static_cast<std::uint64_t>(target.visualRect.height());
     result.depth = std::min(result.depth, perpendicular);
     return result;
-}
-
-std::array<PixelEdgeRule, 4> pixel_rules(const LayoutWindow& target,
-                                        const VisibilityRequirements& requirements)
-{
-    return {{
-        pixel_rule(target, requirements.left, geometry::Edge::Left),
-        pixel_rule(target, requirements.right, geometry::Edge::Right),
-        pixel_rule(target, requirements.top, geometry::Edge::Top),
-        pixel_rule(target, requirements.bottom, geometry::Edge::Bottom),
-    }};
 }
 
 struct ExposureContext {
@@ -152,7 +135,7 @@ std::optional<geometry::Region> exposed_zone(const LayoutWindow& target,
 
 bool has_exposed_segment_in_bounds(const geometry::Region& exposed,
                                    const geometry::InteractionZone& zone,
-                                   const PixelEdgeRule& rule) noexcept
+                                   const PixelEdgeAffordance& rule) noexcept
 {
     for (const auto& rectangle : exposed.rectangles()) {
         const geometry::Rect clipped{
@@ -197,16 +180,19 @@ geometry::InteractionZone trim_shared_corner(geometry::InteractionZone zone,
     return zone;
 }
 
-geometry::InteractionZone restrict_to_corner_half(
-    geometry::InteractionZone zone, geometry::Edge adjacent) noexcept
+geometry::InteractionZone restrict_to_corner_channel(
+    geometry::InteractionZone zone,
+    geometry::Edge adjacent,
+    std::uint64_t required_length) noexcept
 {
+    const auto length = static_cast<std::int64_t>(required_length);
     if (zone.edge == geometry::Edge::Top && adjacent == geometry::Edge::Left) {
-        zone.bounds.right = std::midpoint(zone.bounds.left, zone.bounds.right);
+        zone.bounds.right = std::min(zone.bounds.right, zone.bounds.left + length);
     } else if (zone.edge == geometry::Edge::Top && adjacent == geometry::Edge::Right) {
-        zone.bounds.left = std::midpoint(zone.bounds.left, zone.bounds.right);
+        zone.bounds.left = std::max(zone.bounds.left, zone.bounds.right - length);
     } else if ((zone.edge == geometry::Edge::Left || zone.edge == geometry::Edge::Right) &&
                adjacent == geometry::Edge::Top) {
-        zone.bounds.bottom = std::midpoint(zone.bounds.top, zone.bounds.bottom);
+        zone.bounds.bottom = std::min(zone.bounds.bottom, zone.bounds.top + length);
     }
     return zone;
 }
@@ -217,7 +203,7 @@ std::optional<EdgeVisibility> analyze_with_context(
     const geometry::Region& blockers,
     ViolationScanStatus& status)
 {
-    const auto rules = pixel_rules(target, requirements);
+    const auto rules = resolve_edge_affordances(target, requirements);
     std::array<geometry::InteractionZone, 4> zones{};
     zones[0] = geometry::make_interaction_zones(target.visualRect, rules[0].depth)[0];
     zones[1] = geometry::make_interaction_zones(target.visualRect, rules[1].depth)[1];
@@ -242,22 +228,26 @@ std::optional<EdgeVisibility> analyze_with_context(
             exposed_regions[index], zones[index], rules[index]);
     }
 
-    const auto top_without_left = restrict_to_corner_half(
+    const auto top_without_left = restrict_to_corner_channel(
         trim_shared_corner(zones[2], geometry::Edge::Left, rules[0].depth),
-        geometry::Edge::Left);
-    const auto left_without_top = restrict_to_corner_half(
+        geometry::Edge::Left,
+        rules[2].length);
+    const auto left_without_top = restrict_to_corner_channel(
         trim_shared_corner(zones[0], geometry::Edge::Top, rules[2].depth),
-        geometry::Edge::Top);
+        geometry::Edge::Top,
+        rules[0].length);
     visibility.topLeft = has_exposed_segment_in_bounds(
                              exposed_regions[2], top_without_left, rules[2]) &&
         has_exposed_segment_in_bounds(exposed_regions[0], left_without_top, rules[0]);
 
-    const auto top_without_right = restrict_to_corner_half(
+    const auto top_without_right = restrict_to_corner_channel(
         trim_shared_corner(zones[2], geometry::Edge::Right, rules[1].depth),
-        geometry::Edge::Right);
-    const auto right_without_top = restrict_to_corner_half(
+        geometry::Edge::Right,
+        rules[2].length);
+    const auto right_without_top = restrict_to_corner_channel(
         trim_shared_corner(zones[1], geometry::Edge::Top, rules[2].depth),
-        geometry::Edge::Top);
+        geometry::Edge::Top,
+        rules[1].length);
     visibility.topRight = has_exposed_segment_in_bounds(
                               exposed_regions[2], top_without_right, rules[2]) &&
         has_exposed_segment_in_bounds(exposed_regions[1], right_without_top, rules[1]);
@@ -265,6 +255,17 @@ std::optional<EdgeVisibility> analyze_with_context(
 }
 
 } // namespace
+
+std::array<PixelEdgeAffordance, 4> resolve_edge_affordances(
+    const LayoutWindow& target, const VisibilityRequirements& requirements)
+{
+    return {{
+        pixel_rule(target, requirements.left, geometry::Edge::Left),
+        pixel_rule(target, requirements.right, geometry::Edge::Right),
+        pixel_rule(target, requirements.top, geometry::Edge::Top),
+        pixel_rule(target, requirements.bottom, geometry::Edge::Bottom),
+    }};
+}
 
 std::optional<EdgeVisibility> analyze_window_visibility(
     const LayoutSnapshot& snapshot,

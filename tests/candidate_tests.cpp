@@ -88,19 +88,22 @@ int main()
     CHECK(violations.violations[0].blockerIndices == std::vector<std::size_t>{0});
     CHECK(violations.violations[0].failedEdges.size() == 4);
 
-    const auto candidates = generate_candidates(covered, violations.violations[0], 64, 128);
+    const auto candidates = generate_candidates(
+        covered, violations.violations[0], requirements, 128);
     CHECK(candidates.status == CandidateGenerationStatus::Ok);
     CHECK(!candidates.candidates.empty());
     CHECK((candidates.candidates.front().placementRect == Rect{100, 100, 300, 300}));
-    CHECK(has_candidate(candidates, {36, 100, 236, 300}));
-    CHECK(has_candidate(candidates, {164, 100, 364, 300}));
-    CHECK(has_candidate(candidates, {100, 36, 300, 236}));
-    CHECK(has_candidate(candidates, {100, 164, 300, 364}));
+    CHECK(has_candidate(candidates, {76, 100, 276, 300}));
+    CHECK(has_candidate(candidates, {124, 100, 324, 300}));
+    CHECK(has_candidate(candidates, {100, 76, 300, 276}));
+    CHECK(has_candidate(candidates, {100, 124, 300, 324}));
+    CHECK(has_candidate(candidates, {76, 76, 276, 276}));
+    CHECK(has_candidate(candidates, {124, 76, 324, 276}));
     CHECK(has_candidate(candidates, {0, 0, 200, 200}));
-    CHECK(has_candidate(candidates, {164, 164, 364, 364}));
+    CHECK(has_candidate(candidates, {124, 124, 324, 324}));
 
     const auto repeated_candidates = generate_candidates(
-        covered, violations.violations[0], 64, 128);
+        covered, violations.violations[0], requirements, 128);
     CHECK(repeated_candidates.status == CandidateGenerationStatus::Ok);
     CHECK(repeated_candidates.candidates.size() == candidates.candidates.size());
     for (std::size_t index = 0; index < candidates.candidates.size(); ++index) {
@@ -205,11 +208,11 @@ int main()
     CHECK(scan_visibility_violations(split_edge, fragment_limited).status ==
           ViolationScanStatus::GeometryTooComplex);
 
-    CHECK(generate_candidates(covered, violations.violations[0], 64, 1).status ==
+    CHECK(generate_candidates(covered, violations.violations[0], requirements, 1).status ==
           CandidateGenerationStatus::TooComplex);
     auto invalid_violation = violations.violations[0];
     invalid_violation.targetIndex = 99;
-    CHECK(generate_candidates(covered, invalid_violation, 64).status ==
+    CHECK(generate_candidates(covered, invalid_violation, requirements).status ==
           CandidateGenerationStatus::InvalidInput);
     auto invalid_regions = requirements_for();
     invalid_regions.maximumRegionRectangles = 0;
@@ -229,11 +232,11 @@ int main()
           ViolationScanStatus::InvalidSnapshot);
     auto fixed_target = covered;
     fixed_target.windows[1].movable = false;
-    CHECK(generate_candidates(fixed_target, violations.violations[0], 64).status ==
+    CHECK(generate_candidates(fixed_target, violations.violations[0], requirements).status ==
           CandidateGenerationStatus::InvalidInput);
     auto self_blocked = violations.violations[0];
     self_blocked.blockerIndices.push_back(self_blocked.targetIndex);
-    CHECK(generate_candidates(covered, self_blocked, 64).status ==
+    CHECK(generate_candidates(covered, self_blocked, requirements).status ==
           CandidateGenerationStatus::InvalidInput);
     return 0;
 }

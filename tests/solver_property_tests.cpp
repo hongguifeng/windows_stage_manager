@@ -97,7 +97,6 @@ stage_manager::solver::SolverPolicy property_policy()
     policy.limits.maximumStates = 32;
     policy.limits.maximumElapsedMs = 10'000;
     policy.limits.maximumCandidatesPerViolation = 64;
-    policy.repairTargetLength = 64;
     return policy;
 }
 

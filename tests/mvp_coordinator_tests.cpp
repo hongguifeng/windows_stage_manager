@@ -364,15 +364,16 @@ int main()
         z_order_dry.coordinator.process(drag_events(201), true, true);
     CHECK(z_order_dry_result.status == MvpBatchStatus::DryRun);
     CHECK(z_order_dry_result.zOrderFallbackUsed);
-    CHECK(z_order_dry_result.edgeGoalDegraded);
-    CHECK(z_order_dry_result.requiredExposedEdges == 1);
+    CHECK(!z_order_dry_result.edgeGoalDegraded);
+    CHECK(z_order_dry_result.requiredExposedEdges == 2);
     CHECK(z_order_dry_result.reorderedWindowCount == 1);
     CHECK(z_order_dry_result.zOrderSolve.candidatesTried == 1);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].window.hwnd == 203);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].insertAfter.hwnd == 204);
     CHECK(z_order_dry_result.zOrderSolve.reorders[0].toZIndex == 2);
-    CHECK(z_order_dry_result.solve.status == SolveStatus::NoViolation);
-    CHECK(z_order_dry_result.solve.moves.empty());
+    CHECK(z_order_dry_result.solve.status == SolveStatus::Solved);
+    CHECK(z_order_dry_result.solve.moves.size() == 1);
+    CHECK(z_order_dry_result.solve.moves[0].window.hwnd == 203);
     CHECK(z_order_dry_result.apply.status ==
           stage_manager::window::MoveApplyStatus::DryRun);
     CHECK(z_order_dry.desktop.reorderCalls == 0);
@@ -389,10 +390,11 @@ int main()
     CHECK(activation_z_order_result.activationCenteringUsed);
     CHECK(activation_z_order_result.reorderedWindowCount == 1);
     CHECK(activation_z_order_result.solve.status == SolveStatus::Solved);
-    CHECK(activation_z_order_result.solve.moves.size() == 1);
+    CHECK(activation_z_order_result.solve.moves.size() == 2);
     CHECK(activation_z_order_result.solve.moves[0].window.hwnd == 201);
     CHECK((activation_z_order_result.solve.moves[0].to ==
            stage_manager::geometry::Rect{50, 600, 950, 700}));
+    CHECK(activation_z_order_result.solve.moves[1].window.hwnd == 203);
     CHECK(activation_z_order.desktop.reorderCalls == 0);
     CHECK(activation_z_order.desktop.moveCalls == 0);
 
@@ -405,9 +407,9 @@ int main()
     CHECK(z_order_live_result.apply.status ==
           stage_manager::window::MoveApplyStatus::Applied);
     CHECK(z_order_live_result.apply.appliedReorders.size() == 1);
-    CHECK(z_order_live_result.apply.appliedMoves.empty());
+    CHECK(z_order_live_result.apply.appliedMoves.size() == 1);
     CHECK(z_order_live.desktop.reorderCalls == 1);
-    CHECK(z_order_live.desktop.moveCalls == 0);
+    CHECK(z_order_live.desktop.moveCalls == 1);
     CHECK(z_order_live.desktop.windows[0].zIndex == 0);
     CHECK(z_order_live.desktop.windows[1].zIndex == 1);
     CHECK(z_order_live.desktop.windows[3].zIndex == 2);

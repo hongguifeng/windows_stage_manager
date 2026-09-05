@@ -54,7 +54,6 @@ stage_manager::solver::SolverPolicy make_policy()
     policy.limits.maximumStates = 512;
     policy.limits.maximumElapsedMs = 1000;
     policy.limits.maximumCandidatesPerViolation = 128;
-    policy.repairTargetLength = 64;
     return policy;
 }
 
@@ -88,6 +87,7 @@ int main()
     using stage_manager::solver::PlacementCandidate;
     using stage_manager::solver::SolveStatus;
     using stage_manager::solver::hash_layout;
+    using stage_manager::solver::analyze_window_visibility;
     using stage_manager::solver::rank_candidates;
     using stage_manager::solver::scan_visibility_violations;
     using stage_manager::solver::solve_layout;
@@ -118,7 +118,7 @@ int main()
     CHECK(solved.moves.size() == 1);
     CHECK(solved.moves[0].window == covered.windows[1].key);
     CHECK((solved.moves[0].from == Rect{100, 100, 300, 300}));
-    CHECK((solved.moves[0].to == Rect{0, 164, 200, 364}));
+    CHECK((solved.moves[0].to == Rect{76, 76, 276, 276}));
     CHECK(scan_visibility_violations(solved.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 
@@ -157,6 +157,19 @@ int main()
     CHECK(scan_visibility_violations(
               incremental.finalSnapshot, incremental_policy.ranking.visibility)
               .violations.empty());
+    std::uint32_t left_channel_count = 0;
+    std::uint32_t right_channel_count = 0;
+    for (std::size_t index = 1; index < incremental.finalSnapshot.windows.size(); ++index) {
+        const auto visibility = analyze_window_visibility(
+            incremental.finalSnapshot, index, incremental_policy.ranking.visibility);
+        CHECK(visibility.has_value());
+        left_channel_count += visibility->topLeft ? 1u : 0u;
+        right_channel_count += visibility->topRight ? 1u : 0u;
+    }
+    CHECK(left_channel_count > 0);
+    CHECK(right_channel_count > 0);
+    CHECK(left_channel_count <= right_channel_count + 1);
+    CHECK(right_channel_count <= left_channel_count + 1);
 
     auto active_target_policy = policy;
     active_target_policy.ranking.activeWindowIndex = 1;
