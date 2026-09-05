@@ -721,6 +721,46 @@ int main()
     CHECK(activate_from_border_without_moving(true) == 0);
     CHECK(activate_from_border_without_moving(false) == 0);
 
+    MvpFixture right_click_activation;
+    right_click_activation.desktop.windows = {
+        make_window(190, {50, 50, 250, 250}, 0),
+        make_window(191, {50, 50, 250, 250}, 1),
+    };
+    const std::vector<WindowEvent> right_click_first = {
+        {WindowEventType::Foreground, 190, 1, 100, 1, true},
+    };
+    const auto right_click_first_result = right_click_activation.coordinator.process(
+        right_click_first, true, false);
+    CHECK(right_click_first_result.status == MvpBatchStatus::Idle);
+    CHECK(right_click_first_result.activationLayoutSuppressed);
+    CHECK(!right_click_first_result.activationPlacementUsed);
+    CHECK(right_click_first_result.transactionId == 0);
+    CHECK(right_click_activation.desktop.captureCalls == 0);
+    CHECK(right_click_activation.desktop.moveCalls == 0);
+
+    const auto duplicate_left_click = right_click_activation.coordinator.process(
+        foreground_event(190), true, false);
+    CHECK(duplicate_left_click.status == MvpBatchStatus::Idle);
+    CHECK(!duplicate_left_click.activationLayoutSuppressed);
+    CHECK(!duplicate_left_click.activationPlacementUsed);
+    CHECK(right_click_activation.desktop.captureCalls == 0);
+    CHECK(right_click_activation.desktop.moveCalls == 0);
+
+    const std::vector<WindowEvent> right_click_second = {
+        {WindowEventType::Foreground, 191, 1, 101, 2, true},
+    };
+    const auto right_click_second_result = right_click_activation.coordinator.process(
+        right_click_second, true, false);
+    CHECK(right_click_second_result.activationLayoutSuppressed);
+    CHECK(right_click_activation.desktop.captureCalls == 0);
+    CHECK(right_click_activation.desktop.moveCalls == 0);
+    const auto later_left_click = right_click_activation.coordinator.process(
+        foreground_event(190), true, false);
+    CHECK(later_left_click.transactionId == 1);
+    CHECK(later_left_click.activationPlacementUsed);
+    CHECK(right_click_activation.desktop.captureCalls >= 2);
+    CHECK(right_click_activation.desktop.moveCalls >= 1);
+
     MvpFixture activation_capture_retry;
     activation_capture_retry.desktop.windows = {
         make_window(167, {0, 0, 200, 200}, 0),

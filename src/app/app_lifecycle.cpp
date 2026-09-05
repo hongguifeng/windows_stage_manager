@@ -585,6 +585,9 @@ void AppLifecycle::coordinator_loop()
         const auto activation_placement_used = result.activationPlacementUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
+        const auto activation_layout_suppressed = result.activationLayoutSuppressed
+            ? std::string_view{"true"}
+            : std::string_view{"false"};
         const auto duration_us = std::to_string(observation.durationUs);
         const auto queue_depth_text = std::to_string(queue_depth);
         const auto total_batches = std::to_string(metrics.batches);
@@ -610,7 +613,8 @@ void AppLifecycle::coordinator_loop()
              {"affordance_goal_degraded", affordance_goal_degraded},
              {"partial_layout_used", partial_layout_used},
              {"remaining_violation_count", remaining_violations},
-             {"activation_placement_used", activation_placement_used},
+              {"activation_placement_used", activation_placement_used},
+              {"activation_layout_suppressed", activation_layout_suppressed},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},

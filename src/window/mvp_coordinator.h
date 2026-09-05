@@ -57,6 +57,7 @@ struct MvpBatchResult {
     bool affordanceGoalDegraded = false;
     bool partialLayoutUsed = false;
     bool activationPlacementUsed = false;
+    bool activationLayoutSuppressed = false;
 };
 
 class MvpCoordinator final {

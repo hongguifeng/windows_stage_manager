@@ -7,6 +7,12 @@
 
 namespace stage_manager::platform::win32 {
 
+bool suppress_layout_for_right_button(DWORD event, SHORT right_button_state) noexcept
+{
+    return event == EVENT_SYSTEM_FOREGROUND &&
+        (right_button_state & static_cast<SHORT>(0x8000)) != 0;
+}
+
 std::mutex WinEventHook::registry_mutex_;
 std::unordered_map<HWINEVENTHOOK, WinEventHook*> WinEventHook::registry_;
 
@@ -195,6 +201,8 @@ void WinEventHook::accept_event(
     window_event.eventThreadId = event_thread;
     window_event.timestampMs = GetTickCount64();
     window_event.sequence = sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
+    window_event.suppressLayout = suppress_layout_for_right_button(
+        event, GetAsyncKeyState(VK_RBUTTON));
     queue_->try_push(window_event);
 }
 
@@ -236,4 +244,3 @@ std::optional<window::WindowEventType> WinEventHook::map_event(DWORD event)
 } // namespace stage_manager::platform::win32
 
 #endif
-

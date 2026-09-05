@@ -18,6 +18,8 @@
 
 namespace stage_manager::platform::win32 {
 
+bool suppress_layout_for_right_button(DWORD event, SHORT right_button_state) noexcept;
+
 class WinEventHook final {
 public:
     explicit WinEventHook(window::EventQueue& queue);

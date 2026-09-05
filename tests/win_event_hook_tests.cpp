@@ -37,6 +37,13 @@ int main()
     using stage_manager::window::WindowEvent;
     using stage_manager::window::WindowEventType;
 
+    assert(stage_manager::platform::win32::suppress_layout_for_right_button(
+        EVENT_SYSTEM_FOREGROUND, static_cast<SHORT>(0x8000)));
+    assert(!stage_manager::platform::win32::suppress_layout_for_right_button(
+        EVENT_SYSTEM_FOREGROUND, 0));
+    assert(!stage_manager::platform::win32::suppress_layout_for_right_button(
+        EVENT_OBJECT_LOCATIONCHANGE, static_cast<SHORT>(0x8000)));
+
     EventQueue queue(128);
     WinEventHook hook(queue);
     assert(hook.start());
@@ -100,4 +107,3 @@ int main()
 }
 
 #endif
-

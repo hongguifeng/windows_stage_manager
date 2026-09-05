@@ -23,6 +23,7 @@ struct WindowEvent {
     std::uint32_t eventThreadId = 0;
     std::uint64_t timestampMs = 0;
     std::uint64_t sequence = 0;
+    bool suppressLayout = false;
 };
 
 constexpr std::string_view to_string(WindowEventType type) noexcept
@@ -51,4 +52,3 @@ constexpr std::string_view to_string(WindowEventType type) noexcept
 }
 
 } // namespace stage_manager::window
-

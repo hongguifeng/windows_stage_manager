@@ -157,15 +157,21 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     std::optional<NativeWindowHandle> ended_drag_window;
     std::optional<NativeWindowHandle> foreground_window;
     bool foreground_changed = false;
+    bool foreground_suppresses_layout = false;
     for (const auto& event : result.events.events) {
         provider_.handle_event(event);
         if (event.type == WindowEventType::MoveSizeStart) {
             guard_.observe(event);
             const bool activation_preceded_drag = foreground_window &&
                 foreground_changed && *foreground_window == event.hwnd;
+            const bool suppressed_activation_preceded_drag =
+                activation_preceded_drag && foreground_suppresses_layout;
             ended_drag_window.reset();
-            foreground_window.reset();
-            foreground_changed = false;
+            if (!suppressed_activation_preceded_drag) {
+                foreground_window.reset();
+                foreground_changed = false;
+                foreground_suppresses_layout = false;
+            }
             active_window_ = event.hwnd;
             dragging_window_ = event.hwnd;
             dragging_start_rect_.reset();
@@ -194,6 +200,7 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             status_ = MvpBatchStatus::Dragging;
         } else if (event.type == WindowEventType::Foreground) {
             foreground_window = event.hwnd;
+            foreground_suppresses_layout = event.suppressLayout;
             const bool changed_now = event.hwnd != foreground_window_;
             if (changed_now) {
                 foreground_changed = true;
@@ -221,6 +228,20 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     // This also recovers when Windows omits the corresponding MoveSizeEnd event.
     // A foreground event for the window currently being dragged is intentionally
     // ignored so a user drag is never replaced by activation placement.
+    if (foreground_window && foreground_changed && foreground_suppresses_layout) {
+        guard_.cancel();
+        dragging_window_.reset();
+        dragging_start_rect_.reset();
+        dragging_started_by_activation_ = false;
+        dragging_location_change_seen_ = false;
+        active_window_ = *foreground_window;
+        status_ = MvpBatchStatus::Idle;
+        result.status = status_;
+        result.transactionId = next_transaction_id_;
+        result.layoutGeneration = layout_generation_;
+        result.activationLayoutSuppressed = true;
+        return result;
+    }
     if (foreground_window && foreground_changed &&
         (!dragging_window_ || *foreground_window != *dragging_window_)) {
         dragging_window_.reset();
