@@ -1,476 +1,307 @@
 # Windows 11 台前调度式窗口管理器概要设计
 
-文档版本：1.5
-对应需求：`Windows 台前调度式窗口管理器需求说明.md`  
-设计目标：先实现可验证、可失败、不会自触发循环的矩形窗口 MVP
+文档版本：1.6
+对应需求：`Windows 台前调度式窗口管理器需求说明.md`
+设计状态：当前实现基线
 
-## 1. 设计原则
+## 1. 设计目标
 
-1. 事件回调只采集事件，不在回调中移动窗口或运行求解器。
-2. 求解使用一次一致的窗口快照；调用 Windows API 后重新验证实际状态。
-3. 交互区是硬约束，移动距离和布局稳定性是软代价。
-4. 无解时停止推挤并保留用户控制权，不用“把窗口推出屏幕”伪造成功。
-5. MVP 对透明、非矩形、置顶、最大化和系统 UI 采用保守排除。
-6. 前台切换只在活动 HWND 发生变化且居中开关启用时居中；拖动事务中的用户最终位置优先。
+程序是当前交互用户会话中的 Windows 11 托盘进程。它在不改变窗口尺寸、激活状态和 topmost 属性的前提下，为后台普通窗口保留容易辨认和点击的区域。
 
-## 2. 系统架构
+设计遵循以下原则：
 
-```text
-Windows WinEvent Hook
-        |
-        v
-HookThread / MessageLoop
-        |
-        v
-Bounded Event Queue -----> Periodic Reconcile Timer
-        |
-        v
-Event Coalescer
-        |
-        v
-Window Snapshot Store <--> Window Classifier
-        |
-        v
-Geometry Engine
-        |
-        v
-Constraint Solver
-        |
-        v
-Move Planner / Applier
-        |
-        v
-Post-move Verification -> Snapshot Store / Diagnostics
-```
+1. 标题栏是首要识别线索，顶部区域优先使用窗口的实际标题栏高度。
+2. 后台窗口首选同时露出顶部与一条侧边，并在左上、右上两条通道之间均衡分配。
+3. 新活动窗口只在非活动到活动的切换时自动放置，水平居中且底部对齐；用户随后手动移动的位置具有最高优先级。
+4. 全部受管理窗口必须在同一个最终快照中合格，不能只修复最上层或第一个违规窗口。
+5. 位置方案优先于 Z-order 方案；层级调整从最深、最局部的位置开始，尽量保护最近使用的上层窗口。
+6. 求解、应用和验证是原子事务。无完整合法解、超时或平台状态不确定时不应用部分计划。
 
-### 2.1 进程模型
-
-程序作为当前用户交互会话中的托盘进程运行，不使用 Windows 服务控制用户桌面。建议单进程多线程：
-
-- `HookThread`：安装钩子并运行消息循环，只把事件写入有界队列。
-- `CoordinatorThread`：合并事件、刷新快照、启动求解、管理事务状态。
-- `Solver`：纯内存计算，不直接依赖异步事件。
-- `Applier`：执行 `SetWindowPos`、记录内部移动令牌并触发验证。
-- `Diagnostics`：记录耗时、失败和无解原因。
-
-快照和事务状态由 `CoordinatorThread` 独占写入。其他线程只提交事件或读取不可变快照，避免在 WinEvent 回调中持有跨线程锁。
-
-### 2.2 托盘参数控制面
-
-托盘控制器持有当前 `Settings` 快照，并按字段生成中文二级选择菜单。命令 ID 由字段编号和预设索引确定，分发后得到强类型的 `SettingSelection { field, value }`；菜单标题包含当前值，匹配项使用 Win32 checked 状态。现有配置不是预设值时，菜单额外显示禁用且勾选的“当前自定义值”。连续数值字段保留常用预设，并在每个字段的保留命令槽中提供“自定义…”；布尔字段和已完整枚举 1–4 的边缘数字段不重复提供输入框。
-
-`SettingsDialog` 使用模态 Win32 对话框维护独立的 `Settings draft`。参数切换时先校验并写入草稿，取消直接丢弃，保存时一次性返回完整快照。帮助模型为每个字段提供中文标题、解释、单位和 DIP 标记；预览模型按对话框所在显示器 DPI 计算像素长度，owner-draw 画布用活动窗口、未激活窗口和绿色交互区同步展示效果。生命周期只在对话框确认且快照确有变化后停止协调器、持久化并热重建。
-
-自定义命令先解码为字段和当前值，再通过模态 Win32 对话框收集整数。每个字段由纯模型函数给出闭区间范围；无效输入留在对话框并显示中文提示，合法值转换为 `ApplyCustomSetting`。预设和自定义值共用同一依赖归一化与热重建路径。
-
-参数热更新严格在 UI 消息线程中按下列顺序执行：
+## 2. 总体架构
 
 ```text
-tray setting command
-    -> cancel current MoveTransactionGuard
-    -> stop hook and join CoordinatorThread
-    -> validate selection and normalize dependent settings
-    -> update DryRun and health threshold
-    -> atomically persist settings.ini
-    -> rebuild provider / hook / coordinator with new Settings
-    -> restore Running or Paused tray status
+WinEvent Hook / 定时 reconciliation
+              |
+              v
+      有界事件队列与合并器
+              |
+              v
+  WindowProvider -> WindowClassifier
+              |
+              v
+       不可变 LayoutSnapshot
+              |
+              v
+ 激活放置 -> 位置求解 -> Z-order fallback
+              |
+              v
+ MoveApplier -> 重新捕获 -> 后验验证
+              |
+              v
+      日志、健康状态与托盘 UI
 ```
 
-停止并 join 协调器后才修改 `Settings`，因此不需要让配置字段变成跨线程可变共享状态。托盘图标和消息窗口在重建期间保持存在并显示中文“正在重建”状态；重启失败显示 `ApiError`。每次成功选择记录 `setting_changed`、字段名和值；自定义对话框另记录提交或取消结果。
+### 2.1 线程与所有权
+
+- Hook 线程安装 `SetWinEventHook(WINEVENT_OUTOFCONTEXT)` 并运行消息循环，回调只过滤事件并写入有界队列。
+- Coordinator 线程合并事件、捕获快照、执行纯内存求解并驱动应用事务，是运行状态和稳定布局的唯一写入者。
+- 托盘与设置窗口运行在 UI 消息线程。设置保存时先停止并 join 协调器，再持久化新快照并热重建运行组件。
+- 求解器不直接调用 Win32 API；应用器不自行修改计划，只执行并验证已求得的完整方案。
+
+### 2.2 事件批次
+
+事件合并窗口默认为 12 ms。同一 HWND 的位置变化只保留最新记录，生命周期和前台切换事件优先。队列溢出、钩子恢复、显示器/DPI 变化或周期 reconciliation 都会触发完整重新枚举。
+
+```text
+合并事件
+  -> 判断前台切换或拖动事务
+  -> 捕获完整窗口快照
+  -> 可选生成活动窗口放置
+  -> 尝试 TopAndSide 位置求解
+  -> 必要时尝试 AnyRecognizableEdge 位置求解
+  -> 仅在明确 Unsatisfiable 时尝试 Z-order fallback
+  -> 原子应用
+  -> 重新捕获并验证
+```
+
+`Timeout`、`GeometryTooComplex`、`InvalidSnapshot` 和 Win32 查询错误与 `Unsatisfiable` 分离，前三类结果不能触发“位置无解”的层级调整。
 
 ## 3. 核心数据模型
 
-### 3.1 坐标和矩形
+### 3.1 坐标与窗口快照
 
-所有求解矩形使用屏幕物理坐标，采用半开区间 `[left, right) x [top, bottom)`，避免边界像素重复计算。窗口移动 API 使用同一屏幕坐标系。
-
-```text
-Rect {
-    int left
-    int top
-    int right
-    int bottom
-}
-
-Size {
-    int width
-    int height
-}
-```
-
-程序清单声明 Per-Monitor DPI Awareness V2。配置值以 DIP 保存，在窗口所属显示器上转换为物理像素。窗口跨显示器时，以活动窗口当前显示器为本批次坐标参考，并暂停跨显示器自动布局。
-
-### 3.2 窗口身份和快照
+所有几何使用物理屏幕像素和半开矩形 `[left, right) × [top, bottom)`。进程清单声明 Per-Monitor DPI Awareness V2；设置以 DIP 持久化，在目标窗口 DPI 上向上取整为像素。
 
 ```text
 WindowKey {
-    HWND hwnd
-    uint32 processId
-    uint64 instanceGeneration
+    hwnd
+    processId
+    instanceGeneration
 }
 
 WindowSnapshot {
-    WindowKey key
-    HWND rootHwnd
-    HWND ownerHwnd
-    Rect placementRect       // 用于 SetWindowPos
-    Rect visualRect          // 用于可见性近似
-    HMONITOR monitor
-    uint32 dpi
-    uint32 style
-    uint32 exStyle
-    bool visible
-    bool iconic
-    bool zoomed
-    bool topmost
-    bool cloaked
-    bool currentDesktop
-    bool managed
-    int zIndex                 // 只在本次快照有效
-    Rect interactionZones[4]
-    Rect lastStableRect
-    uint64 lastAppliedGeneration
+    key, rootHwnd, ownerHwnd, className
+    placementRect, visualRect, workArea
+    monitor, dpi, titleBarHeight
+    style, exStyle, zIndex
+    visible, iconic, zoomed, topmost, cloaked
+    currentDesktop, managed, zOrderKnown
 }
 ```
 
-`instanceGeneration` 在发现新 HWND 或收到销毁事件后递增。任何 API 调用前都必须验证 `IsWindow`、进程 ID 和生成号仍匹配。
+`placementRect` 用于 `SetWindowPos`，`visualRect` 优先取 DWM 扩展框并用于可见性判断。两者的偏移在生成移动计划时保持一致。`instanceGeneration` 防止 HWND 销毁后复用造成误操作；`zIndex` 仅对当前完整快照有效。
 
-### 3.3 事务和求解结果
+### 3.2 分边可辨识规则
 
 ```text
-DragTransaction {
-    uint64 id
-    WindowKey activeWindow
-    Rect startRect
-    Rect lastObservedRect
-    bool active
-    Direction preferredEdge
-    Set<WindowKey> movedWindows
-    Set<LayoutHash> seenStates
+EdgeAffordanceRule {
+    minimumLengthDip
+    maximumLengthDip
+    depthDip
+    lengthPercent
 }
 
-MovePlan {
-    WindowKey window
-    Rect from
-    Rect to
-    Cost cost
+VisibilityRequirements {
+    top, left, right, bottom: EdgeAffordanceRule
+    maximumRegionRectangles
+    goal: TopAndSide | AnyRecognizableEdge
 }
+
+PixelEdgeAffordance {
+    length
+    depth
+}
+```
+
+每条边的像素长度独立计算：
+
+```text
+lengthDip = clamp(edgeLengthDip * lengthPercent / 100,
+                  minimumLengthDip,
+                  maximumLengthDip)
+lengthPx  = min(edgeLengthPx, scaleDipCeil(lengthDip, dpi))
+depthPx   = min(perpendicularLengthPx, scaleDipCeil(depthDip, dpi))
+```
+
+顶部是例外：`titleBarHeight > 0` 时，顶部 `depthPx` 采用实际标题栏高度；只有取不到可靠值时才使用顶部规则的 `depthDip`。
+
+默认平衡规则为：
+
+| 边 | 最小长度 | 最大长度 | 比例 | 深度 |
+| --- | ---: | ---: | ---: | ---: |
+| 顶部 | 120 DIP | 240 DIP | 25% | 32 DIP 回退值 |
+| 左侧 | 120 DIP | 240 DIP | 25% | 40 DIP |
+| 右侧 | 160 DIP | 300 DIP | 30% | 64 DIP |
+| 底部 | 180 DIP | 360 DIP | 35% | 64 DIP |
+
+### 3.3 求解结果
+
+```text
+SolveStatus = Solved | NoViolation | Unsatisfiable |
+              InvalidSnapshot | GeometryTooComplex | Timeout
 
 SolveResult {
-    Status status       // Solved, NoViolation, Unsatisfiable, Stale, Timeout
-    List<MovePlan> moves
-    List<Violation> violations
-    LayoutHash finalState
-    Duration elapsed
+    status
+    moves
+    violations
+    candidateRejections
+    finalSnapshot, finalState
+    statesVisited, elapsedMs
 }
 ```
 
-## 4. Windows 事件管线
+位置计划和可选层级计划共同构成批次结果。任何一个计划超出预算或后验验证失败，整批都失败。
 
-### 4.1 钩子安装
+## 4. 窗口发现、分类与标题栏高度
 
-使用 `SetWinEventHook` 的 `WINEVENT_OUTOFCONTEXT` 模式，安装在线程消息循环中。建议分别监听系统移动/调整大小事件和对象生命周期/位置事件，而不是依赖一个过宽的事件范围。
+`WindowProvider` 用 `EnumWindows` 获取候选，并在同一次捕获中查询可见性、窗口样式、owner/root、DWM visual frame、显示器工作区、DPI、虚拟桌面和当前 Z-order。
 
-回调只执行以下操作：
+标准标题栏高度按以下顺序求取：
 
-1. 检查 `hwnd` 是否有效。
-2. 对 `EVENT_OBJECT_*` 要求 `idObject == OBJID_WINDOW` 且 `idChild == CHILDID_SELF`。
-3. 将事件类型、HWND、线程 ID、时间戳写入有界队列。
-4. 立即返回，不调用 `SetWindowPos`、`EnumWindows` 或求解器。
+1. 对带 `WS_CAPTION` 的窗口，比较客户区原点与 DWM 视觉框顶部的垂直差。
+2. 若差值无效，则使用当前窗口 DPI 对应的系统 frame/caption 指标组合。
+3. 无标题栏、自绘标题栏或查询失败时记为 0，由几何层使用顶部回退深度。
 
-### 4.2 事件合并
+分类器默认只管理当前会话、当前虚拟桌面、活动窗口所在显示器上的普通矩形顶级窗口。最小化、最大化、全屏、cloaked、tool/no-activate/topmost、Shell、菜单、提示、通知、owned 窗口和查询不完整窗口被保守排除。未管理但可见且位于目标之上的普通窗口仍可作为遮挡物。
 
-`CoordinatorThread` 以 8 至 16 ms 的合并窗口消费队列：同一 HWND 的多个 `LOCATIONCHANGE` 只保留最新事件，生命周期事件优先。队列溢出、事件顺序异常或钩子重建后执行完整重新枚举。
+## 5. 可辨识度分析
 
-事件批次处理流程：
+### 5.1 可见区域
 
-```text
-consume events
-    -> identify active transaction
-    -> enumerate/refresh affected windows
-    -> build immutable LayoutSnapshot
-    -> prescribe center position only for inactive-to-active transition
-    -> solve in memory
-    -> apply bounded MovePlan
-    -> refresh actual rectangles
-    -> verify constraints or enter Unsatisfiable
-```
+对目标窗口按 Z-order 收集所有更高且 `blocksVisibility=true` 的矩形。几何引擎从目标视觉框与工作区交集开始，依次减去这些遮挡矩形，得到有界矩形 Region；矩形数超过上限返回 `GeometryTooComplex`。
 
-### 4.3 防止自触发
+每条边的检测区域由 `PixelEdgeAffordance` 生成。只有一个连续、未遮挡、在工作区内的矩形同时达到该边长度和深度时，该边才合格。候选应用前后的代表点还要通过根窗口命中归属检查。
 
-每次自动移动使用 `layoutGeneration` 和按 HWND 记录的期望矩形。收到位置事件时：
+### 5.2 顶部加侧边
 
-- 若与当前内部移动令牌匹配，只更新实际矩形，不新建用户事务。
-- 若窗口偏离期望矩形，视为应用或用户的外部修改，丢弃旧计划并重新快照。
-- `MOVESIZESTART` 优先于旧的内部事件；用户操作可以打断自动布局。
-- `FOREGROUND` 的 HWND 与已记录活动 HWND 不同时才创建激活居中事务；相同 HWND 的重复事件只更新状态，不再次移动。
-- 同一事件批次同时包含前台切换和 `MOVESIZESTART` 时按拖动事务处理，不生成居中移动。
+`VisibilityGoal::TopAndSide` 仅在以下任一组合成立时满足：
 
-必须设置钩子注销、线程退出和窗口销毁的生命周期，避免回调访问已释放状态。
+- `topLeft`：顶部与左侧各自拥有独立合格区域；
+- `topRight`：顶部与右侧各自拥有独立合格区域。
 
-## 5. 窗口发现和分类
+检测时将共享角部从顶部带和侧边带中分别限制到各自通道，避免同一块可见角落被重复计算。`VisibilityGoal::AnyRecognizableEdge` 则接受任意一条完整合格边。
 
-### 5.1 发现流程
+单边可辨识顺序为顶部、左侧、右侧、底部；这是人体识别难度的模型，不是强制移动方向。
 
-使用 `EnumWindows` 获取顶级窗口候选，并在同一快照中读取：
+## 6. 活动窗口放置
+
+只在记录的活动 HWND 发生变化、目标属于受管理普通窗口、同批没有进入拖动事务且 `placeActivatedWindow=true` 时生成一次放置：
 
 ```text
-IsWindow
-GetWindowThreadProcessId
-GetAncestor(GA_ROOT)
-GetWindow(GW_OWNER)
-GetWindowLongPtr(GWL_STYLE/GWL_EXSTYLE)
-IsWindowVisible / IsIconic / IsZoomed
-MonitorFromWindow / GetMonitorInfo
-GetDpiForWindow
-DwmGetWindowAttribute(DWMWA_CLOAKED)
+visualLeft = workArea.left + (workArea.width - visualRect.width) / 2
+visualTop  = workArea.bottom - visualRect.height
 ```
 
-Z-order 不保存为跨事件持久化的整数。每次构造快照时，从 `GetTopWindow(nullptr)` 开始，使用 `GetWindow(GW_HWNDNEXT)` 遍历顶级窗口，并同时记录 topmost/普通窗口分界；遍历结果只在当前快照内用于排序。若遍历过程中窗口销毁或顺序变化，放弃本次快照并重新枚举。
+再用 visual frame 与 placement frame 的偏移换算成 `SetWindowPos` 坐标。若窗口高于工作区，视觉框顶部改为与工作区顶部对齐。活动放置先写入模拟快照，随后与所有后台窗口修复共同求解，并占用批次移动预算。
 
-当前虚拟桌面判断使用 `IVirtualDesktopManager::IsWindowOnCurrentVirtualDesktop`。如果该能力不可用，MVP 应禁用跨虚拟桌面的自动移动并记录限制。
+相同 HWND 的重复前台事件不创建新放置。`MOVESIZESTART` 可抢占自动事务；`MOVESIZEEND` 后以用户最终位置作为固定活动位置重新求解。关闭开关只取消活动窗口放置，不取消后台窗口修复。
 
-### 5.2 分类规则
+## 7. 位置候选与排序
 
-分类器采用“保守允许”：所有排除条件均在管理前检查，无法确定时返回 `Unmanaged`。需要维护可配置的类名/进程黑名单，但黑名单不能替代基础样式和生命周期检查。
+### 7.1 候选生成
 
-拥有者/被拥有窗口、模态对话框和窗口菜单默认作为一个不可拆分组或整体不管理，避免单独移动破坏应用交互。
+对每个违规窗口，候选生成器组合以下偏移：
 
-### 5.3 阻挡窗口
+- 当前坐标；
+- 各遮挡窗口四条边外侧，偏移量使用目标窗口对应边的实际深度；
+- 工作区边界；
+- X/Y 轴偏移的合法笛卡尔组合；
+- 显式 `TopLeftChannel`：目标顶部位于遮挡物上方且左侧位于其左方；
+- 显式 `TopRightChannel`：目标顶部位于遮挡物上方且右侧位于其右方。
 
-可见性计算的阻挡集合应包含当前桌面上位于目标窗口上方的可见顶级窗口，包括不可移动的未管理窗口。对无法确定透明度的窗口按不透明矩形保守处理。
+候选去重并受每个违规项的数量上限约束。候选只改变位置，不改变尺寸或 Z-order。
 
-置顶窗口位于普通窗口之前。不得用一个跨事件持久化的整数表示 Z-order；`zIndex` 只描述本次快照，并在每次求解前重新建立。
+### 7.2 硬约束
 
-## 6. 可见性和几何引擎
+候选进入排序前必须全部满足：
 
-### 6.1 可见框
+1. 目标不是活动窗口，仍可移动且身份有效。
+2. placement frame 与 visual frame 使用同一位移，窗口尺寸不变。
+3. 屏上宽高不小于配置值，显示器和工作区约束有效。
+4. 当前目标达到本轮 `VisibilityGoal`。
+5. 所有其他受管理窗口在模拟最终快照中仍达到同一目标。
+6. 普通位置轮次不改变 Z-order、topmost、owner 或激活状态。
 
-`placementRect` 使用 `GetWindowRect`，用于 API 移动。`visualRect` 优先使用 `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`，用于 MVP 的视觉近似。两者不能混用而不做坐标归一化。
+### 7.3 字典序代价
 
-MVP 明确采用“窗口是矩形且不透明”的保守模型。分层窗口、窗口区域和每像素透明度不在本阶段精确计算；分类器可直接排除这类窗口。
+`CandidateCost` 按以下字段稳定排序：
 
-### 6.2 交互区
+1. `visibilityPreference`：TopLeft、TopRight、TopOnly、LeftOnly、RightOnly、BottomOnly、Unrecognized；
+2. `channelImbalance`：应用候选后的左、右通道数量差；
+3. `channelAlternationPenalty`：负载相同时按目标 Z-order 确定性交替；
+4. `centerDistance`：横纵偏移分别按工作区宽高归一化后的中心距离；
+5. `movedWindowCount`、本次 Manhattan 距离、距稳定位置距离、边界距离和方向切换惩罚；
+6. WindowKey 与坐标平局键。
 
-对每个窗口生成四个候选边缘区。以窗口视觉框为例：
+可辨识等级高于中心距离，因此算法不会为了靠近中心而选择更难辨认的单边方案。中心距离归一化避免宽屏的长轴产生不成比例的空白。通道负载只在几何允许时均衡，不覆盖硬约束。
 
-```text
-leftZone   = left   edge, length L, depth D
-rightZone  = right  edge, length L, depth D
-topZone    = top    edge, length L, depth D
-bottomZone = bottom edge, length L, depth D
-```
+## 8. 完整布局求解
 
-`L` 和 `D` 为当前 DPI 下的 `RepairTargetEdge` 和 `MinExposedDepth`。若窗口尺寸不足，窗口在分类阶段被排除。
+求解器先运行有界全局搜索。每个状态扫描所有受管理窗口的违规项，按 Z-order 修复首个违规项，并将通过硬约束的候选加入待搜索状态；布局哈希防止重复和振荡。
 
-当要求至少两条边缘时，四个区域先扣除角部重叠：左右边缘去掉上下各 `D` 的部分，上下边缘去掉左右各 `D` 的部分。这样一条竖向外露带只能让左边缘或右边缘合格，不能依靠两个角同时冒充上、下边缘。降级到单边缘目标时仍使用完整边段，使单边缘方案保持可用。
+若全局搜索在预算内没有直接完成，增量完整布局求解器按 Z-order 从上到下修复。每次选择候选后都在更新后的完整阻挡关系上重新扫描全部窗口，直到所有窗口合格。它不能把“单个目标已合格”当作成功。
 
-对目标窗口按当前 Z-order 从上到下计算：
+求解顺序为：
 
-```text
-exposed(zone) = zone - union(visualRect of higher blockers)
-```
+1. `TopAndSide` 全局位置搜索；
+2. `TopAndSide` 增量完整布局修复；
+3. 明确无解后，`AnyRecognizableEdge` 全局位置搜索；
+4. `AnyRecognizableEdge` 增量完整布局修复；
+5. 两个目标都明确 `Unsatisfiable` 后，才进入 Z-order fallback。
 
-只有当 `exposed(zone)` 中存在满足最小长度和深度的矩形，且代表点经 `WindowFromPoint` 归属目标根窗口时，该边才合格。区域可以用非重叠矩形列表实现；列表碎片超过上限时返回 `GeometryTooComplex`，由求解器进入无解/暂停，而不是近似为“可见”。
+达到状态数、候选数或时间上限返回各自的非无解状态，不应用已生成的局部 moves。
 
-### 6.3 工作区和边界
+## 9. Z-order fallback
 
-使用 `GetMonitorInfo` 的 `rcWork` 作为工作区。候选窗口必须至少保留 `MinOnscreenWidth` 和 `MinOnscreenHeight` 的可见框在工作区内。工作区约束是硬约束，不用一个任意的大代价替代。
+fallback 候选只包含当前布局里的非活动、受管理、非 topmost、非 owned 窗口。活动窗口及其他窗口不能越过 topmost/普通窗口边界。
 
-## 7. 约束求解器
+算法使用两层保护：
 
-### 7.1 约束优先级
+1. `top-prefix`：从最长的上层不变前缀开始，只开放最深的插入边界；无解时才逐层缩短受保护前缀。
+2. `bottom-first`：在同一开放边界内，从当前最底层候选向上枚举。
 
-硬约束按以下顺序判断：
+候选窗口只提升到当前开放边界的下一层，不直接提升到活动窗口正下方。每一种候选顺序都重新运行完整位置求解并验证全部窗口；首个完整合法解立即返回。这样最深窗口的局部变化可以解决时，最近使用的上层窗口顺序完全不变。
 
-1. 活动窗口位置由事务类型和配置固定：前台激活事务在 `CenterActivatedWindow=true` 时固定为当前显示器工作区中心，关闭时固定为原位置；拖动事务固定为用户最终位置。纯位置求解器不得再次修改。
-2. 候选窗口仍属于允许的显示器、虚拟桌面和工作区范围。
-3. 候选窗口尺寸不变，保留最小屏上区域。
-4. 每个受管理窗口优先有两个不同边缘、扣除角部后仍独立的交互区达到 `RepairTargetEdge`；首选目标无解时允许降级为至少一个完整边段。
-5. 普通位置候选不改变 Z-order、激活状态和 owner/owned 关系；Z-order 变化只能来自 7.5 节的受控回退。
+## 10. 应用、验证与故障安全
 
-所有硬约束通过后，软代价按以下顺序比较：
+位置移动通过 `SetWindowPos`/`BeginDeferWindowPos` 执行，并使用不激活、不改变 owner 和不改变尺寸的标志。层级计划逐项使用显式 insert-after 关系。应用前再次检查 WindowKey、monitor、topmost 和事务代数。
 
-```text
-distanceFromWorkAreaCenter
-numberOfMovedWindows
-totalManhattanDistance
-distanceFromLastStableLayout
-boundaryPenalty
-edgeChangePenalty
-stableWindowKeyTieBreak
-```
+每个自动移动登记内部令牌；匹配的 `LOCATIONCHANGE` 只完成令牌，不被解释为用户拖动。任何偏离预期的外部变化会丢弃旧计划并触发重新捕获。
 
-`distanceFromWorkAreaCenter` 是候选窗口中心到其工作区中心的 Manhattan 距离。它是硬约束通过后的第一软代价，不再对左上、右下或单一边缘设置固定方向优先级；边缘组合分类只保留用于诊断。这样可避免窗口持续向某个角聚集。
+应用后重新获取：
 
-### 7.2 候选生成
+- placement/visual rect 与尺寸；
+- 活动窗口、monitor、DPI、topmost 和 Z-order；
+- 全部受管理窗口的分边可辨识结果。
 
-候选集合必须包含：
+任一字段不符即返回验证失败，不接受部分成功，并进入 reconciliation。连续失败达到阈值后熔断暂停；`Ctrl+Alt+F12` 可随时紧急停用。`dry_run=true` 只输出计划，默认配置为 `false`。
 
-1. 不移动当前位置，用于验证当前布局是否已合法。
-2. 目标窗口与每个高层阻挡框的左、右、上、下边界对齐，并预留 `RepairTargetEdge`。
-3. 与工作区四条边对齐的合法位置。
-4. 四方向和必要的水平/垂直组合位移，用于处理只能斜向脱离的布局。
-5. 由所有相关阻挡窗口的边界坐标产生的去重位置。
+## 11. 设置与托盘控制面
 
-每个候选先经过工作区、交互区、Z-order 和窗口分类验证；验证失败的候选不进入代价排序。候选生成不应只引用活动窗口 A，也不能假设一次移动就能满足所有窗口。
+`Settings` 直接保存当前生效快照：
 
-### 7.3 MVP 求解流程
+- 启用状态、DryRun、`placeActivatedWindow`；
+- `affordancePreset`：Compact、Balanced、Prominent、Custom；
+- 顶/左/右/底各自的最小长度、最大长度、比例和深度；
+- 最小屏上宽高、事件/刷新间隔、移动/状态/时间/窗口/失败上限。
 
-```text
-solve(snapshot, activeWindow, transaction):
-    state = snapshot
-    for step in 1..MAX_MOVES_PER_BATCH:
-        violations = findViolations(state)
-        if violations is empty:
-            return Solved(state)
+中文托盘提供运行开关、快速参数、可视化设置和退出。连续数值显示常用值并提供“自定义…”。修改任一分边值后预设变为 Custom；最小/最大长度冲突时同边联动归一化。
 
-        violation = selectDeterministically(violations)
-        candidates = generateCandidates(state, violation)
-        valid = filterHardConstraints(candidates, state)
-        if valid is empty:
-            return Unsatisfiable(violation)
+`SettingsDialog` 维护独立 draft。预览按当前显示器 DPI 绘制四条不同大小的可辨识区域，显示 DIP、像素换算、含义与效果；取消不改变运行状态，保存时一次性校验并持久化。
 
-        move = minimumCost(valid)
-        nextState = simulate(state, move)
-        if hash(nextState) in transaction.seenStates:
-            return Unsatisfiable(violation)
-        transaction.seenStates.add(hash(nextState))
-        state = nextState
+热更新顺序为：取消活动事务，停止并 join 协调器，校验与保存设置，重建 provider/hook/coordinator，恢复原运行或暂停状态。当前版本只接受新设置模型，不读取或迁移旧配置键。
 
-    return TimeoutOrUnsatisfiable(state)
-```
+## 12. 可观测性与测试
 
-`simulate` 只修改内存快照，不调用 Windows API。求解器不得使用“访问过窗口就永不再处理”的简单 visited 规则；同一窗口在其他窗口移动后可以重新进入违规集合。
+批次日志至少记录事务 ID、活动窗口、`activation_placement_used`、`affordance_goal`、`affordance_goal_degraded`、违规窗口、候选拒绝、fallback、位置/层级计划、应用结果、状态数和耗时。日志不记录窗口内容或敏感标题。
 
-### 7.4 滞后和布局稳定
+自动化测试分为：
 
-协调器先以 `PreferredExposedEdges=2` 求解；失败后以 `MinimumExposedEdges=1` 重新求解，并记录降级。达到首选数量时不触发修复；只达到最低数量时仍尝试恢复首选数量。一次拖动事务中，已选择的边方向只作为中心距离、移动数量、移动距离、稳定布局距离和边界代价之后的弱软偏好。
+- 几何/属性测试：分边 DIP 换算、标题栏高度、角部扣除、Region 上限和随机矩形不变量；
+- 求解器测试：左右通道、A/B/C 全窗口修复、宽屏归一化、超时与无解分离；
+- Z-order 测试：纯位置优先、top-prefix、bottom-first、不可越过活动/topmost；
+- 协调器测试：非活动到活动放置、重复事件、拖动抢占、原子移动预算和降级诊断；
+- Win32/托盘集成测试：真实标题栏、设置保存与热重建、DryRun 隔离、应用后重新捕获；
+- 文档与发布包测试：默认值、中文操作入口、资源、版本一致性和旧设置模型清除。
 
-事务保存 `lastStableLayout` 和 `seenStates`。若新计划使布局质量变差、产生周期或超过时间/移动次数上限，放弃该计划并进入无解/暂停状态。
-
-### 7.5 Z-order 无解回退
-
-协调器必须先完成首选边缘数和最低边缘数的纯位置求解。只有最终结果为 `Unsatisfiable`（不是 `Timeout`、快照无效或几何复杂度超限）时，才调用独立的 Z-order fallback：
-
-1. 从同一快照中选择受管理、可见、当前桌面、非活动且非 topmost 的目标窗口；活动窗口及符合相同安全条件的受管理窗口可以作为插入参考点。
-2. 将参考点按 `zIndex` 降序枚举。目标插到参考点之后，因此参考点及其上方构成保持不变的上层前缀；参考点越深，受影响的后缀越小。
-3. 对同一参考点，将位于其下方且不是紧邻的目标按 `zIndex` 降序枚举，即最底层目标优先。
-4. 每次仅模拟把一个目标提升到参考点下一层；参考点及其上方窗口的 `zIndex` 不变，目标原位置之间的窗口顺延一层。只有所有更深参考点均无解，才允许使用更高参考点，活动窗口是最后边界。
-5. 在模拟后的顺序上重新运行完整位置求解；纯重排已经满足约束时允许位置计划为空。
-6. 第一个完整合法方案立即返回；候选优先级严格高于移动距离，不得为了更短位置移动破坏更多上层顺序。
-7. 所有候选失败时返回无重排、无移动的 `Unsatisfiable`，不得输出部分计划。
-
-`LayoutHash` 同时包含矩形、`zIndex` 和 topmost 状态，使重排后的布局也参与事务周期检测。
-
-## 8. 移动应用和验证
-
-### 8.1 API 调用
-
-普通移动使用 `SetWindowPos` 只修改位置，保留尺寸、激活和 Z-order。推荐使用：
-
-```text
-SWP_NOSIZE
-SWP_NOACTIVATE
-SWP_NOZORDER
-SWP_NOOWNERZORDER
-```
-
-不应在移动中把窗口提升到 `HWND_TOP` 或改变 topmost 状态。调用线程不得持有窗口快照写锁，也不得阻塞等待事件回调。
-
-Z-order fallback 使用活动窗口 HWND 作为 `hWndInsertAfter`，并使用：
-
-```text
-SWP_NOMOVE
-SWP_NOSIZE
-SWP_NOACTIVATE
-SWP_NOOWNERZORDER
-```
-
-调用前验证目标和参考窗口的 HWND/进程身份、二者均非 topmost、目标当前位于参考窗口下方，且提升路径不会越过当前前台窗口。调用后立即验证前台窗口未变化且目标仍在其下方。
-
-### 8.2 结果验证
-
-每次移动或重排后重新读取窗口框、样式、显示器、可见性、topmost 和 Z-order。若实际位置与计划偏差超过容差、重排未到达计划层级，或应用在短时间内改回，则：
-
-1. 取消剩余受影响计划。
-2. 重新枚举相关窗口。
-3. 将该窗口标记为本事务不可协作。
-4. 重新求解；仍无解则暂停。
-
-批量应用结束后必须执行一次全量验证，不能只验证刚移动的窗口。
-
-## 9. 状态机
-
-```text
-Disabled
-   |
-   v
-Discovering -> Idle <-> Dragging -> Settling -> Idle
-                    |                 |
-                    +-> Unsatisfiable+
-                    |
-                    +-> Suspended
-```
-
-- `Discovering`：建立窗口快照和分类结果。
-- `Idle`：监听事件，不主动移动。
-- `Dragging`：跟踪活动窗口并合并位置事件。
-- `Settling`：求解、应用、验证当前批次。
-- `Unsatisfiable`：保留用户位置，等待拓扑/尺寸变化或用户重试。
-- `Suspended`：API/事件/权限异常或用户手动暂停。
-- `Disabled`：不安装有效的自动布局处理，直到用户重新启用。
-
-状态转换必须可取消。应用退出、用户停用或钩子注销时，停止新计划并释放钩子。
-
-## 10. 错误和降级
-
-| 场景 | 处理 |
-| --- | --- |
-| HWND 无效或已销毁 | 丢弃相关计划，刷新快照 |
-| HWND 被复用 | 建立新实例，不复用旧事务 |
-| SetWindowPos 失败 | 记录错误，停止该窗口重试，重新求解 |
-| 应用改回位置 | 标记不可协作，进入无解/暂停 |
-| 未管理置顶窗口覆盖工作区 | 作为阻挡窗口计算；无合法布局则无解 |
-| 活动窗口最大化/全屏 | 暂停自动推挤，等待恢复 |
-| 事件队列溢出 | 完整 EnumWindows 重建快照 |
-| 区域碎片超过上限 | 返回 GeometryTooComplex，暂停本批次 |
-| 求解超时或周期 | 放弃计划，保留当前布局并记录 |
-
-## 11. 性能和可观测性
-
-事件合并后只重算受影响显示器和 Z-order 区段；候选计算使用矩形边界索引，避免对所有窗口重复做完整区域减法。区域碎片、候选数量、状态数量、每批次耗时和 API 失败次数必须有计数器。
-
-性能目标以基准测试验证，不把 `N^2` 矩形相交次数直接等同于端到端耗时。超过窗口数量或区域复杂度上限时，系统应优先暂停而不是降低约束精度。
-
-## 12. 测试设计
-
-### 12.1 几何单元测试
-
-- 单个矩形完全覆盖、部分覆盖、无覆盖。
-- 多阻挡矩形的 union/subtract 和碎片上限。
-- 四条边、角落、窗口尺寸小于阈值、工作区边界。
-- 候选硬约束过滤和确定性排序。
-- 周期状态检测、滞后阈值和 DIP 到物理像素转换。
-
-### 12.2 求解属性测试
-
-随机生成 2 至 20 个矩形窗口，验证求解成功时所有窗口满足约束；拖动事务不移动活动窗口，激活事务只采用规定的居中位置；任何事务都不会越过边界或产生重复状态。
-
-### 12.3 Windows 集成测试
-
-使用可控制的测试窗口覆盖：快速拖动、调整大小、最大化、Snap、前台切换居中及关闭开关、相同 HWND 重复前台事件、激活时直接拖动、窗口销毁/重建、置顶窗口、菜单/提示窗口、不同 DPI 和应用拒绝移动。
-
-托盘参数集成测试在隔离的 `LOCALAPPDATA` 下启动真实 `stage_manager.exe`，向其消息窗口发送参数命令，验证配置落盘、结构化日志、内部管理器热重建、DryRun 恢复和正常退出。
-
-### 12.4 验收日志
-
-每个失败用例必须能从日志还原：事件顺序、参与窗口快照、候选拒绝原因、计划移动、实际矩形和最终状态。
-
-## 13. 后续扩展点
-
-1. 多显示器：将单显示器工作区抽象为多个独立求解域，并定义跨显示器迁移代价。
-2. 用户配置：白名单、黑名单、阈值、锁定窗口和按进程保存配置。
-3. 透明/非矩形窗口：增加窗口区域、DWM 属性和采样命中测试，必要时允许应用提供交互区。
-4. 动画：把动画层放在求解器之后，动画期间仍以目标矩形验证约束，并限制事件回流。
-5. 全局优化：在 MVP 求解器上增加有界 beam search 或整数/约束优化，不改变硬约束和无解策略。
+每个提交必须包含对应自动化用例，并在 Debug、Release 下分别完成 Configure、Build 和全量 CTest。
