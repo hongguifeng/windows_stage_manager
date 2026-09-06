@@ -265,6 +265,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         dragging_started_by_activation_ = false;
         dragging_location_change_seen_ = false;
         active_window_ = *foreground_window;
+        pending_activation_retry_ = false;
+        pending_activation_placement_ = false;
         if (foreground_suppresses_layout) {
             suppressed_activation_window_ = *foreground_window;
         }
@@ -282,6 +284,8 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         dragging_started_by_activation_ = false;
         dragging_location_change_seen_ = false;
         active_window_ = *foreground_window;
+        pending_activation_retry_ = true;
+        pending_activation_placement_ = settings_.placeActivatedWindow;
         ++next_transaction_id_;
         ++layout_generation_;
         transaction_seen_states_.clear();
@@ -347,6 +351,20 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     }
     if (result.events.requiresFullReconcile) {
         const auto rebuilt = capture(SnapshotRefreshReason::Reconcile);
+        if (rebuilt && pending_activation_retry_) {
+            const auto active = std::find_if(
+                rebuilt->windows.begin(), rebuilt->windows.end(), [this](const auto& window) {
+                    return window.key.hwnd == active_window_ && window.managed;
+                });
+            if (active != rebuilt->windows.end()) {
+                starting_monitor_ = active->monitor;
+                guard_.activate(next_transaction_id_, layout_generation_);
+                return settle(dry_run,
+                              std::move(result.events),
+                              pending_activation_placement_,
+                              std::move(rebuilt));
+            }
+        }
         result.status = MvpBatchStatus::Rebuilding;
         result.reason = rebuilt ? MvpSuspendReason::None
                                 : MvpSuspendReason::SnapshotUnavailable;
@@ -391,6 +409,8 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         result.reason = MvpSuspendReason::ActiveWindowUnavailable;
         return result;
     }
+    pending_activation_retry_ = false;
+    pending_activation_placement_ = false;
     if (starting_monitor_ == 0 || active->monitor != starting_monitor_) {
         status_ = MvpBatchStatus::Suspended;
         result.status = status_;
@@ -624,6 +644,17 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
     };
 
     auto solved = attempt_goal(2);
+    if (!solved) {
+        result.affordanceGoalDegraded = true;
+        policy.forcePreferredStaircase = true;
+        solved = attempt_goal(1);
+        policy.forcePreferredStaircase = false;
+    }
+    if (!solved) {
+        // A forced rearrangement may exhaust a deliberately tiny search budget.
+        // Preserve an existing layout that still satisfies the degraded goal.
+        solved = attempt_goal(1);
+    }
     if (!solved && strict_partial) {
         result.managedWindowCount = full_managed_count;
         managed_handles = full_managed_handles;
@@ -635,10 +666,6 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         include_activation_move();
         result.partialLayoutUsed = true;
         solved = true;
-    }
-    if (!solved) {
-        result.affordanceGoalDegraded = true;
-        solved = attempt_goal(1);
     }
     if (!solved && activation_move) {
         // Activation placement is an independent user-facing action. A peer

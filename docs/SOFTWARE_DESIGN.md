@@ -352,7 +352,7 @@ coordinator thread
 1. 取消旧拖动状态；
 2. 增加事务 ID 和布局代次；
 3. 清空本事务哈希和方向偏好；
-4. 最多尝试三次抓取快照，以容忍激活初期 API 字段暂不可用；
+4. 最多尝试三次抓取快照，以容忍激活初期窗口缺失或 API 字段暂不可用；若仍不可用则保留 pending activation；
 5. 记录活动窗口所在显示器；
 6. 调用 `settle`，并根据设置决定是否生成激活放置移动。
 
@@ -369,7 +369,7 @@ coordinator thread
 
 ### 10.4 reconcile
 
-`Reconcile`、队列溢出或环境变化会要求完整抓取快照。当前这条分支只重建/校正内部状态，不直接调用 `settle`，因此不要假设定时器会主动修复一个静止不变的无解桌面。下一次前台切换或 move/size 结束才是主要重新求解触发点。
+`Reconcile`、队列溢出或环境变化会要求完整抓取快照。通常这条分支只重建/校正内部状态，不主动修复一个静止不变的无解桌面；例外是前台切换的三次即时抓取都未得到有效 active window，此时协调器保留激活意图，并在后续 `Reconcile` 首次捕获到该受管理窗口时调用 `settle` 补做布局。
 
 ## 11. `settle` 布局管线
 
@@ -530,11 +530,13 @@ min(axisLength,
 - `TopRight`：目标右边等于 anchor 右边加上目标右侧深度，顶边计算相同；
 - `Left`、`Right`、`Bottom` 只在 `AnyRecognizableEdge` 降级目标中启用。
 
-这里的步长描述相邻节点，不约束目标相对原始位置的实际移动距离。顶部使用 1.5 倍标题栏高度，给完整标题栏额外留下半个标题栏的可见余量；`TopRight` 使用相同的纵向步长。整条链从 active anchor 重新构造，因此窗口旧坐标位于左侧或右侧都不会改变方向。`TopLeft` 整链失败后才尝试 `TopRight` 整链；不会出现链中某个窗口自行改到另一边。
+这里的步长描述同一分段内的相邻节点，不约束目标相对原始位置的实际移动距离。顶部使用 1.5 倍标题栏高度，给完整标题栏额外留下半个标题栏的可见余量；`TopRight` 使用相同的纵向步长。窗口旧坐标不会改变分段方向。节点越界时，已完成分段保留，剩余目标进入下一分段；不会沿顶边水平续排。
 
 每一轮生成后调用 `scan_visibility_violations` 做全局验证。新出现的违规 target 及其 managed blocker 会加入同一条链，然后再次从 active anchor 计算，直到闭包稳定。所有 placement rect 必须完整位于 work area；任何节点越界、不可移动或超过 move/state/time budget 都使该方向失败。若只得到部分结果，以第一个失败 zIndex 为界回退该层和所有更低层，只返回重新扫描后确实减少违规的安全前缀。
 
-协调器若获得 `TopAndSide` 的安全前缀会直接采用，不再从原始布局运行 `AnyRecognizableEdge` 覆盖已经形成的阶梯。只有严格目标一个安全节点都无法产生时才进入单边降级。
+`attempt_staircase` 接收固定顺序的方向 span，并用一个 `direction_index` 分配连续目标。当前分段无法放置下一目标时，索引只向后推进，不回退：右上段以 active 的垂直位置重新开始，并把水平 anchor 放到已占用区域右缘加顶部可辨识长度之外；左、右、下方段分别使用已占用区域对应外缘。每轮完成后仍执行一次全局可辨识扫描。
+
+协调器先用 `TopAndSide` 运行左上、右上两个分段。仍无法容纳全部目标时，从原始布局强制运行 `AnyRecognizableEdge`，把全部 managed targets 按左上、右上、左侧、右侧、下方顺序分配；只有所有方向均用尽时，才退回严格阶段重新验证过的安全前缀。
 
 参与者选择在协调器中先按是否被 active window 直接遮挡分组；同组内 `processId + className` 重复出现的窗口优先于单一类型，再按遮挡比例和 zIndex 确定顺序。该优先级只决定最多 20 扇窗口中谁进入 managed 集合，不改变进入阶梯后的真实 Z-order。
 
@@ -552,13 +554,14 @@ min(axisLength,
 
 ```text
 TopAndSide:
-    solve_layout_prioritized（左上整链 → 右上整链）
-
-若 TopAndSide 返回安全前缀:
-    直接使用该 PartiallySolved 结果，不启动宽松重算
+    solve_layout_prioritized（填充左上 → 剩余目标填充右上）
 
 AnyRecognizableEdge:
-    仅在严格阶段没有安全前缀时，从初始布局尝试五种整链
+    严格阶段无完整解时，从原始布局强制重排全部 targets
+    分段填充左上 → 右上 → 左侧 → 右侧 → 下方
+
+若所有方向均用尽且 TopAndSide 有安全前缀:
+    使用该 PartiallySolved 前缀
 
 若 peer 仍失败但存在 activation move:
     只应用 activation move，标记 PartiallySolved
@@ -567,7 +570,9 @@ AnyRecognizableEdge:
     Unsatisfiable，不执行移动
 ```
 
-`fallbackUsed` 为兼容旧诊断字段保留；逐层求解已经是主流程，因此正常结果保持 false。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge`；如果最终保留的是严格阶段的安全上层前缀，该字段保持 false。无效输入和区域复杂度错误不会被当作普通无解继续掩盖。
+`fallbackUsed` 为兼容旧诊断字段保留；逐层求解已经是主流程，因此正常结果保持 false。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge` 分段链；只有全部方向用尽并最终保留严格前缀时该字段保持 false。无效输入和区域复杂度错误不会被当作普通无解继续掩盖。
+
+若强制方向重排因极小的 state/time/move budget 无法执行，协调器会再做一次非强制单边校验；当前布局本来已经满足 `AnyRecognizableEdge` 时保持原位，而不是误报无解。
 
 ### 14.5 循环避免
 

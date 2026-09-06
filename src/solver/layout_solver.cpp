@@ -232,7 +232,7 @@ std::vector<MovePlan> staircase_moves(const LayoutSnapshot& initial,
                                       const LayoutSnapshot& result,
                                       std::span<const std::size_t> ordered_targets,
                                       const SolverPolicy& policy,
-                                      StaircaseDirection direction,
+                                      std::span<const StaircaseDirection> directions,
                                       std::size_t remaining_violations)
 {
     std::vector<MovePlan> moves;
@@ -245,7 +245,7 @@ std::vector<MovePlan> staircase_moves(const LayoutSnapshot& initial,
         move.window = initial.windows[target_index].key;
         move.from = initial.windows[target_index].placementRect;
         move.to = result.windows[target_index].placementRect;
-        move.cost.placementDirection = direction_rank(direction);
+        move.cost.placementDirection = direction_rank(directions[target_index]);
         move.cost.remainingViolationCount = remaining_violations >
                 std::numeric_limits<std::uint32_t>::max()
             ? std::numeric_limits<std::uint32_t>::max()
@@ -290,10 +290,11 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
                                    std::size_t active_window_index,
                                    std::span<const std::size_t> ordered_targets,
                                    std::span<const Violation> initial_violations,
-                                   StaircaseDirection direction,
+                                   std::span<const StaircaseDirection> directions,
                                    std::uint64_t start,
                                    ISolverClock& clock,
-                                   std::uint32_t available_states)
+                                   std::uint32_t available_states,
+                                   bool select_all_targets)
 {
     StaircaseAttempt attempt;
     attempt.snapshot = initial;
@@ -301,6 +302,11 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
     for (const auto& violation : initial_violations) {
         if (violation.targetIndex < selected.size()) {
             selected[violation.targetIndex] = true;
+        }
+    }
+    if (select_all_targets) {
+        for (const auto target_index : ordered_targets) {
+            selected[target_index] = true;
         }
     }
 
@@ -313,6 +319,10 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
         ++attempt.statesVisited;
         auto candidate = initial;
         auto anchor = candidate.windows[active_window_index].visualRect;
+        auto occupied = anchor;
+        std::vector<StaircaseDirection> placement_directions(
+            initial.windows.size(), directions.front());
+        std::size_t direction_index = 0;
         bool placement_failed = false;
         std::size_t planned_moves = 0;
         for (const auto target_index : ordered_targets) {
@@ -324,12 +334,43 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
                 placement_failed = true;
                 break;
             }
-            const auto placement = staircase_placement(
-                target, anchor, policy.ranking.visibility, direction);
-            if (!placement) {
+            auto placement_direction = directions[direction_index];
+            auto placement = staircase_placement(
+                target, anchor, policy.ranking.visibility, placement_direction);
+            while (!placement && ++direction_index < directions.size()) {
+                anchor = candidate.windows[active_window_index].visualRect;
+                placement_direction = directions[direction_index];
+                if (placement_direction == StaircaseDirection::TopRight) {
+                    const auto affordances = resolve_edge_affordances(
+                        target, policy.ranking.visibility);
+                    if (affordances[2].length > static_cast<std::uint64_t>(
+                            std::numeric_limits<std::int64_t>::max())) {
+                        placement_failed = true;
+                        break;
+                    }
+                    const auto branch_right = checked_add_coordinate(
+                        occupied.right,
+                        static_cast<std::int64_t>(affordances[2].length));
+                    if (!branch_right) {
+                        placement_failed = true;
+                        break;
+                    }
+                    anchor.right = *branch_right;
+                } else if (placement_direction == StaircaseDirection::Left) {
+                    anchor.left = occupied.left;
+                } else if (placement_direction == StaircaseDirection::Right) {
+                    anchor.right = occupied.right;
+                } else if (placement_direction == StaircaseDirection::Bottom) {
+                    anchor.bottom = occupied.bottom;
+                }
+                placement = staircase_placement(
+                    target, anchor, policy.ranking.visibility, placement_direction);
+            }
+            if (placement_failed || !placement) {
                 placement_failed = true;
                 break;
             }
+            placement_directions[target_index] = placement_direction;
             const bool changes_position = placement->first !=
                 initial.windows[target_index].placementRect;
             if (changes_position && planned_moves >= policy.limits.maximumMoves) {
@@ -339,6 +380,10 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
             target.placementRect = placement->first;
             target.visualRect = placement->second;
             anchor = target.visualRect;
+            occupied.left = std::min(occupied.left, target.visualRect.left);
+            occupied.top = std::min(occupied.top, target.visualRect.top);
+            occupied.right = std::max(occupied.right, target.visualRect.right);
+            occupied.bottom = std::max(occupied.bottom, target.visualRect.bottom);
             if (changes_position) {
                 ++planned_moves;
             }
@@ -356,7 +401,7 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
                                          attempt.snapshot,
                                          ordered_targets,
                                          policy,
-                                         direction,
+                                         placement_directions,
                                          attempt.violations.size());
         if (!placement_failed && attempt.violations.empty()) {
             attempt.complete = true;
@@ -409,7 +454,7 @@ StaircaseAttempt attempt_staircase(const LayoutSnapshot& initial,
                                                  attempt.snapshot,
                                                  ordered_targets,
                                                  policy,
-                                                 direction,
+                                                 placement_directions,
                                                  attempt.violations.size());
             }
             return attempt;
@@ -1022,7 +1067,9 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
         return terminal_result(
             SolveStatus::GeometryTooComplex, initial, {}, {}, 1, start, clock);
     }
-    if (initial_scan.violations.empty()) {
+    const bool force_preferred_staircase = policy.forcePreferredStaircase &&
+        policy.ranking.visibility.goal == VisibilityGoal::AnyRecognizableEdge;
+    if (initial_scan.violations.empty() && !force_preferred_staircase) {
         return terminal_result(
             SolveStatus::NoViolation, initial, {}, {}, 1, start, clock);
     }
@@ -1056,63 +1103,77 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
         ? std::span<const StaircaseDirection>{top_directions}
         : std::span<const StaircaseDirection>{all_directions};
 
-    std::optional<StaircaseAttempt> best_partial;
-    std::uint32_t states_visited = 1;
-    for (const auto direction : directions) {
-        if (states_visited >= policy.limits.maximumStates ||
-            elapsed_since(start, clock.now_ms()) >= policy.limits.maximumElapsedMs) {
-            break;
+    const auto initial_priority = select_priority_violation(
+        initial, initial_scan.violations);
+    const auto improves_priority = [&](const StaircaseAttempt& attempt) {
+        if (attempt.moves.empty()) {
+            return false;
         }
-        auto attempt = attempt_staircase(initial,
-                                         policy,
-                                         active_window_index,
-                                         targets,
-                                         initial_scan.violations,
-                                         direction,
-                                         start,
-                                         clock,
-                                         policy.limits.maximumStates - states_visited);
-        states_visited += attempt.statesVisited;
-        if (attempt.scanStatus == ViolationScanStatus::InvalidSnapshot) {
-            return terminal_result(SolveStatus::InvalidSnapshot,
-                                   initial,
-                                   {},
-                                   {},
-                                   states_visited,
-                                   start,
-                                   clock);
-        }
-        if (attempt.scanStatus == ViolationScanStatus::GeometryTooComplex) {
-            return terminal_result(SolveStatus::GeometryTooComplex,
-                                   initial,
-                                   {},
-                                   {},
-                                   states_visited,
-                                   start,
-                                   clock);
-        }
-        if (attempt.complete) {
-            return terminal_result(SolveStatus::Solved,
-                                   attempt.snapshot,
-                                   std::move(attempt.moves),
-                                   {},
-                                   states_visited,
-                                   start,
-                                   clock);
-        }
-        const bool improved = !attempt.moves.empty() &&
+        const bool highest_initial_violation_resolved =
+            initial_priority != initial_scan.violations.end() &&
+            std::none_of(attempt.violations.begin(),
+                         attempt.violations.end(),
+                         [initial_priority](const auto& violation) {
+                             return violation.targetIndex ==
+                                 initial_priority->targetIndex;
+                         });
+        return highest_initial_violation_resolved ||
             attempt.violations.size() < initial_scan.violations.size();
-        if (improved && (!best_partial ||
-                         attempt.violations.size() < best_partial->violations.size())) {
-            best_partial = std::move(attempt);
-        }
+    };
+    std::uint32_t states_visited = 1;
+    if (states_visited >= policy.limits.maximumStates ||
+        elapsed_since(start, clock.now_ms()) >= policy.limits.maximumElapsedMs) {
+        return terminal_result(SolveStatus::Timeout,
+                               initial,
+                               {},
+                               initial_scan.violations,
+                               states_visited,
+                               start,
+                               clock);
     }
-
-    if (best_partial) {
+    auto attempt = attempt_staircase(initial,
+                                     policy,
+                                     active_window_index,
+                                     targets,
+                                     initial_scan.violations,
+                                     directions,
+                                     start,
+                                     clock,
+                                     policy.limits.maximumStates - states_visited,
+                                     force_preferred_staircase);
+    states_visited += attempt.statesVisited;
+    if (attempt.scanStatus == ViolationScanStatus::InvalidSnapshot) {
+        return terminal_result(SolveStatus::InvalidSnapshot,
+                               initial,
+                               {},
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (attempt.scanStatus == ViolationScanStatus::GeometryTooComplex) {
+        return terminal_result(SolveStatus::GeometryTooComplex,
+                               initial,
+                               {},
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (attempt.complete) {
+        return terminal_result(SolveStatus::Solved,
+                               attempt.snapshot,
+                               std::move(attempt.moves),
+                               {},
+                               states_visited,
+                               start,
+                               clock);
+    }
+    if (improves_priority(attempt)) {
         return terminal_result(SolveStatus::PartiallySolved,
-                               best_partial->snapshot,
-                               std::move(best_partial->moves),
-                               std::move(best_partial->violations),
+                               attempt.snapshot,
+                               std::move(attempt.moves),
+                               std::move(attempt.violations),
                                states_visited,
                                start,
                                clock);

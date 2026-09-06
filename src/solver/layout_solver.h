@@ -31,6 +31,10 @@ struct SolverLimits {
 struct SolverPolicy {
     CandidateRankingPolicy ranking;
     SolverLimits limits;
+    // Used by the coordinator when strict corner chains fail. The degraded
+    // pass evaluates complete direction chains even when the current layout
+    // already satisfies the weaker one-edge goal.
+    bool forcePreferredStaircase = false;
 };
 
 struct MovePlan {
@@ -73,9 +77,10 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
                                        ISolverClock* clock = nullptr);
 
 // Builds a deterministic position-only staircase anchored to the active window.
-// The complete chain is tried top-left first, then top-right; one-edge side and
-// bottom chains are available only for the degraded visibility goal. Z-order is
-// immutable and determines the order of windows within a chain.
+// Windows fill deterministic segments in priority order: top-left, top-right,
+// then (for the degraded goal) left, right, and bottom. A segment switch keeps
+// earlier placements and re-anchors the remaining windows outside their bounds.
+// Z-order is immutable and determines placement order.
 SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
                                      const SolverPolicy& policy,
                                      std::size_t active_window_index,

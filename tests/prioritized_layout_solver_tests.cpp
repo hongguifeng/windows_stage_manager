@@ -171,6 +171,56 @@ int main()
     CHECK(scan_visibility_violations(staircase_result.finalSnapshot,
                                      staircase_policy.ranking.visibility).violations.empty());
 
+    auto forced_fallback_policy = policy;
+    forced_fallback_policy.forcePreferredStaircase = true;
+    LayoutSnapshot forced_fallback;
+    forced_fallback.windows.push_back(
+        make_window(64, {150, 120, 350, 320}, 0, true, false));
+    for (std::uintptr_t hwnd = 65; hwnd <= 69; ++hwnd) {
+        forced_fallback.windows.push_back(
+            make_window(hwnd, {150, 120, 350, 320}, static_cast<std::int32_t>(hwnd - 64)));
+    }
+    const auto forced_fallback_result = solve_layout_prioritized(
+        forced_fallback, forced_fallback_policy, 0);
+    CHECK(forced_fallback_result.status == SolveStatus::Solved);
+    CHECK(forced_fallback_result.moves.size() == 5);
+    CHECK(forced_fallback_result.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(forced_fallback_result.moves[1].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(forced_fallback_result.moves[2].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(forced_fallback_result.moves[3].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopRight);
+    CHECK(forced_fallback_result.moves[4].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopRight);
+    CHECK(forced_fallback_result.finalSnapshot.windows[1].placementRect.top == 84);
+    CHECK(forced_fallback_result.finalSnapshot.windows[2].placementRect.top == 48);
+    CHECK(forced_fallback_result.finalSnapshot.windows[3].placementRect.top == 12);
+    CHECK(forced_fallback_result.finalSnapshot.windows[4].placementRect.top == 84);
+    CHECK(forced_fallback_result.finalSnapshot.windows[5].placementRect.top == 48);
+
+    LayoutSnapshot left_prefix_over_right_solution;
+    left_prefix_over_right_solution.windows = {
+        make_window(74, {50, 300, 250, 500}, 0, true, false),
+        make_window(75, {50, 300, 250, 500}, 1),
+        make_window(76, {50, 300, 250, 500}, 2),
+        make_window(77, {50, 300, 250, 500}, 3),
+    };
+    const auto left_prefix_result = solve_layout_prioritized(
+        left_prefix_over_right_solution, staircase_policy, 0);
+    CHECK(left_prefix_result.status == SolveStatus::Solved);
+    CHECK(left_prefix_result.moves.size() == 3);
+    CHECK(left_prefix_result.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(left_prefix_result.moves[1].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(left_prefix_result.moves[2].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopRight);
+    CHECK(left_prefix_result.finalSnapshot.windows[1].placementRect.left == 26);
+    CHECK(left_prefix_result.finalSnapshot.windows[2].placementRect.left == 2);
+    CHECK(left_prefix_result.finalSnapshot.windows[3].placementRect.left == 122);
+
     LayoutSnapshot right_staircase;
     right_staircase.windows = {
         make_window(70, {20, 100, 220, 300}, 0, true, false),
@@ -183,7 +233,7 @@ int main()
         right_staircase, staircase_policy, 0);
     CHECK(right_result.status == SolveStatus::Solved);
     CHECK(right_result.moves.size() == 1);
-    CHECK((right_result.moves[0].to == Rect{44, 64, 244, 264}));
+    CHECK((right_result.moves[0].to == Rect{92, 64, 292, 264}));
     CHECK(right_result.moves[0].cost.placementDirection ==
           stage_manager::solver::PlacementDirectionRank::TopRight);
 

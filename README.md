@@ -28,10 +28,11 @@ A system-tray utility that automatically organizes ordinary desktop windows. Whe
 ### Keep covered windows recognizable
 
 - After an activation change or the end of a drag, the app creates one batch plan for up to 20 ordinary windows on the **same monitor**, validates it, and then applies it.
-- It first exposes a top edge plus one side edge by building one deterministic staircase anchored to the active window. Background windows follow immutable Z-order, and every next window is placed 1.5 title-bar heights upward (rounded up to a whole pixel) and one side-depth to the left of the previous window, leaving the title bar comfortably visible. The solver tries the complete top-left chain first and switches the complete chain to top-right only when top-left cannot fit safely; one-edge left, right, and bottom chains are later fallbacks.
+- It first exposes a top edge plus one side edge by building deterministic staircase segments around the active window. Background windows follow immutable Z-order. A segment fills top-left first; when its next window would leave the work area, the remaining windows restart in top-right with enough horizontal clearance to keep their title bars distinct. Only later overflow uses left, right, then bottom. It never continues horizontally along the screen's top edge.
 - The title-bar value controls the gap between adjacent staircase nodes, not the distance from a window's old position. This makes the final arrangement independent of where each background window happened to be before activation. A layout that already meets the selected visibility goal is left untouched, and there is no later visibility-area pass that can scatter the chain. Every resulting rectangle must remain fully inside the work area.
 - When the 20-window management limit matters, directly covered peers are selected first; repeated windows with the same process and window class (for example, several File Explorer windows) are selected before single-instance types.
 - Partial layouts protect higher, more recently used windows first; those windows do not move aside for lower windows. When there is no safe solution, no move is applied and a short **No window layout is currently available** notification appears. Repeated notifications are throttled, and the layout is retried after window state changes.
+- If a newly foreground window is temporarily absent from the first three snapshots, the activation is retained and retried on the next periodic snapshot refresh instead of being silently lost.
 
 ### Safety boundaries
 

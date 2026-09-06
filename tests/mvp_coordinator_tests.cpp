@@ -83,6 +83,11 @@ public:
                 return item.key.hwnd == transientWindow;
             });
         }
+        if (omitWindowThroughCapture && captureCalls <= *omitWindowThroughCapture) {
+            std::erase_if(result.windows, [this](const auto& item) {
+                return item.key.hwnd == transientWindow;
+            });
+        }
         if (failWindowQueriesAtCapture && captureCalls == *failWindowQueriesAtCapture) {
             const auto iterator = std::find_if(
                 result.windows.begin(), result.windows.end(), [this](const auto& item) {
@@ -154,6 +159,7 @@ public:
     std::optional<int> moveWindowAtCapture;
     std::optional<int> changeZOrderAtCapture;
     std::optional<int> omitWindowAtCapture;
+    std::optional<int> omitWindowThroughCapture;
     std::optional<int> failWindowQueriesAtCapture;
     std::uintptr_t switchMonitorWindow = 0;
     std::uintptr_t externallyMovedWindow = 0;
@@ -385,6 +391,36 @@ int main()
     CHECK(stacked_visibility.status ==
           stage_manager::solver::ViolationScanStatus::Ok);
     CHECK(stacked_visibility.violations.empty());
+
+    MvpFixture ordered_fallback;
+    ordered_fallback.desktop.windows.push_back(
+        make_window(44, {400, 150, 700, 450}, 0));
+    for (std::uintptr_t hwnd = 45; hwnd <= 50; ++hwnd) {
+        ordered_fallback.desktop.windows.push_back(make_window(
+            hwnd, {400, 150, 700, 450}, static_cast<std::int32_t>(hwnd - 44)));
+    }
+    const auto ordered_fallback_result =
+        ordered_fallback.coordinator.process(drag_events(44), true, true);
+    CHECK(ordered_fallback_result.status == MvpBatchStatus::DryRun);
+    CHECK(!ordered_fallback_result.affordanceGoalDegraded);
+    CHECK(ordered_fallback_result.affordanceGoal == VisibilityGoal::TopAndSide);
+    CHECK(ordered_fallback_result.solve.status == SolveStatus::Solved);
+    CHECK(ordered_fallback_result.solve.moves.size() == 6);
+    const auto& fallback_windows = ordered_fallback_result.solve.finalSnapshot.windows;
+    CHECK(fallback_windows[1].placementRect.top == 114);
+    CHECK(fallback_windows[2].placementRect.top == 78);
+    CHECK(fallback_windows[3].placementRect.top == 42);
+    CHECK(fallback_windows[4].placementRect.top == 6);
+    CHECK(fallback_windows[5].placementRect.top == 114);
+    CHECK(fallback_windows[6].placementRect.top == 78);
+    for (std::size_t index = 0; index < 4; ++index) {
+        CHECK(ordered_fallback_result.solve.moves[index].cost.placementDirection ==
+              stage_manager::solver::PlacementDirectionRank::TopLeft);
+    }
+    for (std::size_t index = 4; index < 6; ++index) {
+        CHECK(ordered_fallback_result.solve.moves[index].cost.placementDirection ==
+              stage_manager::solver::PlacementDirectionRank::TopRight);
+    }
 
     MvpFixture two_edge_goal;
     two_edge_goal.desktop.windows = {
@@ -866,6 +902,28 @@ int main()
     CHECK(retried_missing_activation.status == MvpBatchStatus::DryRun);
     CHECK(retried_missing_activation.activationPlacementUsed);
     CHECK(activation_capture_retry.desktop.captureCalls == 2);
+
+    MvpFixture delayed_activation_retry;
+    delayed_activation_retry.desktop.windows = {
+        make_window(166, {100, 100, 400, 400}, 0),
+        make_window(165, {100, 100, 400, 400}, 1),
+    };
+    delayed_activation_retry.desktop.omitWindowThroughCapture = 3;
+    delayed_activation_retry.desktop.transientWindow = 166;
+    const auto initially_missing_activation = delayed_activation_retry.coordinator.process(
+        foreground_event(166), true, true);
+    CHECK(initially_missing_activation.status == MvpBatchStatus::Suspended);
+    CHECK(initially_missing_activation.reason == MvpSuspendReason::ActiveWindowUnavailable);
+    CHECK(delayed_activation_retry.desktop.captureCalls == 3);
+    const std::vector<WindowEvent> retry_reconcile = {
+        {WindowEventType::Reconcile, 0, 0, 200, 2},
+    };
+    const auto recovered_activation = delayed_activation_retry.coordinator.process(
+        retry_reconcile, true, true);
+    CHECK(recovered_activation.status == MvpBatchStatus::DryRun);
+    CHECK(recovered_activation.solveAttempted);
+    CHECK(recovered_activation.activationPlacementUsed);
+    CHECK(delayed_activation_retry.desktop.captureCalls == 4);
 
     MvpFixture activation_query_retry;
     activation_query_retry.desktop.windows = {
