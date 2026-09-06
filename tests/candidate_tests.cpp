@@ -44,6 +44,22 @@ bool has_candidate(const stage_manager::solver::CandidateGenerationResult& resul
                        });
 }
 
+bool candidate_has_source(
+    const stage_manager::solver::CandidateGenerationResult& result,
+    stage_manager::geometry::Rect rectangle,
+    stage_manager::solver::CandidateSource source)
+{
+    const auto candidate = std::find_if(
+        result.candidates.begin(), result.candidates.end(), [&rectangle](const auto& item) {
+            return item.placementRect == rectangle;
+        });
+    if (candidate == result.candidates.end()) {
+        return false;
+    }
+    return (static_cast<std::uint32_t>(candidate->sources) &
+            static_cast<std::uint32_t>(source)) != 0;
+}
+
 stage_manager::solver::VisibilityRequirements requirements_for(
     stage_manager::solver::VisibilityGoal goal =
         stage_manager::solver::VisibilityGoal::AnyRecognizableEdge,
@@ -80,6 +96,7 @@ int main()
         make_window(1, {100, 100, 300, 300}, 0, false),
         make_window(2, {100, 100, 300, 300}, 1, true),
     };
+    covered.windows[1].titleBarHeight = 24;
     const auto requirements = requirements_for();
     const auto violations = scan_visibility_violations(covered, requirements);
     CHECK(violations.status == ViolationScanStatus::Ok);
@@ -99,8 +116,20 @@ int main()
     CHECK(has_candidate(candidates, {100, 124, 300, 324}));
     CHECK(has_candidate(candidates, {76, 76, 276, 276}));
     CHECK(has_candidate(candidates, {124, 76, 324, 276}));
+    CHECK(has_candidate(candidates, {300, 100, 500, 300}));
+    CHECK(has_candidate(candidates, {100, 300, 300, 500}));
+    CHECK(has_candidate(candidates, {38, 38, 238, 238}));
+    CHECK(has_candidate(candidates, {212, 188, 412, 388}));
     CHECK(has_candidate(candidates, {0, 0, 200, 200}));
     CHECK(has_candidate(candidates, {124, 124, 324, 324}));
+    CHECK(has_candidate(candidates, {100, 76, 300, 276}));
+    CHECK(candidate_has_source(candidates,
+                               {100, 76, 300, 276},
+                               stage_manager::solver::CandidateSource::TitleBarStep));
+    CHECK(has_candidate(candidates, {100, 52, 300, 252}));
+    CHECK(candidate_has_source(candidates,
+                               {100, 52, 300, 252},
+                               stage_manager::solver::CandidateSource::TitleBarStep));
 
     const auto repeated_candidates = generate_candidates(
         covered, violations.violations[0], requirements, 128);

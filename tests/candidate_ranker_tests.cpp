@@ -72,6 +72,7 @@ int main()
     using stage_manager::solver::CandidateSource;
     using stage_manager::solver::HardConstraintFailure;
     using stage_manager::solver::LayoutSnapshot;
+    using stage_manager::solver::PlacementDirectionRank;
     using stage_manager::solver::PlacementCandidate;
     using stage_manager::solver::VisibilityRequirements;
     using stage_manager::solver::VisibilityPreferenceRank;
@@ -105,12 +106,17 @@ int main()
         snapshot, violations.violations[0], generated.candidates, policy);
     CHECK(ranked.status == CandidateRankingStatus::Ok);
     CHECK(!ranked.accepted.empty());
-    CHECK((ranked.accepted.front().candidate.placementRect == Rect{76, 76, 276, 276}));
-    CHECK(ranked.accepted.front().cost.manhattanDistance == 48);
+    // Spare space is still used, but only within the highest-priority
+    // top-left direction before considering right, side, or bottom moves.
+    CHECK((ranked.accepted.front().candidate.placementRect == Rect{38, 38, 238, 238}));
+    CHECK(ranked.accepted.front().cost.hiddenArea == 19044);
+    CHECK(ranked.accepted.front().cost.placementDirection ==
+          PlacementDirectionRank::TopLeft);
+    CHECK(ranked.accepted.front().cost.manhattanDistance == 124);
     CHECK(ranked.accepted.front().cost.visibilityPreference ==
           VisibilityPreferenceRank::TopLeft);
-    CHECK(ranked.accepted.front().cost.centerDistance == 148);
-    CHECK(ranked.accepted.front().cost.stableDistance == 48);
+    CHECK(ranked.accepted.front().cost.centerDistance == 224);
+    CHECK(ranked.accepted.front().cost.stableDistance == 124);
     CHECK(ranked.accepted.front().cost.directionChangePenalty == 0);
     CHECK(ranked.accepted.front().remainingViolations.empty());
     CHECK(rejected_for(ranked, 0, HardConstraintFailure::TargetStillViolated));
@@ -150,7 +156,7 @@ int main()
         snapshot, violations.violations[0], generated.candidates, no_preference_policy);
     CHECK(!coordinate_tie_break.accepted.empty());
     CHECK((coordinate_tie_break.accepted.front().candidate.placementRect ==
-           Rect{76, 76, 276, 276}));
+           Rect{38, 38, 238, 238}));
 
     const std::vector<PlacementCandidate> preference_over_distance_candidates = {
         {{164, 100, 364, 300}, 64, 0, CandidateSource::BlockerEdge},
@@ -193,9 +199,47 @@ int main()
                                              equal_pixel_distance,
                                              no_preference_policy);
     CHECK(wide_ranked.accepted.size() == 2);
-    CHECK(wide_ranked.accepted[0].originalIndex == 0);
-    CHECK(wide_ranked.accepted[0].cost.centerDistance == 82);
-    CHECK(wide_ranked.accepted[1].cost.centerDistance == 164);
+    CHECK(wide_ranked.accepted[0].originalIndex == 1);
+    CHECK(wide_ranked.accepted[0].cost.placementDirection ==
+          PlacementDirectionRank::TopLeft);
+    CHECK(wide_ranked.accepted[0].cost.centerDistance == 164);
+    CHECK(wide_ranked.accepted[1].cost.placementDirection ==
+          PlacementDirectionRank::Right);
+    CHECK(wide_ranked.accepted[1].cost.centerDistance == 82);
+
+    LayoutSnapshot direction_snapshot;
+    direction_snapshot.windows = {
+        make_window(40, {200, 200, 400, 400}, 0, false),
+        make_window(41, {200, 200, 400, 400}, 1, true),
+    };
+    for (auto& window : direction_snapshot.windows) {
+        window.workArea = {0, 0, 600, 600};
+    }
+    const auto direction_violations = scan_visibility_violations(
+        direction_snapshot, requirements);
+    CHECK(direction_violations.violations.size() == 1);
+    const std::vector<PlacementCandidate> direction_candidates = {
+        {{200, 400, 400, 600}, 0, 200, CandidateSource::BlockerClearance},
+        {{400, 200, 600, 400}, 200, 0, CandidateSource::BlockerClearance},
+        {{0, 200, 200, 400}, -200, 0, CandidateSource::BlockerClearance},
+        {{300, 100, 500, 300}, 100, -100, CandidateSource::AdaptiveSpread},
+        {{100, 100, 300, 300}, -100, -100, CandidateSource::AdaptiveSpread},
+    };
+    const auto direction_ranked = rank_candidates(direction_snapshot,
+                                                  direction_violations.violations[0],
+                                                  direction_candidates,
+                                                  no_preference_policy);
+    CHECK(direction_ranked.accepted.size() == direction_candidates.size());
+    CHECK(direction_ranked.accepted[0].cost.placementDirection ==
+          PlacementDirectionRank::TopLeft);
+    CHECK(direction_ranked.accepted[1].cost.placementDirection ==
+          PlacementDirectionRank::TopRight);
+    CHECK(direction_ranked.accepted[2].cost.placementDirection ==
+          PlacementDirectionRank::Left);
+    CHECK(direction_ranked.accepted[3].cost.placementDirection ==
+          PlacementDirectionRank::Right);
+    CHECK(direction_ranked.accepted[4].cost.placementDirection ==
+          PlacementDirectionRank::Bottom);
 
     const auto repeated = rank_candidates(
         snapshot, violations.violations[0], generated.candidates, policy);
@@ -213,6 +257,7 @@ int main()
         {{36, 100, 235, 300}, -64, 0, CandidateSource::BlockerEdge},
         {{36, 100, 236, 300}, -63, 0, CandidateSource::BlockerEdge},
         {{-1000, 100, -800, 300}, -1100, 0, CandidateSource::BlockerEdge},
+        {{-100, 100, 100, 300}, -200, 0, CandidateSource::BlockerClearance},
     };
     const auto invalid_ranked = rank_candidates(
         snapshot, violations.violations[0], invalid_candidates, policy);
@@ -220,6 +265,23 @@ int main()
     CHECK(rejected_for(invalid_ranked, 0, HardConstraintFailure::SizeChanged));
     CHECK(rejected_for(invalid_ranked, 1, HardConstraintFailure::InconsistentDelta));
     CHECK(rejected_for(invalid_ranked, 2, HardConstraintFailure::OutsideWorkArea));
+    // This candidate retains the old 100-pixel on-screen minimum but is now
+    // rejected because part of the window would remain outside the work area.
+    CHECK(rejected_for(invalid_ranked, 3, HardConstraintFailure::OutsideWorkArea));
+
+    auto upward_limited_policy = policy;
+    upward_limited_policy.maximumUpwardTravel = 24;
+    const std::vector<PlacementCandidate> upward_limited_candidates = {
+        {{76, 76, 276, 276}, -24, -24, CandidateSource::BlockerEdge},
+        {{75, 75, 275, 275}, -25, -25, CandidateSource::AdaptiveSpread},
+    };
+    const auto upward_limited = rank_candidates(snapshot,
+                                                violations.violations[0],
+                                                upward_limited_candidates,
+                                                upward_limited_policy);
+    CHECK(upward_limited.accepted.size() == 1);
+    CHECK(upward_limited.accepted[0].originalIndex == 0);
+    CHECK(rejected_for(upward_limited, 1, HardConstraintFailure::UpwardTravelLimit));
 
     auto active_target_policy = policy;
     active_target_policy.activeWindowIndex = 1;
@@ -255,6 +317,36 @@ int main()
     CHECK(intermediate_chain.accepted.size() == 1);
     CHECK(intermediate_chain.accepted[0].remainingViolations.size() == 1);
     CHECK(intermediate_chain.accepted[0].remainingViolations[0].targetIndex == 2);
+
+    LayoutSnapshot lower_must_not_redirect_upper;
+    lower_must_not_redirect_upper.windows = {
+        make_window(50, {200, 200, 400, 400}, 0, false),
+        make_window(51, {200, 200, 400, 400}, 1, true),
+        make_window(52, {100, 100, 300, 300}, 2, true),
+    };
+    for (auto& window : lower_must_not_redirect_upper.windows) {
+        window.workArea = {0, 0, 600, 600};
+    }
+    const auto layered_violations = scan_visibility_violations(
+        lower_must_not_redirect_upper, requirements);
+    const auto upper_violation = std::find_if(
+        layered_violations.violations.begin(),
+        layered_violations.violations.end(),
+        [](const auto& item) { return item.targetIndex == 1; });
+    CHECK(upper_violation != layered_violations.violations.end());
+    const std::vector<PlacementCandidate> layered_candidates = {
+        {{400, 200, 600, 400}, 200, 0, CandidateSource::BlockerClearance},
+        {{100, 100, 300, 300}, -100, -100, CandidateSource::AdaptiveSpread},
+    };
+    const auto layered_ranked = rank_candidates(lower_must_not_redirect_upper,
+                                                *upper_violation,
+                                                layered_candidates,
+                                                intermediate_policy);
+    CHECK(layered_ranked.accepted.size() == 2);
+    CHECK(layered_ranked.accepted[0].cost.placementDirection ==
+          PlacementDirectionRank::TopLeft);
+    CHECK(layered_ranked.accepted[0].cost.remainingViolationCount >
+          layered_ranked.accepted[1].cost.remainingViolationCount);
 
     auto invalid_policy = policy;
     invalid_policy.minimumOnscreenWidth = 0;

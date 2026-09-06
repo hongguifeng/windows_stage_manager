@@ -78,6 +78,7 @@ struct ViolationScanResult {
 struct WindowVisibilityResult {
     ViolationScanStatus status = ViolationScanStatus::Ok;
     std::optional<EdgeVisibility> visibility;
+    std::uint64_t exposedArea = 0;
 };
 
 ViolationScanResult scan_visibility_violations(

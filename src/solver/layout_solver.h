@@ -72,9 +72,10 @@ SolveResult solve_layout_incrementally(const LayoutSnapshot& initial,
                                        std::size_t active_window_index,
                                        ISolverClock* clock = nullptr);
 
-// Finds the best position-only layout in foreground-recency order. A window
-// that has already become recognizable is never moved again for a less recent
-// window. Z-order is treated as immutable input.
+// Builds a deterministic position-only staircase anchored to the active window.
+// The complete chain is tried top-left first, then top-right; one-edge side and
+// bottom chains are available only for the degraded visibility goal. Z-order is
+// immutable and determines the order of windows within a chain.
 SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
                                      const SolverPolicy& policy,
                                      std::size_t active_window_index,

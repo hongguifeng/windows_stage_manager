@@ -19,6 +19,7 @@ enum class HardConstraintFailure : std::uint8_t {
     SizeChanged,
     InconsistentDelta,
     OutsideWorkArea,
+    UpwardTravelLimit,
     TargetStillViolated,
     OtherManagedWindowViolated,
 };
@@ -39,18 +40,33 @@ enum class VisibilityPreferenceRank : std::uint8_t {
     Unrecognized = 6,
 };
 
+enum class PlacementDirectionRank : std::uint8_t {
+    TopLeft = 0,
+    TopRight = 1,
+    Left = 2,
+    Right = 3,
+    Bottom = 4,
+    Stationary = 5,
+};
+
 struct CandidateRankingPolicy {
     VisibilityRequirements visibility;
     std::uint64_t minimumOnscreenWidth = 100;
     std::uint64_t minimumOnscreenHeight = 100;
     std::optional<std::size_t> activeWindowIndex;
     std::optional<geometry::Edge> preferredEdge;
+    std::optional<std::uint64_t> maximumUpwardTravel;
     bool requireStableLayout = true;
     bool collectRemainingViolations = false;
 };
 
 struct CandidateCost {
     VisibilityPreferenceRank visibilityPreference = VisibilityPreferenceRank::Unrecognized;
+    std::uint32_t remainingViolationCount = 0;
+    PlacementDirectionRank placementDirection = PlacementDirectionRank::Stationary;
+    std::uint32_t incompleteExposurePenalty = 0;
+    std::uint32_t workAreaBoundaryPenalty = 0;
+    std::uint64_t hiddenArea = 0;
     std::uint32_t channelImbalance = 0;
     std::uint32_t channelAlternationPenalty = 0;
     std::uint64_t centerDistance = 0;

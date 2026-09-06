@@ -17,6 +17,9 @@ enum class CandidateSource : std::uint32_t {
     CombinedAxes = 1u << 3,
     TopLeftChannel = 1u << 4,
     TopRightChannel = 1u << 5,
+    BlockerClearance = 1u << 6,
+    AdaptiveSpread = 1u << 7,
+    TitleBarStep = 1u << 8,
 };
 
 constexpr CandidateSource operator|(CandidateSource left, CandidateSource right) noexcept

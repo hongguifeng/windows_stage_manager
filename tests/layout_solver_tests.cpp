@@ -3,6 +3,7 @@
 #include "solver/layout_solver.h"
 #include "solver/visibility_analyzer.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -28,6 +29,7 @@ stage_manager::solver::LayoutWindow make_window(std::uintptr_t hwnd,
     window.workArea = {0, 0, 500, 500};
     window.lastStableRect = rectangle;
     window.monitor = 1;
+    window.titleBarHeight = 24;
     window.zIndex = z_index;
     window.managed = managed;
     window.movable = managed;
@@ -107,8 +109,22 @@ int main()
     CHECK(no_violation.statesVisited == 1);
     CHECK(no_violation.finalState == hash_layout(valid));
 
+    LayoutSnapshot minimally_exposed;
+    minimally_exposed.version = 2;
+    minimally_exposed.windows = {
+        make_window(1, {100, 100, 300, 300}, 0, false),
+        make_window(2, {76, 76, 276, 276}, 1, true),
+    };
+    const auto expanded = solve_layout(minimally_exposed, policy);
+    CHECK(expanded.status == SolveStatus::Solved);
+    CHECK(expanded.moves.size() == 1);
+    CHECK((expanded.moves[0].from == Rect{76, 76, 276, 276}));
+    CHECK((expanded.moves[0].to == Rect{38, 38, 238, 238}));
+    CHECK(expanded.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+
     LayoutSnapshot covered;
-    covered.version = 2;
+    covered.version = 3;
     covered.windows = {
         make_window(1, {100, 100, 300, 300}, 0, false),
         make_window(2, {100, 100, 300, 300}, 1, true),
@@ -118,7 +134,7 @@ int main()
     CHECK(solved.moves.size() == 1);
     CHECK(solved.moves[0].window == covered.windows[1].key);
     CHECK((solved.moves[0].from == Rect{100, 100, 300, 300}));
-    CHECK((solved.moves[0].to == Rect{76, 76, 276, 276}));
+    CHECK((solved.moves[0].to == Rect{38, 38, 238, 238}));
     CHECK(scan_visibility_violations(solved.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 
@@ -132,8 +148,13 @@ int main()
     chain.windows.push_back(make_window(3, {36, 100, 236, 300}, 2, true));
     const auto chain_result = solve_layout(chain, policy);
     CHECK(chain_result.status == SolveStatus::Solved);
-    CHECK(chain_result.moves.size() == 1);
-    CHECK(chain_result.moves[0].window == chain.windows[1].key);
+    CHECK(chain_result.moves.size() == 2);
+    CHECK(std::any_of(chain_result.moves.begin(), chain_result.moves.end(), [&chain](const auto& move) {
+        return move.window == chain.windows[1].key;
+    }));
+    CHECK(std::any_of(chain_result.moves.begin(), chain_result.moves.end(), [&chain](const auto& move) {
+        return move.window == chain.windows[2].key;
+    }));
     CHECK(scan_visibility_violations(chain_result.finalSnapshot, policy.ranking.visibility)
               .violations.empty());
 
@@ -189,6 +210,24 @@ int main()
     CHECK(partial.moves[0].window.hwnd == 21);
     CHECK(partial.violations.size() == 1);
     CHECK(partial.finalSnapshot.windows[partial.violations[0].targetIndex].key.hwnd == 22);
+
+    LayoutSnapshot z_order_priority;
+    z_order_priority.version = 5;
+    z_order_priority.windows = {
+        make_window(30, {100, 100, 300, 300}, 0, false),
+        make_window(31, {100, 100, 300, 300}, 1, true),
+        make_window(32, {100, 100, 300, 300}, 2, true),
+        make_window(33, {100, 100, 300, 300}, 3, true),
+    };
+    auto z_order_policy = partial_policy;
+    z_order_policy.limits.maximumMoves = 1;
+    const auto z_order_result = solve_layout_prioritized(
+        z_order_priority, z_order_policy, 0);
+    CHECK(z_order_result.status == SolveStatus::PartiallySolved);
+    CHECK(z_order_result.moves.size() == 1);
+    CHECK(z_order_result.moves[0].window.hwnd == 31);
+    CHECK(z_order_result.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
 
     auto active_target_policy = policy;
     active_target_policy.ranking.activeWindowIndex = 1;
@@ -254,7 +293,19 @@ int main()
                                               intermediate_policy);
     CHECK(clipped_edge.accepted.empty());
     CHECK(clipped_edge.rejected.size() == 1);
-    CHECK(clipped_edge.rejected[0].failure == HardConstraintFailure::TargetStillViolated);
+    CHECK(clipped_edge.rejected[0].failure == HardConstraintFailure::OutsideWorkArea);
+
+    LayoutSnapshot oversized;
+    oversized.version = 6;
+    oversized.windows = {
+        make_window(40, {0, 0, 500, 500}, 0, false),
+        make_window(41, {-50, 100, 550, 300}, 1, true),
+    };
+    const auto oversized_result = solve_layout(oversized, policy);
+    CHECK(oversized_result.status == SolveStatus::Unsatisfiable);
+    CHECK(oversized_result.moves.empty());
+    CHECK((oversized_result.finalSnapshot.windows[1].placementRect ==
+           Rect{-50, 100, 550, 300}));
 
     const auto original_hash = hash_layout(covered);
     auto moved = covered;

@@ -451,7 +451,9 @@ min(axisLength,
 
 `VisibilityGoal::AnyRecognizableEdge` 接受 top、left、right、bottom 任一有效边。
 
-## 13. 候选生成与排序
+## 13. 通用候选生成与排序
+
+本节描述 `solve_layout` 使用的通用有限候选搜索。它保留给单窗口、属性测试和诊断路径；主协调流程的 `solve_layout_prioritized` 已改为第 14.3 节的锚点阶梯算法，不再用候选的实际 `deltaX/deltaY` 判断整条布局方向。
 
 ### 13.1 候选生成
 
@@ -459,11 +461,16 @@ min(axisLength,
 
 - 当前坐标；
 - 每个 blocker 的四条边，加上对应可辨识深度；
+- 目标窗口刚好完整越过 blocker 的四个非重叠边界；
 - work area 四条边；
 - 横向与纵向偏移的笛卡尔组合；
-- 显式标记的 `TopLeftChannel` 和 `TopRightChannel` 组合。
+- 显式标记的 `TopLeftChannel` 和 `TopRightChannel` 组合；
+- 标记为 `TitleBarStep` 的向上一个、两个实际标题栏高度候选；
+- blocker 最小露出位置与 work area 四角之间的 `AdaptiveSpread` 中间候选。
 
 候选按 placement rect 去重，并保留来源位图。所有加减使用溢出检查。达到每个违规的候选上限时返回 `Truncated` 并保留已经生成的有序候选，求解器继续搜索这些候选并把最终穷尽结果归类为 `Timeout`，不会再清空整批候选或误报输入无效。
+
+非重叠边界用于直接利用足以容纳窗口的空闲区域；`AdaptiveSpread` 填补最小露出候选与精确工作区边界之间的断层，避免求解结果在两者之间突然跳变。
 
 ### 13.2 硬约束
 
@@ -473,37 +480,41 @@ min(axisLength,
 - 目标不可管理、不可移动或不可见；
 - 尺寸变化；
 - placement rect 与 delta 不一致；
-- 未达到最小屏上宽高；
+- placement rect 未完整包含在当前 work area 内；窗口大于 work area 时因此没有可移动候选；
+- 设置 `maximumUpwardTravel` 时，向上位移超过该像素上限；
 - 移动后目标仍不可辨识；
 - `requireStableLayout=true` 时仍存在任何 managed 窗口违规；
 - 区域复杂度或输入数据无效。
 
-`solve_layout` 在搜索中把 `requireStableLayout` 设为 false，只验证当前移动目标已经满足可辨识要求；到下一个搜索节点时再扫描全体 managed 窗口。因此完整搜索可以经过“先修 A、下一步再修 B”的安全中间状态。需要收集候选后的剩余违规时，调用方显式设置 `collectRemainingViolations=true`，避免普通候选验证重复扫描全体窗口。
+`solve_layout` 可在局部搜索中把 `requireStableLayout` 设为 false，只强制当前移动目标已经满足可辨识要求，并设置 `collectRemainingViolations=false`。这些开关仍用于通用求解器测试；主阶梯流程不依赖它们决定方向。
 
 ### 13.3 软排序
 
 `CandidateCost` 的主要字典序为：
 
-1. visibility tier；
-2. 左右通道不平衡；
-3. 通道交替惩罚；
-4. normalized `centerDistance`；
-5. moved window count；
-6. Manhattan move distance；
-7. 与 `lastStableRect` 的距离；
-8. boundary distance；
-9. direction change penalty；
-10. 窗口身份和坐标确定性键。
+1. `placementDirection`：`TopLeft < TopRight < Left < Right < Bottom < Stationary`；
+2. visibility tier：`TopLeft < TopRight < TopOnly < LeftOnly < RightOnly < BottomOnly`；
+3. 是否仍有隐藏面积；
+4. `workAreaBoundaryPenalty`；
+5. `hiddenArea`；候选已经完整位于 work area 内，因此这里只剩被更高 Z-order 窗口遮挡的面积；
+6. normalized `centerDistance`；
+7. moved window count；
+8. Manhattan move distance；
+9. 与 `lastStableRect` 的距离；
+10. boundary distance；
+11. direction change penalty、旧通道统计和窗口身份/坐标确定性键。
 
-`TopLeft` 与 `TopRight` 在第一层被折叠为同级，再由通道负载与交替规则决定侧边。通道负载统计位于目标之上的 managed 窗口已经占用的左上/右上通道。
+`placementDirection` 根据候选相对当前位置的实际位移符号计算。向上且不向右归入 `TopLeft`，向上且向右归入 `TopRight`；其余依次归入左、右、下。固定方向序位于可见面积和中心距离之前。`remainingViolationCount` 仍保留为诊断字段，但不参与候选字典序；下层新增违规由逐层流程处理，不能反向影响当前上层窗口。
 
 `centerDistance` 将 X、Y 距离分别按 work area 宽高归一到较短边尺度后相加，避免宽屏上像素距离直接比较造成水平留白过多。
+
+`visibility_analyzer` 在边缘布尔值之外计算目标窗口位于 work area 内且未被更高 Z-order 遮挡的面积。越出 work area 的候选在 hard-constraint 阶段已经拒绝；剩余候选先避开精确贴边，再在同一方向的内部候选中选择隐藏面积更小的位置，所以最小深度仍是 hard constraint，但不会再被当成期望露出量。
 
 ## 14. 求解器与降级链
 
 ### 14.1 `solve_layout`
 
-使用带 visited hash 的有界深度优先搜索。每个节点扫描违规，选择一个违规窗口，生成并排序候选，并最多扩展排序最优的 4 个未访问分支，避免大量兄弟节点在浅层耗尽状态预算。终止状态包括 `Solved`、`NoViolation`、`Unsatisfiable`、`InvalidSnapshot`、`GeometryTooComplex` 和 `Timeout`；候选被截断或达到时间/状态上限均返回 `Timeout`，不表示已经证明无解。
+`solve_layout` 保留为带 visited hash 的有界深度优先搜索。每个节点选择 zIndex 最小的违规目标，生成并排序候选，最多扩展排序最优的 4 个未访问分支。`enhance_visibility`、`maximumUpwardTravel` 和 `TitleBarStep` 仍属于这一通用路径，不再被主协调流程用来排列后台窗口。终止状态包括 `Solved`、`NoViolation`、`Unsatisfiable`、`InvalidSnapshot`、`GeometryTooComplex` 和 `Timeout`。
 
 ### 14.2 `solve_layout_incrementally`
 
@@ -511,7 +522,23 @@ min(axisLength,
 
 ### 14.3 `solve_layout_prioritized`
 
-按 zIndex 从上到下遍历所有 managed、visible、current desktop 的后台窗口。每个目标只尝试一次单窗口移动；局部无解则跳过并继续更下层目标。最终：
+这是主协调流程使用的确定性阶梯求解器。初始可辨识扫描为空时直接返回 `NoViolation`，不会为了隐藏面积或中心距离移动已经合格的窗口。
+
+存在违规时，managed 后台窗口按不可变 zIndex 排序。`attempt_staircase` 以 active window 的 visual rect 为第一个 anchor，并用 `staircase_placement` 逐个计算后续节点：
+
+- `TopLeft`：目标左边等于 anchor 左边减去目标左侧深度，目标顶边等于 anchor 顶边减去目标实际标题栏高度的 1.5 倍（向上取整到完整像素）；
+- `TopRight`：目标右边等于 anchor 右边加上目标右侧深度，顶边计算相同；
+- `Left`、`Right`、`Bottom` 只在 `AnyRecognizableEdge` 降级目标中启用。
+
+这里的步长描述相邻节点，不约束目标相对原始位置的实际移动距离。顶部使用 1.5 倍标题栏高度，给完整标题栏额外留下半个标题栏的可见余量；`TopRight` 使用相同的纵向步长。整条链从 active anchor 重新构造，因此窗口旧坐标位于左侧或右侧都不会改变方向。`TopLeft` 整链失败后才尝试 `TopRight` 整链；不会出现链中某个窗口自行改到另一边。
+
+每一轮生成后调用 `scan_visibility_violations` 做全局验证。新出现的违规 target 及其 managed blocker 会加入同一条链，然后再次从 active anchor 计算，直到闭包稳定。所有 placement rect 必须完整位于 work area；任何节点越界、不可移动或超过 move/state/time budget 都使该方向失败。若只得到部分结果，以第一个失败 zIndex 为界回退该层和所有更低层，只返回重新扫描后确实减少违规的安全前缀。
+
+协调器若获得 `TopAndSide` 的安全前缀会直接采用，不再从原始布局运行 `AnyRecognizableEdge` 覆盖已经形成的阶梯。只有严格目标一个安全节点都无法产生时才进入单边降级。
+
+参与者选择在协调器中先按是否被 active window 直接遮挡分组；同组内 `processId + className` 重复出现的窗口优先于单一类型，再按遮挡比例和 zIndex 确定顺序。该优先级只决定最多 20 扇窗口中谁进入 managed 集合，不改变进入阶梯后的真实 Z-order。
+
+最终：
 
 - 无剩余违规：`Solved`；
 - 有成功移动但仍有违规：`PartiallySolved`；
@@ -519,21 +546,19 @@ min(axisLength,
 
 如果在已经完成部分移动后达到时间、状态或几何上限，同样先验证当前快照；有效的前缀返回 `PartiallySolved`，不会因为后段失败丢弃。
 
-因为较下层窗口不会遮挡较上层窗口，该顺序天然保护已经满足的上层窗口。
+因为链节点按 Z-order 一次生成并整体验证，较下层窗口不会反向改变整链方向。新增下层违规通过闭包加入同方向阶梯，不回到逐窗左右选边。
 
 ### 14.4 协调器调用顺序
 
 ```text
 TopAndSide:
-    solve_layout
-    -> solve_layout_incrementally
+    solve_layout_prioritized（左上整链 → 右上整链）
+
+若 TopAndSide 返回安全前缀:
+    直接使用该 PartiallySolved 结果，不启动宽松重算
 
 AnyRecognizableEdge:
-    solve_layout
-    -> solve_layout_prioritized
-
-若宽松目标仍失败但严格阶段已有安全前缀:
-    使用严格目标的 PartiallySolved 结果
+    仅在严格阶段没有安全前缀时，从初始布局尝试五种整链
 
 若 peer 仍失败但存在 activation move:
     只应用 activation move，标记 PartiallySolved
@@ -542,13 +567,13 @@ AnyRecognizableEdge:
     Unsatisfiable，不执行移动
 ```
 
-`fallbackUsed` 表示采用了 incremental 或 prioritized 的位置回退，不是 Z-order fallback。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge`；如果最终保留的是严格阶段的安全前缀，该字段保持 false。完整搜索返回 `Unsatisfiable` 或 `Timeout` 都可以进入对应逐窗回退；无效输入和区域复杂度错误不会被当作普通搜索失败继续掩盖。
+`fallbackUsed` 为兼容旧诊断字段保留；逐层求解已经是主流程，因此正常结果保持 false。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge`；如果最终保留的是严格阶段的安全上层前缀，该字段保持 false。无效输入和区域复杂度错误不会被当作普通无解继续掩盖。
 
 ### 14.5 循环避免
 
 布局使用双 64 位 FNV 风格哈希，包含窗口身份、placement/visual rect、zIndex 和 topmost。协调器在同一事务中记录已见最终状态；若方案回到已见状态，会改为 `Unsatisfiable`，防止反复摆动。
 
-首个 peer move 还会建立 `preferred_edge_`，后续候选偏好继续向同一主要方向移动，降低同一事务内方向反复。
+`preferred_edge_` 仍为通用候选求解路径保留；主阶梯路径的方向由整链尝试次序确定，不读取上一扇窗口的实际移动符号，因此不会在同一条链内左右反复。
 
 ## 15. 移动执行与验证
 
@@ -867,7 +892,7 @@ mvp_coordinator.cpp
 
 1. **core 名称不等于跨平台**：静态库直接包含 Win32。
 2. **Z-order 基础设施是 dormant code**：有接口和测试，但产品路径不调用。
-3. **`fallbackUsed` 名称含糊**：它是 incremental position fallback。
+3. **`fallbackUsed` 是兼容字段**：逐层求解成为主流程后正常保持 false，后续大版本可移除。
 4. **全局求解的 stable 约束较强**：不允许仍有其他 managed 违规的中间节点。
 5. **严格目标搜索成本较高**：当前会先尝试双边目标，再降级到任意可辨识边缘；复杂重叠下应关注两阶段的总预算。
 6. **periodic reconcile 不直接 settle**：它刷新状态但不主动移动静止桌面。

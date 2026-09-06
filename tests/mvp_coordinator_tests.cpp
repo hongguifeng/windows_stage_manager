@@ -29,6 +29,7 @@ stage_manager::window::WindowSnapshot make_window(std::uintptr_t hwnd,
     window.workArea = {0, 0, 1000, 700};
     window.monitor = 1;
     window.dpi = 96;
+    window.titleBarHeight = 24;
     window.style = 1;
     window.visible = true;
     window.currentDesktop = true;
@@ -344,10 +345,10 @@ int main()
 
     MvpFixture chain;
     chain.desktop.windows = {
-        make_window(10, {192, 100, 392, 300}, 0),
-        make_window(11, {192, 100, 392, 300}, 1),
-        make_window(12, {128, 100, 328, 300}, 2),
-        make_window(13, {64, 100, 264, 300}, 3),
+        make_window(10, {192, 200, 392, 400}, 0),
+        make_window(11, {192, 200, 392, 400}, 1),
+        make_window(12, {128, 200, 328, 400}, 2),
+        make_window(13, {64, 200, 264, 400}, 3),
     };
     const auto chain_result = chain.coordinator.process(drag_events(10), true, true);
     CHECK(chain_result.status == MvpBatchStatus::DryRun);
@@ -363,18 +364,18 @@ int main()
     CHECK(chain_visibility.violations.empty());
 
     auto stacked_settings = test_settings();
-    stacked_settings.maxSolverStates = 4;
+    stacked_settings.maxSolverStates = 16;
     MvpFixture stacked(stacked_settings);
     stacked.desktop.windows = {
-        make_window(40, {100, 100, 400, 400}, 0),
-        make_window(41, {100, 100, 400, 400}, 1),
-        make_window(42, {100, 100, 400, 400}, 2),
-        make_window(43, {100, 100, 400, 400}, 3),
+        make_window(40, {100, 200, 400, 500}, 0),
+        make_window(41, {100, 200, 400, 500}, 1),
+        make_window(42, {100, 200, 400, 500}, 2),
+        make_window(43, {100, 200, 400, 500}, 3),
     };
     const auto stacked_result =
         stacked.coordinator.process(drag_events(40), true, true);
     CHECK(stacked_result.status == MvpBatchStatus::DryRun);
-    CHECK(stacked_result.fallbackUsed);
+    CHECK(!stacked_result.fallbackUsed);
     CHECK(stacked_result.managedWindowCount == 4);
     CHECK(stacked_result.solve.status == SolveStatus::Solved);
     CHECK(stacked_result.solve.moves.size() == 3);
@@ -502,7 +503,7 @@ int main()
     };
     const auto crowded_result = crowded.coordinator.process(drag_events(20), true, true);
     CHECK(crowded_result.status == MvpBatchStatus::DryRun);
-    CHECK(crowded_result.fallbackUsed);
+    CHECK(!crowded_result.fallbackUsed);
     CHECK(crowded_result.partialLayoutUsed);
     CHECK(crowded_result.managedWindowCount == 3);
     CHECK(crowded_result.solve.status == SolveStatus::PartiallySolved);
@@ -518,7 +519,7 @@ int main()
     const auto crowded_live_result =
         crowded_live.coordinator.process(drag_events(20), true, false);
     CHECK(crowded_live_result.status == MvpBatchStatus::PartiallySolved);
-    CHECK(crowded_live_result.fallbackUsed);
+    CHECK(!crowded_live_result.fallbackUsed);
     CHECK(crowded_live_result.partialLayoutUsed);
     CHECK(crowded_live_result.apply.appliedMoves.size() == 1);
     CHECK(crowded_live_result.apply.appliedReorders.empty());
@@ -570,6 +571,39 @@ int main()
     CHECK(prioritized_result.managedWindowCount == 2);
     CHECK(prioritized_result.solve.moves.size() == 1);
     CHECK(prioritized_result.solve.moves[0].window.hwnd == 132);
+
+    auto repeated_type_settings = test_settings();
+    repeated_type_settings.maxManagedWindows = 3;
+    MvpFixture repeated_type_priority(repeated_type_settings);
+    auto single_one = make_window(301, {300, 200, 600, 500}, 1);
+    single_one.className = L"SingleOne";
+    auto single_two = make_window(302, {300, 200, 600, 500}, 2);
+    single_two.className = L"SingleTwo";
+    auto explorer_one = make_window(303, {300, 200, 600, 500}, 3);
+    explorer_one.key.processId = 900;
+    explorer_one.className = L"CabinetWClass";
+    auto explorer_two = make_window(304, {300, 200, 600, 500}, 4);
+    explorer_two.key.processId = 900;
+    explorer_two.className = L"CabinetWClass";
+    repeated_type_priority.desktop.windows = {
+        make_window(300, {300, 200, 600, 500}, 0),
+        single_one,
+        single_two,
+        explorer_one,
+        explorer_two,
+    };
+    const auto repeated_type_result = repeated_type_priority.coordinator.process(
+        drag_events(300), true, true);
+    CHECK(repeated_type_result.status == MvpBatchStatus::DryRun);
+    CHECK(repeated_type_result.managedWindowCount == 3);
+    CHECK(repeated_type_result.solve.status == SolveStatus::Solved);
+    CHECK(repeated_type_result.solve.moves.size() == 2);
+    CHECK(repeated_type_result.solve.moves[0].window.hwnd == 303);
+    CHECK(repeated_type_result.solve.moves[1].window.hwnd == 304);
+    CHECK(repeated_type_result.solve.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(repeated_type_result.solve.moves[1].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
 
     MvpFixture coverage_prioritized(prioritized_settings);
     coverage_prioritized.desktop.windows = {
@@ -968,7 +1002,14 @@ int main()
     CHECK(default_profile_result.solve.moves.size() == 1);
     CHECK(default_profile_result.solve.moves[0].window.hwnd == 171);
     CHECK((default_profile_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{160, 68, 760, 568}));
+           stage_manager::geometry::Rect{160, 64, 760, 564}));
+    CHECK(default_profile_result.solve.moves[0].to.top > 0);
+    CHECK(default_profile_result.solve.moves[0].from.top -
+              default_profile_result.solve.moves[0].to.top ==
+          default_profile.desktop.windows[1].titleBarHeight * 3 / 2);
+    CHECK(default_profile_result.solve.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(default_profile_result.solve.moves[0].cost.hiddenArea == 259840);
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;

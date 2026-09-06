@@ -417,17 +417,36 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             peers.push_back(&window);
         }
     }
-    std::stable_sort(peers.begin(), peers.end(), [&active](const auto* left, const auto* right) {
+    std::unordered_map<const WindowSnapshot*, std::size_t> same_type_counts;
+    for (const auto* target : peers) {
+        same_type_counts[target] = std::count_if(
+            peers.begin(), peers.end(), [target](const auto* item) {
+            return item->key.processId == target->key.processId &&
+                item->className == target->className;
+        });
+    }
+    std::stable_sort(peers.begin(), peers.end(), [&active, &same_type_counts](
+                                                     const auto* left,
+                                                     const auto* right) {
         const bool left_direct = directly_obscured_by(*active, *left);
         const bool right_direct = directly_obscured_by(*active, *right);
         if (left_direct != right_direct) {
             return left_direct;
         }
-        if (!left_direct) {
-            return false;
+        const bool left_repeated_type = same_type_counts.at(left) > 1;
+        const bool right_repeated_type = same_type_counts.at(right) > 1;
+        if (left_repeated_type != right_repeated_type) {
+            return left_repeated_type;
         }
-        return obscured_fraction(active->visualRect, left->visualRect) >
-            obscured_fraction(active->visualRect, right->visualRect);
+        if (!left_direct) {
+            return left->zIndex < right->zIndex;
+        }
+        const auto left_fraction = obscured_fraction(active->visualRect, left->visualRect);
+        const auto right_fraction = obscured_fraction(active->visualRect, right->visualRect);
+        if (left_fraction != right_fraction) {
+            return left_fraction > right_fraction;
+        }
+        return left->zIndex < right->zIndex;
     });
     for (const auto* peer : peers) {
         if (managed.size() == maximum_managed) {
@@ -578,7 +597,8 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         result.affordanceGoal = exposed_edges > 1
             ? solver::VisibilityGoal::TopAndSide
             : solver::VisibilityGoal::AnyRecognizableEdge;
-        result.solve = solver::solve_layout(layout, policy);
+        result.solve = solver::solve_layout_prioritized(
+            layout, policy, *active_index);
         if (result.solve.status == solver::SolveStatus::Solved ||
             result.solve.status == solver::SolveStatus::NoViolation) {
             if (result.solve.moves.size() <= remaining_position_moves) {
@@ -591,45 +611,19 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
             result.solve.finalState = solver::hash_layout(layout);
         }
 
-        // For the relaxed goal, the prioritized solver is both the completion
-        // fallback and the source of a safe upper-window prefix when the whole
-        // desktop cannot be solved in time. This avoids running both the
-        // all-or-nothing incremental pass and the prioritized pass.
-        const bool retryable = result.solve.status == solver::SolveStatus::Unsatisfiable ||
-            result.solve.status == solver::SolveStatus::Timeout;
-        if (!retryable) {
-            return false;
-        }
-        auto fallback = exposed_edges > 1
-            ? solver::solve_layout_incrementally(layout, policy, *active_index)
-            : solver::solve_layout_prioritized(layout, policy, *active_index);
-        if (fallback.status == solver::SolveStatus::Solved &&
-            fallback.moves.size() <= remaining_position_moves) {
-            result.solve = std::move(fallback);
-            include_activation_move();
-            result.fallbackUsed = true;
-            return true;
-        }
-        if (fallback.status == solver::SolveStatus::PartiallySolved &&
-            fallback.moves.size() <= remaining_position_moves) {
+        if (result.solve.status == solver::SolveStatus::PartiallySolved &&
+            result.solve.moves.size() <= remaining_position_moves) {
             if (exposed_edges == 1) {
-                result.solve = std::move(fallback);
                 include_activation_move();
-                result.fallbackUsed = true;
                 result.partialLayoutUsed = true;
                 return true;
             }
-            strict_partial = fallback;
+            strict_partial = result.solve;
         }
-        result.solve = std::move(fallback);
         return false;
     };
 
     auto solved = attempt_goal(2);
-    if (!solved) {
-        result.affordanceGoalDegraded = true;
-        solved = attempt_goal(1);
-    }
     if (!solved && strict_partial) {
         result.managedWindowCount = full_managed_count;
         managed_handles = full_managed_handles;
@@ -639,9 +633,12 @@ MvpBatchResult MvpCoordinator::settle(bool dry_run,
         result.affordanceGoalDegraded = false;
         result.solve = std::move(*strict_partial);
         include_activation_move();
-        result.fallbackUsed = true;
         result.partialLayoutUsed = true;
         solved = true;
+    }
+    if (!solved) {
+        result.affordanceGoalDegraded = true;
+        solved = attempt_goal(1);
     }
     if (!solved && activation_move) {
         // Activation placement is an independent user-facing action. A peer

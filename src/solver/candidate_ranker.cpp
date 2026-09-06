@@ -89,9 +89,30 @@ std::uint32_t direction_change_penalty(
     return follows_preference ? 0u : 1u;
 }
 
+PlacementDirectionRank placement_direction(const PlacementCandidate& candidate) noexcept
+{
+    if (candidate.deltaY < 0) {
+        return candidate.deltaX <= 0
+            ? PlacementDirectionRank::TopLeft
+            : PlacementDirectionRank::TopRight;
+    }
+    if (candidate.deltaX < 0) {
+        return PlacementDirectionRank::Left;
+    }
+    if (candidate.deltaX > 0) {
+        return PlacementDirectionRank::Right;
+    }
+    if (candidate.deltaY > 0) {
+        return PlacementDirectionRank::Bottom;
+    }
+    return PlacementDirectionRank::Stationary;
+}
+
 CandidateCost calculate_cost(const LayoutWindow& target,
                              const PlacementCandidate& candidate,
                              VisibilityPreferenceRank visibility_preference,
+                             std::uint64_t exposed_area,
+                             std::size_t remaining_violation_count,
                              std::optional<geometry::Edge> preferred_edge,
                              std::uint32_t channel_imbalance,
                              std::uint32_t channel_alternation_penalty)
@@ -101,6 +122,24 @@ CandidateCost calculate_cost(const LayoutWindow& target,
         : target.lastStableRect;
     CandidateCost cost;
     cost.visibilityPreference = visibility_preference;
+    cost.remainingViolationCount = remaining_violation_count >
+            std::numeric_limits<std::uint32_t>::max()
+        ? std::numeric_limits<std::uint32_t>::max()
+        : static_cast<std::uint32_t>(remaining_violation_count);
+    cost.placementDirection = placement_direction(candidate);
+    const auto width = target.visualRect.width();
+    const auto height = target.visualRect.height();
+    const auto total_area = height != 0 &&
+            width > std::numeric_limits<std::uint64_t>::max() / height
+        ? std::numeric_limits<std::uint64_t>::max()
+        : width * height;
+    cost.hiddenArea = total_area - std::min(total_area, exposed_area);
+    cost.incompleteExposurePenalty = cost.hiddenArea == 0 ? 0u : 1u;
+    cost.workAreaBoundaryPenalty =
+        (candidate.placementRect.left <= target.workArea.left ? 1u : 0u) +
+        (candidate.placementRect.right >= target.workArea.right ? 1u : 0u) +
+        (candidate.placementRect.top <= target.workArea.top ? 1u : 0u) +
+        (candidate.placementRect.bottom >= target.workArea.bottom ? 1u : 0u);
     cost.channelImbalance = channel_imbalance;
     cost.channelAlternationPenalty = channel_alternation_penalty;
     cost.centerDistance = center_distance(candidate.placementRect, target.workArea);
@@ -121,12 +160,11 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
 {
     const auto& left_cost = left.cost;
     const auto& right_cost = right.cost;
-    const auto visibility_tier = [](VisibilityPreferenceRank rank) {
-        return rank == VisibilityPreferenceRank::TopRight
-            ? VisibilityPreferenceRank::TopLeft
-            : rank;
-    };
-    return std::make_tuple(visibility_tier(left_cost.visibilityPreference),
+    return std::make_tuple(left_cost.placementDirection,
+                    left_cost.visibilityPreference,
+                    left_cost.incompleteExposurePenalty,
+                    left_cost.workAreaBoundaryPenalty,
+                    left_cost.hiddenArea,
                     left_cost.channelImbalance,
                     left_cost.channelAlternationPenalty,
                     left_cost.centerDistance,
@@ -140,7 +178,11 @@ bool less_cost(const RankedCandidate& left, const RankedCandidate& right)
                     left_cost.left,
                     left_cost.top,
                     left.originalIndex) <
-        std::make_tuple(visibility_tier(right_cost.visibilityPreference),
+        std::make_tuple(right_cost.placementDirection,
+                 right_cost.visibilityPreference,
+                 right_cost.incompleteExposurePenalty,
+                 right_cost.workAreaBoundaryPenalty,
+                 right_cost.hiddenArea,
                  right_cost.channelImbalance,
                  right_cost.channelAlternationPenalty,
                  right_cost.centerDistance,
@@ -284,11 +326,17 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
             reject(HardConstraintFailure::InconsistentDelta);
             continue;
         }
-        if (!geometry::preserves_minimum_onscreen(
-                candidate.placementRect,
-                target.workArea,
-                static_cast<std::int64_t>(policy.minimumOnscreenWidth),
-                static_cast<std::int64_t>(policy.minimumOnscreenHeight))) {
+        if (policy.maximumUpwardTravel && candidate.deltaY < 0 &&
+            unsigned_distance(candidate.deltaY, 0) > *policy.maximumUpwardTravel) {
+            reject(HardConstraintFailure::UpwardTravelLimit);
+            continue;
+        }
+        // A solver-generated move must never trade recognizability for an
+        // off-screen window. Oversized windows cannot satisfy this condition,
+        // so the solver leaves them untouched instead of choosing which part
+        // to push outside the work area.
+        if (!geometry::fully_within_work_area(
+                candidate.placementRect, target.workArea)) {
             reject(HardConstraintFailure::OutsideWorkArea);
             continue;
         }
@@ -298,6 +346,7 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
         simulated.windows[violation.targetIndex].visualRect = *expected_visual;
         std::vector<Violation> remaining_violations;
         std::optional<VisibilityPreferenceRank> visibility_preference;
+        std::uint64_t exposed_area = 0;
         if (policy.requireStableLayout || policy.collectRemainingViolations) {
             const auto scan = scan_visibility_violations(simulated, policy.visibility);
             if (scan.status == ViolationScanStatus::GeometryTooComplex) {
@@ -321,8 +370,22 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
                 continue;
             }
             remaining_violations = scan.violations;
-            visibility_preference = visibility_preference_rank(
+            const auto visibility = analyze_window_visibility_with_status(
                 simulated, violation.targetIndex, policy.visibility);
+            if (visibility.status == ViolationScanStatus::GeometryTooComplex) {
+                result.status = CandidateRankingStatus::GeometryTooComplex;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            if (visibility.status != ViolationScanStatus::Ok || !visibility.visibility) {
+                result.status = CandidateRankingStatus::InvalidInput;
+                result.accepted.clear();
+                result.rejected.clear();
+                return result;
+            }
+            visibility_preference = visibility_preference_rank(*visibility.visibility);
+            exposed_area = visibility.exposedArea;
         } else {
             const auto visibility = analyze_window_visibility_with_status(
                 simulated, violation.targetIndex, policy.visibility);
@@ -346,6 +409,7 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
                 continue;
             }
             visibility_preference = visibility_preference_rank(*visibility.visibility);
+            exposed_area = visibility.exposedArea;
         }
         if (!visibility_preference) {
             result.status = CandidateRankingStatus::InvalidInput;
@@ -380,6 +444,8 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
             target,
             candidate,
             *visibility_preference,
+            exposed_area,
+            remaining_violations.size(),
             policy.preferredEdge,
             channel_imbalance,
             alternation_penalty);

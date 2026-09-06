@@ -133,6 +133,33 @@ std::optional<geometry::Region> exposed_zone(const LayoutWindow& target,
     return exposed.region;
 }
 
+std::optional<std::uint64_t> exposed_window_area(
+    const LayoutWindow& target,
+    const geometry::Region& blockers,
+    std::size_t maximum_rectangles,
+    ViolationScanStatus& status)
+{
+    const auto target_region = region_of(target.visualRect, maximum_rectangles);
+    const auto work_region = region_of(target.workArea, maximum_rectangles);
+    if (!target_region || !work_region) {
+        status = ViolationScanStatus::InvalidSnapshot;
+        return std::nullopt;
+    }
+    const auto onscreen = geometry::intersect(
+        *target_region, *work_region, maximum_rectangles);
+    if (!onscreen.succeeded()) {
+        status = ViolationScanStatus::GeometryTooComplex;
+        return std::nullopt;
+    }
+    const auto exposed = geometry::subtract(
+        onscreen.region, blockers, maximum_rectangles);
+    if (!exposed.succeeded()) {
+        status = ViolationScanStatus::GeometryTooComplex;
+        return std::nullopt;
+    }
+    return exposed.region.area();
+}
+
 bool has_exposed_segment_in_bounds(const geometry::Region& exposed,
                                    const geometry::InteractionZone& zone,
                                    const PixelEdgeAffordance& rule) noexcept
@@ -299,6 +326,19 @@ WindowVisibilityResult analyze_window_visibility_with_status(
     }
     result.visibility = analyze_with_context(
         target, requirements, context->blockerRegion, result.status);
+    if (!result.visibility) {
+        return result;
+    }
+    const auto exposed_area = exposed_window_area(
+        target,
+        context->blockerRegion,
+        requirements.maximumRegionRectangles,
+        result.status);
+    if (!exposed_area) {
+        result.visibility.reset();
+        return result;
+    }
+    result.exposedArea = *exposed_area;
     return result;
 }
 

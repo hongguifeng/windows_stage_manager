@@ -113,11 +113,9 @@ int main()
         make_window(12, {100, 100, 300, 300}, 2),
     };
     const auto skip_result = solve_layout_prioritized(skip_impossible_upper, policy, 0);
-    CHECK(skip_result.status == SolveStatus::PartiallySolved);
-    CHECK(skip_result.moves.size() == 1);
-    CHECK(skip_result.moves[0].window.hwnd == 12);
-    CHECK(skip_result.violations.size() == 1);
-    CHECK(skip_result.finalSnapshot.windows[skip_result.violations[0].targetIndex].key.hwnd == 11);
+    CHECK(skip_result.status == SolveStatus::Unsatisfiable);
+    CHECK(skip_result.moves.empty());
+    CHECK(skip_result.violations.size() == 2);
 
     LayoutSnapshot preserve_upper;
     preserve_upper.windows = {
@@ -135,10 +133,10 @@ int main()
 
     LayoutSnapshot multiple_lower;
     multiple_lower.windows = {
-        make_window(30, {100, 100, 300, 300}, 0, true, false),
-        make_window(31, {100, 100, 300, 300}, 1),
-        make_window(32, {100, 100, 300, 300}, 2),
-        make_window(33, {100, 100, 300, 300}, 3),
+        make_window(30, {100, 200, 300, 400}, 0, true, false),
+        make_window(31, {100, 200, 300, 400}, 1),
+        make_window(32, {100, 200, 300, 400}, 2),
+        make_window(33, {100, 200, 300, 400}, 3),
     };
     const auto multiple_result = solve_layout_prioritized(multiple_lower, policy, 0);
     CHECK(multiple_result.status == SolveStatus::Solved);
@@ -146,14 +144,89 @@ int main()
     CHECK(scan_visibility_violations(
               multiple_result.finalSnapshot, policy.ranking.visibility).violations.empty());
 
+    auto staircase_policy = policy;
+    staircase_policy.ranking.visibility.goal =
+        stage_manager::solver::VisibilityGoal::TopAndSide;
+    LayoutSnapshot deterministic_staircase;
+    deterministic_staircase.windows = {
+        make_window(60, {400, 300, 700, 600}, 0, true, false),
+        make_window(61, {100, 100, 400, 400}, 1),
+        make_window(62, {650, 100, 950, 400}, 2),
+        make_window(63, {300, 350, 600, 650}, 3),
+    };
+    for (auto& window : deterministic_staircase.windows) {
+        window.workArea = {0, 0, 1000, 700};
+    }
+    const auto staircase_result = solve_layout_prioritized(
+        deterministic_staircase, staircase_policy, 0);
+    CHECK(staircase_result.status == SolveStatus::Solved);
+    CHECK(staircase_result.moves.size() == 3);
+    CHECK((staircase_result.moves[0].to == Rect{376, 264, 676, 564}));
+    CHECK((staircase_result.moves[1].to == Rect{352, 228, 652, 528}));
+    CHECK((staircase_result.moves[2].to == Rect{328, 192, 628, 492}));
+    for (const auto& move : staircase_result.moves) {
+        CHECK(move.cost.placementDirection ==
+              stage_manager::solver::PlacementDirectionRank::TopLeft);
+    }
+    CHECK(scan_visibility_violations(staircase_result.finalSnapshot,
+                                     staircase_policy.ranking.visibility).violations.empty());
+
+    LayoutSnapshot right_staircase;
+    right_staircase.windows = {
+        make_window(70, {20, 100, 220, 300}, 0, true, false),
+        make_window(71, {20, 100, 220, 300}, 1),
+    };
+    for (auto& window : right_staircase.windows) {
+        window.workArea = {0, 0, 500, 500};
+    }
+    const auto right_result = solve_layout_prioritized(
+        right_staircase, staircase_policy, 0);
+    CHECK(right_result.status == SolveStatus::Solved);
+    CHECK(right_result.moves.size() == 1);
+    CHECK((right_result.moves[0].to == Rect{44, 64, 244, 264}));
+    CHECK(right_result.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopRight);
+
+    auto already_valid = deterministic_staircase;
+    already_valid.windows = staircase_result.finalSnapshot.windows;
+    const auto unchanged = solve_layout_prioritized(
+        already_valid, staircase_policy, 0);
+    CHECK(unchanged.status == SolveStatus::NoViolation);
+    CHECK(unchanged.moves.empty());
+    for (std::size_t index = 0; index < already_valid.windows.size(); ++index) {
+        CHECK(unchanged.finalSnapshot.windows[index].placementRect ==
+              already_valid.windows[index].placementRect);
+    }
+
+    LayoutSnapshot upper_creates_lower_work;
+    upper_creates_lower_work.windows = {
+        make_window(34, {200, 200, 400, 400}, 0, true, false),
+        make_window(35, {200, 200, 400, 400}, 1),
+        make_window(36, {100, 100, 300, 300}, 2),
+    };
+    for (auto& window : upper_creates_lower_work.windows) {
+        window.workArea = {0, 0, 600, 600};
+    }
+    const auto layered_result = solve_layout_prioritized(
+        upper_creates_lower_work, policy, 0);
+    CHECK(layered_result.status == SolveStatus::Solved);
+    CHECK(!layered_result.moves.empty());
+    CHECK(layered_result.moves[0].window.hwnd == 35);
+    CHECK(layered_result.moves[0].cost.placementDirection ==
+          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    CHECK(layered_result.moves[0].from.top - layered_result.moves[0].to.top <=
+          static_cast<std::int64_t>(
+              upper_creates_lower_work.windows[1].titleBarHeight * 3));
+    CHECK(scan_visibility_violations(
+              layered_result.finalSnapshot, policy.ranking.visibility).violations.empty());
+
     auto state_limited_policy = policy;
     state_limited_policy.limits.maximumStates = 3;
     const auto state_limited = solve_layout_prioritized(
         multiple_lower, state_limited_policy, 0);
-    CHECK(state_limited.status == SolveStatus::PartiallySolved);
-    CHECK(state_limited.moves.size() == 1);
-    CHECK(state_limited.moves[0].window.hwnd == 31);
-    CHECK(!state_limited.violations.empty());
+    CHECK(state_limited.status == SolveStatus::Solved);
+    CHECK(state_limited.moves.size() == 3);
+    CHECK(state_limited.violations.empty());
 
     LayoutSnapshot no_improvement;
     no_improvement.windows = {

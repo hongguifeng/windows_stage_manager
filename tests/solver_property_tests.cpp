@@ -120,6 +120,7 @@ bool same_moves(std::span<const stage_manager::solver::MovePlan> left,
 
 int main()
 {
+    using stage_manager::geometry::fully_within_work_area;
     using stage_manager::geometry::preserves_minimum_onscreen;
     using stage_manager::solver::SolveStatus;
     using stage_manager::solver::hash_layout;
@@ -154,6 +155,7 @@ int main()
             CHECK_CASE(move.from != move.to, case_index);
             CHECK_CASE(move.to.width() == move.from.width(), case_index);
             CHECK_CASE(move.to.height() == move.from.height(), case_index);
+            CHECK_CASE(fully_within_work_area(move.to, target->workArea), case_index);
             const auto delta_x = move.to.left - move.from.left;
             const auto delta_y = move.to.top - move.from.top;
             const auto translated_visual = target->visualRect.translated(delta_x, delta_y);
