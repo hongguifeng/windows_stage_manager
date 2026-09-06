@@ -22,7 +22,7 @@ std::wstring_view chinese_text(UiText text) noexcept
     case UiText::InvalidParameterMessage: return L"\u8bf7\u9009\u62e9\u9884\u8bbe\u503c\uff0c\u6216\u8f93\u5165\u5141\u8bb8\u8303\u56f4\u5185\u7684\u6574\u6570\u3002";
     case UiText::InvalidParameterTitle: return L"\u53c2\u6570\u65e0\u6548";
     case UiText::ActiveWindow: return L"\u5f53\u524d\u6d3b\u52a8\u7a97\u53e3";
-    case UiText::PreviewCaption: return L"\u7eff\u8272 = \u56db\u8fb9\u72ec\u7acb\u53ef\u8fa8\u8bc6\u533a\uff1b\u9876\u90e8\u6309\u6807\u9898\u680f\u9ad8\u5ea6\uff0c\u53f3/\u4e0b\u9700\u8981\u66f4\u5927\u70b9\u51fb\u533a";
+    case UiText::PreviewCaption: return L"\u5de6\u534a\u6807\u9898\u680f\u5b8c\u6574\u9732\u51fa\uff1b\u4fa7\u6761\u5e2e\u52a9\u8fa8\u8ba4";
     case UiText::EnterIntegerPrefix: return L"\uff1a\u8bf7\u8f93\u5165 ";
     case UiText::EnterIntegerSuffix: return L" \u4e4b\u95f4\u7684\u6574\u6570";
     case UiText::InvalidValueMessage: return L"\u8bf7\u8f93\u5165\u63d0\u793a\u8303\u56f4\u5185\u7684\u6574\u6570\u3002";
@@ -72,7 +72,7 @@ std::wstring_view english_text(UiText text) noexcept
     case UiText::InvalidParameterMessage: return L"Select a preset or enter an integer within the valid range.";
     case UiText::InvalidParameterTitle: return L"Invalid setting";
     case UiText::ActiveWindow: return L"Active window";
-    case UiText::PreviewCaption: return L"Green = independent recognizable edge; top follows title-bar height; right/bottom use larger click targets";
+    case UiText::PreviewCaption: return L"Full-height left half of title bar; side strips aid recognition";
     case UiText::EnterIntegerPrefix: return L": enter an integer from ";
     case UiText::EnterIntegerSuffix: return L".";
     case UiText::InvalidValueMessage: return L"Enter an integer within the displayed range.";
@@ -126,7 +126,7 @@ std::wstring_view setting_field_title(SettingField field, UiLanguage language) n
         case SettingField::AffordancePreset: return L"Recognizability preset";
         case SettingField::TopMinimumLengthDip: return L"Top minimum length";
         case SettingField::TopMaximumLengthDip: return L"Top maximum length";
-        case SettingField::TopDepthDip: return L"Top fallback height";
+        case SettingField::TopDepthDip: return L"Minimum exposed height";
         case SettingField::TopLengthPercent: return L"Top dynamic percentage";
         case SettingField::LeftMinimumLengthDip: return L"Left minimum length";
         case SettingField::LeftMaximumLengthDip: return L"Left maximum length";
@@ -161,7 +161,7 @@ std::wstring_view setting_field_title(SettingField field, UiLanguage language) n
     case SettingField::AffordancePreset: return L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe";
     case SettingField::TopMinimumLengthDip: return L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6";
     case SettingField::TopMaximumLengthDip: return L"\u9876\u90e8\u6700\u5927\u957f\u5ea6";
-    case SettingField::TopDepthDip: return L"\u9876\u90e8\u56de\u9000\u9ad8\u5ea6";
+    case SettingField::TopDepthDip: return L"\u9876\u90e8\u6700\u5c0f\u9732\u51fa\u9ad8\u5ea6";
     case SettingField::TopLengthPercent: return L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b";
     case SettingField::LeftMinimumLengthDip: return L"\u5de6\u4fa7\u6700\u5c0f\u957f\u5ea6";
     case SettingField::LeftMaximumLengthDip: return L"\u5de6\u4fa7\u6700\u5927\u957f\u5ea6";

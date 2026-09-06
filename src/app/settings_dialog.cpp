@@ -212,7 +212,8 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
 
     const auto metrics = make_dip_preview_metrics(settings, state.dpi);
     const auto top_length = std::clamp<int>(
-        static_cast<int>(metrics.topLengthPixels), 8, inactive.right - inactive.left);
+        static_cast<int>(metrics.topLengthPixels), (inactive.right - inactive.left + 1) / 2,
+        inactive.right - inactive.left);
     const auto top_depth = std::clamp<int>(static_cast<int>(metrics.topDepthPixels), 3, 36);
     const auto left_length = std::clamp<int>(
         static_cast<int>(metrics.leftLengthPixels), 8, inactive.bottom - inactive.top);
@@ -220,23 +221,16 @@ void draw_preview(HWND dialog, const DRAWITEMSTRUCT& item, const SettingsDialogS
     const auto right_length = std::clamp<int>(
         static_cast<int>(metrics.rightLengthPixels), 8, inactive.bottom - inactive.top);
     const auto right_depth = std::clamp<int>(static_cast<int>(metrics.rightDepthPixels), 3, 36);
-    const auto bottom_length = std::clamp<int>(
-        static_cast<int>(metrics.bottomLengthPixels), 8, inactive.right - inactive.left);
-    const auto bottom_depth = std::clamp<int>(
-        static_cast<int>(metrics.bottomDepthPixels), 3, 36);
     const auto exposed_brush = CreateSolidBrush(RGB(41, 176, 106));
     RECT top_edge{inactive.left, inactive.top, inactive.left + top_length,
                   inactive.top + top_depth};
-    RECT left_edge{inactive.left, inactive.top, inactive.left + left_depth,
-                   inactive.top + left_length};
-    RECT right_edge{inactive.right - right_depth, inactive.top,
-                    inactive.right, inactive.top + right_length};
-    RECT bottom_edge{inactive.right - bottom_length, inactive.bottom - bottom_depth,
-                     inactive.right, inactive.bottom};
+    RECT left_edge{inactive.left, inactive.top + top_depth, inactive.left + left_depth,
+                   std::min(inactive.bottom, inactive.top + top_depth + left_length)};
+    RECT right_edge{inactive.right - right_depth, inactive.top + top_depth,
+                    inactive.right, std::min(inactive.bottom, inactive.top + top_depth + right_length)};
     FillRect(item.hDC, &top_edge, exposed_brush);
     FillRect(item.hDC, &left_edge, exposed_brush);
     FillRect(item.hDC, &right_edge, exposed_brush);
-    FillRect(item.hDC, &bottom_edge, exposed_brush);
     DeleteObject(exposed_brush);
 
     SetBkMode(item.hDC, TRANSPARENT);
@@ -376,12 +370,12 @@ SettingHelp setting_help(SettingField field, UiLanguage language) noexcept
         case SettingField::DryRun: return {title, L"Preview-only mode calculates layouts and writes logs without moving real windows.", L"toggle", false};
         case SettingField::PlaceActivatedWindow: return {title, L"Place a window only when it changes from background to active. Manual dragging always wins.", L"toggle", false};
         case SettingField::ActivationHorizontalAlignment: return {title, L"Choose Left, Center, or Right relative to the current monitor work area.", L"position", false};
-        case SettingField::ActivationVerticalAlignment: return {title, L"Choose Top, Center, or Bottom. Windows taller than the work area are always top-aligned.", L"position", false};
+        case SettingField::ActivationVerticalAlignment: return {title, L"Choose Top, Center, or Bottom. Windows larger than the work area are not automatically placed.", L"position", false};
         case SettingField::AffordancePreset: return {title, L"Compact minimizes movement, Balanced suits most displays, and Prominent retains larger click targets.", L"preset", false};
-        case SettingField::TopMinimumLengthDip: return {title, L"Lower bound for the visible title-bar segment.", L"DIP", true};
-        case SettingField::TopMaximumLengthDip: return {title, L"Upper bound for the visible title-bar segment.", L"DIP", true};
-        case SettingField::TopDepthDip: return {title, L"Top height used when the real title-bar height cannot be read.", L"DIP", true};
-        case SettingField::TopLengthPercent: return {title, L"Top length as a percentage of window width, clamped to its minimum and maximum.", L"%", false};
+        case SettingField::TopMinimumLengthDip: return {title, L"Configured minimum title width; at least the left half is always required.", L"DIP", true};
+        case SettingField::TopMaximumLengthDip: return {title, L"Caps the configured length, but cannot reduce the required left half.", L"DIP", true};
+        case SettingField::TopDepthDip: return {title, L"Minimum exposed height; never less than 1.5 times the title-bar baseline.", L"DIP", true};
+        case SettingField::TopLengthPercent: return {title, L"Configured width percentage, clamped to limits, then raised to at least half the title bar.", L"%", false};
         case SettingField::LeftMinimumLengthDip: return {title, L"Lower bound for the visible left-edge segment.", L"DIP", true};
         case SettingField::LeftMaximumLengthDip: return {title, L"Upper bound for the visible left-edge segment.", L"DIP", true};
         case SettingField::LeftDepthDip: return {title, L"Clickable width retained inward from the left edge.", L"DIP", true};
@@ -400,7 +394,7 @@ SettingHelp setting_help(SettingField field, UiLanguage language) noexcept
         case SettingField::ReconcileIntervalMs: return {title, L"How often window state is refreshed even when no event arrives.", L"ms", false};
         case SettingField::MaximumMovesPerBatch: return {title, L"Maximum number of window moves allowed in one layout repair batch.", L"moves", false};
         case SettingField::MaximumSolverStates: return {title, L"Maximum candidate layouts inspected by the global search.", L"states", false};
-        case SettingField::MaximumSolveTimeMs: return {title, L"Time budget for one search before bounded per-window repair is used.", L"ms", false};
+        case SettingField::MaximumSolveTimeMs: return {title, L"Search time budget; keep a verified partial improvement if time runs out.", L"ms", false};
         case SettingField::MaximumManagedWindows: return {title, L"Maximum number of windows included in one layout calculation on a monitor.", L"windows", false};
         case SettingField::MaximumConsecutiveFailures: return {title, L"Pause automatically after this many consecutive API or verification failures.", L"failures", false};
         case SettingField::UiLanguage: return {title, L"Language used by the tray menu, notifications, and settings windows.", L"language", false};
@@ -415,13 +409,13 @@ SettingHelp setting_help(SettingField field, UiLanguage language) noexcept
     case SettingField::ActivationHorizontalAlignment:
         return {L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u6c34\u5e73\u4f4d\u7f6e", L"\u53ef\u9009\u9760\u5de6\u3001\u6c34\u5e73\u5c45\u4e2d\u6216\u9760\u53f3\uff0c\u4ee5\u5f53\u524d\u663e\u793a\u5668\u5de5\u4f5c\u533a\u4e3a\u53c2\u8003\u3002", L"\u4f4d\u7f6e", false};
     case SettingField::ActivationVerticalAlignment:
-        return {L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5782\u76f4\u4f4d\u7f6e", L"\u53ef\u9009\u9760\u4e0a\u3001\u5782\u76f4\u5c45\u4e2d\u6216\u9760\u4e0b\uff1b\u7a97\u53e3\u9ad8\u4e8e\u5de5\u4f5c\u533a\u65f6\u59cb\u7ec8\u9760\u4e0a\uff0c\u907f\u514d\u6807\u9898\u680f\u79fb\u51fa\u5c4f\u5e55\u3002", L"\u4f4d\u7f6e", false};
+        return {L"\u65b0\u6fc0\u6d3b\u7a97\u53e3\u5782\u76f4\u4f4d\u7f6e", L"\u9009\u62e9\u9760\u4e0a\u3001\u5c45\u4e2d\u6216\u9760\u4e0b\u3002\u7a97\u53e3\u672c\u4f53\u5927\u4e8e\u5de5\u4f5c\u533a\u65f6\u8df3\u8fc7\u81ea\u52a8\u653e\u7f6e\u3002", L"\u4f4d\u7f6e", false};
     case SettingField::AffordancePreset:
         return {L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe", L"\u7d27\u51d1\u51cf\u5c11\u79fb\u52a8\uff0c\u5e73\u8861\u9002\u5408\u5927\u591a\u6570\u663e\u793a\u5668\uff0c\u9192\u76ee\u4fdd\u7559\u66f4\u5927\u70b9\u51fb\u533a\u3002\u4fee\u6539\u4efb\u4e00\u5206\u8fb9\u53c2\u6570\u540e\u663e\u793a\u4e3a\u81ea\u5b9a\u4e49\u3002", L"\u9884\u8bbe", false};
-    case SettingField::TopMinimumLengthDip: return {L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6", L"\u6807\u9898\u680f\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\u3002", L"DIP", true};
-    case SettingField::TopMaximumLengthDip: return {L"\u9876\u90e8\u6700\u5927\u957f\u5ea6", L"\u6807\u9898\u680f\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
-    case SettingField::TopDepthDip: return {L"\u9876\u90e8\u56de\u9000\u9ad8\u5ea6", L"\u65e0\u6cd5\u8bfb\u53d6\u6807\u9898\u680f\u65f6\u4f7f\u7528\u7684\u9876\u90e8\u9ad8\u5ea6\uff1b\u6807\u51c6\u7a97\u53e3\u4f18\u5148\u4f7f\u7528\u5b9e\u9645\u6807\u9898\u680f\u3002", L"DIP", true};
-    case SettingField::TopLengthPercent: return {L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b", L"\u9876\u90e8\u957f\u5ea6\u6309\u7a97\u53e3\u5bbd\u5ea6\u7684\u6bd4\u4f8b\u8ba1\u7b97\uff0c\u518d\u9650\u5236\u5728\u4e0a\u4e0b\u9650\u4e4b\u95f4\u3002", L"%", false};
+    case SettingField::TopMinimumLengthDip: return {L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6", L"\u9876\u90e8\u914d\u7f6e\u957f\u5ea6\u4e0b\u9650\uff1b\u59cb\u7ec8\u81f3\u5c11\u4fdd\u62a4\u5de6\u534a\u6807\u9898\u680f\u3002", L"DIP", true};
+    case SettingField::TopMaximumLengthDip: return {L"\u9876\u90e8\u6700\u5927\u957f\u5ea6", L"\u9650\u5236\u914d\u7f6e\u957f\u5ea6\uff0c\u4f46\u4e0d\u80fd\u5c06\u6807\u9898\u680f\u8981\u6c42\u964d\u4f4e\u5230\u534a\u5bbd\u4ee5\u4e0b\u3002", L"DIP", true};
+    case SettingField::TopDepthDip: return {L"\u9876\u90e8\u6700\u5c0f\u9732\u51fa\u9ad8\u5ea6", L"\u9876\u90e8\u9732\u51fa\u9ad8\u5ea6\u4e0b\u9650\uff1b\u4e0d\u4f4e\u4e8e\u6807\u9898\u680f\u57fa\u51c6\u7684 1.5 \u500d\uff0c\u914d\u7f6e\u503c\u4e0d\u518d\u91cd\u590d\u4e58\u500d\u6570\u3002", L"DIP", true};
+    case SettingField::TopLengthPercent: return {L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b", L"\u6309\u5bbd\u5ea6\u6bd4\u4f8b\u53ca\u957f\u5ea6\u4e0a\u4e0b\u9650\u8ba1\u7b97\u540e\uff0c\u81f3\u5c11\u8981\u6c42\u5de6\u534a\u6807\u9898\u680f\u5b8c\u6574\u53ef\u89c1\u3002", L"%", false};
     case SettingField::LeftMinimumLengthDip: return {L"\u5de6\u4fa7\u6700\u5c0f\u957f\u5ea6", L"\u5de6\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0b\u9650\u3002", L"DIP", true};
     case SettingField::LeftMaximumLengthDip: return {L"\u5de6\u4fa7\u6700\u5927\u957f\u5ea6", L"\u5de6\u8fb9\u53ef\u89c1\u6bb5\u7684\u4e0a\u9650\u3002", L"DIP", true};
     case SettingField::LeftDepthDip: return {L"\u5de6\u4fa7\u6df1\u5ea6", L"\u5de6\u8fb9\u5411\u7a97\u53e3\u5185\u4fdd\u7559\u7684\u53ef\u70b9\u51fb\u5bbd\u5ea6\u3002", L"DIP", true};
@@ -447,7 +441,7 @@ SettingHelp setting_help(SettingField field, UiLanguage language) noexcept
     case SettingField::MaximumSolverStates:
         return {L"\u6700\u5927\u6c42\u89e3\u72b6\u6001\u6570", L"\u5168\u5c40\u641c\u7d22\u6700\u591a\u68c0\u67e5\u7684\u5019\u9009\u5e03\u5c40\u6570\uff0c\u503c\u8d8a\u5927\u627e\u5230\u590d\u6742\u89e3\u7684\u6982\u7387\u8d8a\u9ad8\u3002", L"\u4e2a\u72b6\u6001", false};
     case SettingField::MaximumSolveTimeMs:
-        return {L"\u6700\u5927\u6c42\u89e3\u65f6\u95f4", L"\u5355\u6b21\u4f4d\u7f6e\u641c\u7d22\u7684\u65f6\u95f4\u9884\u7b97\uff1b\u8d85\u65f6\u4f1a\u8fdb\u5165\u6709\u754c\u7684\u9010\u7a97\u4fee\u590d\u3002", L"ms", false};
+        return {L"\u6700\u5927\u6c42\u89e3\u65f6\u95f4", L"\u641c\u7d22\u65f6\u95f4\u9884\u7b97\uff1b\u8017\u5c3d\u65f6\u4fdd\u7559\u5df2\u9a8c\u8bc1\u7684\u5b89\u5168\u90e8\u5206\u6539\u5584\u3002", L"ms", false};
     case SettingField::MaximumManagedWindows:
         return {L"\u6700\u5927\u7ba1\u7406\u7a97\u53e3\u6570", L"\u540c\u4e00\u663e\u793a\u5668\u4e0a\u4e00\u6b21\u7eb3\u5165\u5e03\u5c40\u8ba1\u7b97\u7684\u7a97\u53e3\u6570\u4e0a\u9650\u3002", L"\u4e2a\u7a97\u53e3", false};
     case SettingField::MaximumConsecutiveFailures:

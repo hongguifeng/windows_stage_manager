@@ -25,6 +25,9 @@ HealthAction CoordinatorHealthMonitor::observe(MvpBatchStatus status,
     if (state_.tripped) {
         return HealthAction::DisableAutomation;
     }
+    // A changing desktop is not a failed API. Do not increment or erase a
+    // preceding real failure; automation remains suspended until a fresh scan.
+    if (reason == MvpSuspendReason::SnapshotStale) return HealthAction::Continue;
     const bool infrastructure_failure = status == MvpBatchStatus::ApiError ||
         reason == MvpSuspendReason::SnapshotUnavailable;
     if (!infrastructure_failure) {

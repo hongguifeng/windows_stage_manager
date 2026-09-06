@@ -29,6 +29,7 @@ struct EdgeAffordanceRule {
 enum class VisibilityGoal : std::uint8_t {
     AnyRecognizableEdge,
     TopAndSide,
+    TitleBarLeftHalf,
 };
 
 struct VisibilityRequirements {
@@ -63,6 +64,23 @@ struct PixelEdgeAffordance {
     std::uint64_t length = 0;
     std::uint64_t depth = 0;
 };
+
+struct TitleBarExposure {
+    bool valid = false;
+    std::uint64_t visibleWidth = 0;
+    std::uint64_t requiredWidth = 0;
+    std::uint64_t protectedHeight = 0;
+    bool leftSide = false;
+    bool rightSide = false;
+
+    bool satisfied() const noexcept { return valid && visibleWidth >= requiredWidth; }
+};
+
+// Full-height, continuous prefix from the visual left edge. Side strips exclude
+// the title bar and are secondary to the protected title prefix.
+TitleBarExposure analyze_title_bar_exposure(
+    const LayoutSnapshot& snapshot, std::size_t target_index,
+    const VisibilityRequirements& requirements);
 
 struct Violation {
     std::size_t targetIndex = 0;

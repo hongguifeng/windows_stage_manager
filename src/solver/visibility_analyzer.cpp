@@ -286,12 +286,75 @@ std::optional<EdgeVisibility> analyze_with_context(
 std::array<PixelEdgeAffordance, 4> resolve_edge_affordances(
     const LayoutWindow& target, const VisibilityRequirements& requirements)
 {
-    return {{
+    std::array<PixelEdgeAffordance, 4> result{{
         pixel_rule(target, requirements.left, geometry::Edge::Left),
         pixel_rule(target, requirements.right, geometry::Edge::Right),
         pixel_rule(target, requirements.top, geometry::Edge::Top),
         pixel_rule(target, requirements.bottom, geometry::Edge::Bottom),
     }};
+    if (requirements.goal == VisibilityGoal::TitleBarLeftHalf) {
+        const auto configured = static_cast<std::uint64_t>(geometry::scale_dip_ceil(
+            requirements.top.depthDip, target.dpi == 0 ? 96 : target.dpi));
+        // The configured value is already a protected-height floor, not a base
+        // to multiply again. System estimates must never override that floor.
+        const auto base = static_cast<std::uint64_t>(target.titleBarHeight);
+        result[2].depth = std::max(base + base / 2 + base % 2, configured);
+    }
+    return result;
+}
+
+TitleBarExposure analyze_title_bar_exposure(
+    const LayoutSnapshot& snapshot, std::size_t target_index,
+    const VisibilityRequirements& requirements)
+{
+    TitleBarExposure result;
+    if (!valid_requirements(requirements) || target_index >= snapshot.windows.size()) {
+        return result;
+    }
+    const auto& target = snapshot.windows[target_index];
+    const auto& rect = target.visualRect;
+    if (rect.empty() || target.workArea.empty() || target.zIndex < 0 ||
+        rect.width() > static_cast<std::uint64_t>(INT32_MAX) ||
+        rect.height() > static_cast<std::uint64_t>(INT32_MAX)) {
+        return result;
+    }
+    const auto rules = resolve_edge_affordances(target, requirements);
+    const auto height = static_cast<std::int64_t>(rules[2].depth);
+    result.valid = true;
+    result.protectedHeight = rules[2].depth;
+    result.requiredWidth = std::max(rect.width() / 2 + rect.width() % 2,
+                                    rules[2].length);
+    // A short window cannot satisfy the protected height; do not silently
+    // clamp a 48px requirement down to a thin visible line.
+    if (rules[2].depth > rect.height()) return result;
+    const geometry::Rect title{rect.left, rect.top, rect.right, rect.top + height};
+    if (title.top >= target.workArea.top && title.bottom <= target.workArea.bottom &&
+        title.left >= target.workArea.left && title.left < target.workArea.right) {
+        result.visibleWidth = static_cast<std::uint64_t>(
+            std::min(title.right, target.workArea.right) - title.left);
+    }
+    const auto below_title = rect.height() - rules[2].depth;
+    const geometry::Rect left{rect.left, title.bottom,
+        rect.left + static_cast<std::int64_t>(rules[0].depth),
+        title.bottom + static_cast<std::int64_t>(std::min(below_title, rules[0].length))};
+    const geometry::Rect right{rect.right - static_cast<std::int64_t>(rules[1].depth),
+        title.bottom, rect.right,
+        title.bottom + static_cast<std::int64_t>(std::min(below_title, rules[1].length))};
+    result.leftSide = below_title >= rules[0].length && rect.contains(left) && target.workArea.contains(left);
+    result.rightSide = below_title >= rules[1].length && rect.contains(right) && target.workArea.contains(right);
+    for (const auto& blocker : snapshot.windows) {
+        if (!relevant_blocker(target, blocker)) {
+            continue;
+        }
+        if (title.intersects(blocker.visualRect)) {
+            const auto prefix = std::max(title.left, blocker.visualRect.left) - title.left;
+            result.visibleWidth = std::min(result.visibleWidth,
+                                           static_cast<std::uint64_t>(prefix));
+        }
+        result.leftSide = result.leftSide && !left.intersects(blocker.visualRect);
+        result.rightSide = result.rightSide && !right.intersects(blocker.visualRect);
+    }
+    return result;
 }
 
 std::optional<EdgeVisibility> analyze_window_visibility(
@@ -329,6 +392,12 @@ WindowVisibilityResult analyze_window_visibility_with_status(
     if (!result.visibility) {
         return result;
     }
+    if (requirements.goal == VisibilityGoal::TitleBarLeftHalf) {
+        const auto title = analyze_title_bar_exposure(snapshot, target_index, requirements);
+        result.visibility->top = title.satisfied();
+        result.visibility->topLeft = title.satisfied() && title.leftSide;
+        result.visibility->topRight = title.satisfied() && title.rightSide;
+    }
     const auto exposed_area = exposed_window_area(
         target,
         context->blockerRegion,
@@ -360,6 +429,28 @@ ViolationScanResult scan_visibility_violations(
             result.status = ViolationScanStatus::InvalidSnapshot;
             result.violations.clear();
             return result;
+        }
+
+        if (requirements.goal == VisibilityGoal::TitleBarLeftHalf) {
+            const auto exposure = analyze_title_bar_exposure(snapshot, target_index, requirements);
+            if (!exposure.valid) {
+                result.status = ViolationScanStatus::InvalidSnapshot;
+                result.violations.clear();
+                return result;
+            }
+            if (!exposure.satisfied()) {
+                Violation violation;
+                violation.targetIndex = target_index;
+                violation.failedEdges.push_back(geometry::Edge::Top);
+                for (std::size_t index = 0; index < snapshot.windows.size(); ++index) {
+                    if (relevant_blocker(target, snapshot.windows[index]) &&
+                        target.visualRect.intersects(snapshot.windows[index].visualRect)) {
+                        violation.blockerIndices.push_back(index);
+                    }
+                }
+                result.violations.push_back(std::move(violation));
+            }
+            continue;
         }
 
         auto context = make_exposure_context(

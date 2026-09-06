@@ -1046,6 +1046,9 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
                                      std::size_t active_window_index,
                                      ISolverClock* supplied_clock)
 {
+    if (policy.ranking.visibility.goal == VisibilityGoal::TitleBarLeftHalf) {
+        return solve_title_bar_layout(initial, policy, active_window_index, supplied_clock);
+    }
     SteadySolverClock default_clock;
     ISolverClock& clock = supplied_clock == nullptr ? static_cast<ISolverClock&>(default_clock)
                                                     : *supplied_clock;

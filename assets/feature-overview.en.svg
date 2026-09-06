@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title desc">
   <title id="title">How Windows Stage Manager organizes windows</title>
-  <desc id="desc">After a background window is activated, it moves to the selected position, centered horizontally and aligned to the bottom by default. Covered windows move closer to the work-area center while retaining two independent clickable edges.</desc>
+  <desc id="desc">After a background window is activated, it moves to the selected position, centered horizontally and aligned to the bottom by default. Covered windows expose the full-height left half of their title bars and optional side strips, with recent windows kept closer to the active window.</desc>
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071126"/>
@@ -26,7 +26,7 @@
     <rect x="25" y="25" width="27" height="8" rx="5" fill="#2764f5"/>
   </g>
   <text x="138" y="76" fill="#f7fbff" font-family="Segoe UI, sans-serif" font-size="34" font-weight="700">How the app organizes windows after a click</text>
-  <text x="138" y="110" fill="#9eb7db" font-family="Segoe UI, sans-serif" font-size="19">Respect the active window · Prefer two independent clickable edges · Stay near the center</text>
+  <text x="138" y="110" fill="#9eb7db" font-family="Segoe UI, sans-serif" font-size="19">Protect title bars · Prefer side strips · Keep recent windows closer</text>
 
   <g transform="translate(55 155)">
     <rect width="395" height="475" rx="28" fill="#12264b" stroke="#264778" stroke-width="2"/>
@@ -89,13 +89,13 @@
     <text x="32" y="111" fill="#6a4b00" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700">Top edge</text>
     <path d="M53 304l31-24" stroke="#ffd166" stroke-width="4" marker-end="url(#arrow)"/>
     <text x="31" y="326" fill="#6a4b00" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700">Left edge</text>
-    <text x="28" y="407" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Prefer two independent exposed edges.</text>
+    <text x="28" y="407" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Expose left-half titles and side strips.</text>
     <text x="28" y="437" fill="#dce9ff" font-family="Segoe UI, sans-serif" font-size="18">Degrade only if needed; stay near center.</text>
   </g>
 
   <g transform="translate(55 665)">
     <rect width="1290" height="70" rx="20" fill="#0b1733" stroke="#264778" stroke-width="2"/>
     <circle cx="36" cy="35" r="9" fill="#22c7f2"/>
-    <text x="58" y="43" fill="#cfe1ff" font-family="Segoe UI, sans-serif" font-size="19">One solve, one verification: position only; never resize or change Z-order · top + side → one edge → partial layout</text>
+    <text x="58" y="43" fill="#cfe1ff" font-family="Segoe UI, sans-serif" font-size="19">Protect the left half of each title bar · Keep whole windows on screen · Never resize or change Z-order</text>
   </g>
 </svg>

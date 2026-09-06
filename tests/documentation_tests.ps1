@@ -76,12 +76,12 @@ Assert-Match $functions 'As-built' `
 Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
     "software feature document does not distinguish historical documents"
 
-$expectedDocuments = @('SOFTWARE_DESIGN.md', 'SOFTWARE_FEATURES.md')
+$expectedDocuments = @('SOFTWARE_DESIGN.md', 'SOFTWARE_FEATURES.md', 'TITLE_BAR_LAYOUT_PROPOSAL.md')
 $actualDocuments = @(Get-ChildItem -LiteralPath (Join-Path $Workspace 'docs') -Filter '*.md' -File |
     ForEach-Object { $_.Name } |
     Sort-Object)
 if (@(Compare-Object $expectedDocuments $actualDocuments).Count -ne 0) {
-    throw "docs must contain only the maintained feature and design documents"
+    throw "docs must contain the maintained documents and the title-bar proposal"
 }
 
 foreach ($pattern in @(
@@ -93,6 +93,14 @@ foreach ($pattern in @(
     'WindowKey',
     'TrackingWindowProvider',
     'MvpCoordinator',
+    'VisibilityGoal::TitleBarLeftHalf',
+    'solve_title_bar_layout',
+    'TitleBarHeightSource',
+    'solver_elapsed_ms',
+    'background_retry_pending',
+    'window_inspector --solve',
+    'SnapshotStale',
+    'apply_status_code',
     'VisibilityGoal::TopAndSide',
     'VisibilityGoal::AnyRecognizableEdge',
     'requireStableLayout=true',
@@ -117,14 +125,11 @@ foreach ($pattern in @(
     '\u4e0d\u8c03\u6574\u7a97\u53e3 Z-order',
     'planned_reorders.*\u56fa\u5b9a\u4e3a `0`',
     '\u5de6\u4e0a > \u53f3\u4e0a > \u4ec5\u9876\u90e8',
-    '\u4ec5\u9876\u90e8 > \u4ec5\u5de6\u4fa7 > \u4ec5\u53f3\u4fa7 > \u4ec5\u5e95\u90e8',
     '\u6574\u4e2a placement rect.*\u5de5\u4f5c\u533a\u5185',
-    '\u4e25\u683c\u6309 Z-order \u4ece\u4e0a\u5230\u4e0b\u9010\u7a97\u8ba1\u7b97',
-    '\u65b9\u5411\u4f18\u5148\u7ea7\u5e94\u7528\u4e8e\u8fde\u7eed\u5206\u6bb5',
     '\u76f8\u90bb\u9636\u68af\u8282\u70b9\u7684\u7eb5\u5411\u95f4\u9694',
-    '\u4e0d\u4f1a\u518d\u6267\u884c\u53ef\u89c1\u9762\u79ef\u6539\u5584',
     'processId \+ className',
-    '\u5171\u4eab\u7684\u89d2\u90e8\u4f1a\u4ece\u4e24\u4e2a\u533a\u57df\u4e2d\u6263\u9664',
+    'ceil\(1\.5',
+    '8000 ms',
     '\u771f\u5b9e\u62d6\u52a8\u540e\uff0c\u6d3b\u52a8\u7a97\u53e3\u6700\u7ec8\u4f4d\u7f6e\u4f18\u5148',
     'WH_MOUSE_LL',
     '\u91ca\u653e\u540e 1500 ms \u5185',
@@ -188,8 +193,15 @@ Assert-Match $lifecycleSource 'planned_reorders = std::string\{"0"\}' `
     "runtime no longer guarantees zero planned Z-order changes"
 Assert-Match $coordinatorSource 'solve_layout_prioritized' `
     "upper-window-priority partial solver is no longer wired into the coordinator"
-Assert-Match $coordinatorSource 'affordanceGoalDegraded = true' `
-    "two-edge to one-edge degradation is no longer wired into the coordinator"
+Assert-Match $lifecycleSource 'background_title_plan' `
+    "per-window planned title geometry diagnostics are missing"
+Assert-Match $design 'target.left - active.left' `
+    "design document must describe title-origin proximity"
+Assert-Match $coordinatorSource 'visibility.goal = solver::VisibilityGoal::TitleBarLeftHalf' `
+    "title-bar left-half protection is no longer wired into the coordinator"
+if ($coordinatorSource -match 'affordanceGoalDegraded = true') {
+    throw "runtime must not substitute arbitrary edges for the protected title bar"
+}
 Assert-Match $lifecycleSource 'RegisterHotKey\(' `
     "emergency hotkey is no longer registered"
 Assert-Match $eventHookSource 'WH_MOUSE_LL' `

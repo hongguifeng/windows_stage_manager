@@ -628,16 +628,25 @@ void AppLifecycle::coordinator_loop()
         const auto blocking_windows = std::to_string(result.blockingWindowCount);
         const auto moved_windows = std::to_string(result.movedWindowCount);
         const auto solver_states = std::to_string(result.solve.statesVisited);
+        const auto solver_elapsed_ms = std::to_string(result.solve.elapsedMs);
+        const auto retry_delay_ms = std::to_string(result.backgroundRetryDelayMs);
         const auto solve_status = result.solveAttempted
             ? solve_status_name(result.solve.status)
             : std::string_view{"not_run"};
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
+        const auto apply_status = std::to_string(static_cast<unsigned>(result.apply.status));
+        const auto apply_error = std::to_string(result.apply.lastError);
+        const auto failed_move_index = std::to_string(result.apply.failedMoveIndex);
+        const auto apply_snapshot_status = std::to_string(static_cast<unsigned>(result.apply.finalSnapshot.status));
+        const auto apply_snapshot_error = std::to_string(result.apply.finalSnapshot.lastError);
         const auto planned_reorders = std::string{"0"};
         const auto applied_reorders = std::to_string(result.apply.appliedReorders.size());
         const auto fallback_used = result.fallbackUsed ? std::string_view{"true"}
                                                        : std::string_view{"false"};
-        const auto affordance_goal = result.affordanceGoal ==
+        const auto affordance_goal = result.affordanceGoal == solver::VisibilityGoal::TitleBarLeftHalf
+            ? std::string_view{"title_bar_left_half"}
+            : result.affordanceGoal ==
                 solver::VisibilityGoal::TopAndSide
             ? std::string_view{"top_and_side"}
             : std::string_view{"any_edge"};
@@ -674,8 +683,17 @@ void AppLifecycle::coordinator_loop()
              {"moved_windows", moved_windows},
              {"solve_status", solve_status},
              {"solver_states", solver_states},
+             {"solver_elapsed_ms", solver_elapsed_ms},
+             {"background_retry_used", result.backgroundRetryUsed ? "true" : "false"},
+             {"background_retry_pending", result.backgroundRetryPending ? "true" : "false"},
+             {"background_retry_delay_ms", retry_delay_ms},
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
+             {"apply_status_code", apply_status},
+             {"apply_last_error", apply_error},
+             {"failed_move_index", failed_move_index},
+             {"apply_snapshot_status_code", apply_snapshot_status},
+             {"apply_snapshot_last_error", apply_snapshot_error},
              {"planned_reorders", planned_reorders},
              {"applied_reorders", applied_reorders},
              {"fallback_used", fallback_used},
@@ -689,6 +707,37 @@ void AppLifecycle::coordinator_loop()
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},
              {"total_dropped_events", total_dropped}});
+        // Planned geometry, not proof that native applications accepted it.
+        // No application titles or paths: HWND + Z-order make later reports
+        // of a recent window moving far away diagnosable from the log.
+        const auto& planned = result.solve.finalSnapshot.windows;
+        const auto anchor = std::find_if(planned.begin(), planned.end(), [&](const auto& item) {
+            return result.activeWindow && item.key == *result.activeWindow;
+        });
+        if (result.solveAttempted && anchor != planned.end()) {
+            const auto point = [](std::int64_t x, std::int64_t y) {
+                return std::to_string(x) + "," + std::to_string(y);
+            };
+            const auto active_hwnd = std::to_string(anchor->key.hwnd);
+            const auto active_title = point(anchor->visualRect.left, anchor->visualRect.top);
+            for (const auto& item : planned) {
+                if (!item.managed || item.key == anchor->key) continue;
+                const auto move = std::find_if(result.solve.moves.begin(), result.solve.moves.end(),
+                    [&](const auto& candidate) { return candidate.window == item.key; });
+                const auto from_left = item.visualRect.left +
+                    (move == result.solve.moves.end() ? 0 : move->from.left - move->to.left);
+                const auto from_top = item.visualRect.top +
+                    (move == result.solve.moves.end() ? 0 : move->from.top - move->to.top);
+                const auto hwnd = std::to_string(item.key.hwnd);
+                const auto z_index = std::to_string(item.zIndex);
+                const auto before = point(from_left, from_top);
+                const auto after = point(item.visualRect.left, item.visualRect.top);
+                diagnostics::Logger::instance().log(diagnostics::LogLevel::Debug, "background_title_plan",
+                    {{"transaction_id", transaction_id}, {"active_hwnd", active_hwnd},
+                     {"hwnd", hwnd}, {"z_index", z_index}, {"active_title_planned", active_title},
+                     {"title_before", before}, {"title_planned", after}});
+            }
+        }
         if (message_window_ != nullptr) {
             const auto reported_status = health_action == window::HealthAction::DisableAutomation
                 ? window::MvpBatchStatus::ApiError

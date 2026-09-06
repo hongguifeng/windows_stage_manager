@@ -38,6 +38,7 @@ enum class MvpSuspendReason : std::uint8_t {
     NoManagedPeer,
     SolverFailure,
     ApplyFailure,
+    SnapshotStale,
 };
 
 std::string_view suspend_reason_name(MvpSuspendReason reason) noexcept;
@@ -49,6 +50,8 @@ struct MvpBatchResult {
     std::uint64_t layoutGeneration = 0;
     CoalescedBatch events;
     solver::SolveResult solve;
+    // Actual anchor identity; unmanaged higher blockers may occupy index zero.
+    std::optional<WindowKey> activeWindow;
     MoveApplyResult apply;
     std::size_t snapshotWindowCount = 0;
     std::size_t solverWindowCount = 0;
@@ -62,6 +65,9 @@ struct MvpBatchResult {
     bool partialLayoutUsed = false;
     bool activationPlacementUsed = false;
     bool activationLayoutSuppressed = false;
+    bool backgroundRetryUsed = false;
+    bool backgroundRetryPending = false;
+    std::uint64_t backgroundRetryDelayMs = 0;
 };
 
 class MvpCoordinator final {
@@ -80,11 +86,19 @@ public:
 
 private:
     std::optional<WindowSnapshotBatch> capture(SnapshotRefreshReason reason);
+    MvpSuspendReason snapshot_failure_reason() const noexcept;
+    SnapshotStatus last_snapshot_status_ = SnapshotStatus::Ok;
     MvpBatchResult settle(bool dry_run,
                           CoalescedBatch events,
                           bool place_activated_window = false,
                           std::optional<WindowSnapshotBatch> captured = std::nullopt,
-                          std::optional<PixelRect> unchanged_activation_rect = std::nullopt);
+                          std::optional<PixelRect> unchanged_activation_rect = std::nullopt,
+                          bool optimize_title_layout = false);
+    MvpBatchResult settle_impl(bool dry_run, CoalescedBatch events,
+                              bool place_activated_window,
+                              std::optional<WindowSnapshotBatch> captured,
+                              std::optional<PixelRect> unchanged_activation_rect,
+                              bool optimize_title_layout);
 
     IWindowProvider& provider_;
     IMoveApplier& applier_;
@@ -99,6 +113,11 @@ private:
     std::optional<NativeWindowHandle> suppressed_activation_window_;
     bool pending_activation_retry_ = false;
     bool pending_activation_placement_ = false;
+    std::optional<WindowKey> background_retry_window_;
+    std::uint64_t event_time_ms_ = 0;
+    std::uint64_t last_external_change_ms_ = 0;
+    std::uint64_t background_retry_at_ms_ = 0;
+    std::uint64_t background_retry_delay_ms_ = 500;
     std::optional<NativeWindowHandle> dragging_window_;
     std::optional<PixelRect> dragging_start_rect_;
     bool dragging_started_by_activation_ = false;

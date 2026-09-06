@@ -18,6 +18,13 @@ int main()
     using stage_manager::window::MvpSuspendReason;
 
     CoordinatorHealthMonitor monitor(3);
+    CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) == HealthAction::Continue);
+    for (int i = 0; i < 100; ++i)
+        CHECK(monitor.observe(MvpBatchStatus::Rebuilding, MvpSuspendReason::SnapshotStale) == HealthAction::Continue);
+    CHECK(monitor.state().consecutiveFailures == 1);
+    CHECK(!monitor.state().tripped);
+    CHECK(monitor.observe(MvpBatchStatus::Applied, MvpSuspendReason::None) == HealthAction::Continue);
+    CHECK(monitor.state().consecutiveFailures == 0);
     CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) ==
           HealthAction::Continue);
     CHECK(monitor.observe(MvpBatchStatus::Rebuilding,

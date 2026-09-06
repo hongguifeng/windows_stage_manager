@@ -63,6 +63,22 @@ constexpr std::uint32_t field_bit(SnapshotField field) noexcept
     return static_cast<std::uint32_t>(field);
 }
 
+enum class TitleBarHeightSource : std::uint8_t {
+    Unknown,
+    NonClientMeasurement,
+    SystemEstimate,
+};
+
+constexpr const char* title_bar_source_name(TitleBarHeightSource source) noexcept
+{
+    switch (source) {
+    case TitleBarHeightSource::NonClientMeasurement: return "non_client";
+    case TitleBarHeightSource::SystemEstimate: return "system_estimate";
+    case TitleBarHeightSource::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
 struct WindowSnapshot {
     WindowKey key;
     NativeWindowHandle rootHwnd = 0;
@@ -77,6 +93,7 @@ struct WindowSnapshot {
     std::uint32_t sessionId = 0;
     std::uint32_t dpi = 96;
     std::uint32_t titleBarHeight = 0;
+    TitleBarHeightSource titleBarHeightSource = TitleBarHeightSource::Unknown;
     std::uint32_t style = 0;
     std::uint32_t exStyle = 0;
     std::uint32_t queryFailures = 0;

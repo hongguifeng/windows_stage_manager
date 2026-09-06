@@ -32,6 +32,8 @@ int main()
     window.workArea = {-1920, 0, 0, 1080};
     window.monitor = 0x456;
     window.dpi = 144;
+    window.titleBarHeight = 48;
+    window.titleBarHeightSource = stage_manager::window::TitleBarHeightSource::SystemEstimate;
     window.zIndex = 3;
     window.zOrderKnown = true;
     window.currentDesktop = true;
@@ -59,6 +61,8 @@ int main()
     CHECK(report.find("\"className\":\"Test\\\"Class\\\\\\u7a97\"") != std::string::npos);
     CHECK(report.find("\"placementRect\":[-20,10,300,210]") != std::string::npos);
     CHECK(report.find("\"dpi\":144") != std::string::npos);
+    CHECK(report.find("\"titleBarHeight\":48") != std::string::npos);
+    CHECK(report.find("\"titleBarHeightSource\":\"system_estimate\"") != std::string::npos);
     CHECK(report.find("\"zIndex\":3") != std::string::npos);
     CHECK(report.find("\"currentDesktop\":true") != std::string::npos);
     CHECK(report.find("\"classification\":\"too_small\"") != std::string::npos);

@@ -35,6 +35,8 @@ struct SolverPolicy {
     // pass evaluates complete direction chains even when the current layout
     // already satisfies the weaker one-edge goal.
     bool forcePreferredStaircase = false;
+    // Foreground changes may improve an already recognizable overlap layout.
+    bool optimizeTitleBarLayout = false;
 };
 
 struct MovePlan {
@@ -85,5 +87,10 @@ SolveResult solve_layout_prioritized(const LayoutSnapshot& initial,
                                      const SolverPolicy& policy,
                                      std::size_t active_window_index,
                                      ISolverClock* clock = nullptr);
+
+SolveResult solve_title_bar_layout(const LayoutSnapshot& initial,
+                                  const SolverPolicy& policy,
+                                  std::size_t active_window_index,
+                                  ISolverClock* clock = nullptr);
 
 } // namespace stage_manager::solver

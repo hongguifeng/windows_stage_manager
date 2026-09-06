@@ -1,6 +1,7 @@
 #include "window/activation_placement.h"
 
 #include <numeric>
+#include <algorithm>
 
 namespace stage_manager::window {
 namespace {
@@ -50,12 +51,19 @@ std::optional<geometry::Rect> calculate_activated_placement(
     app::ActivationVerticalAlignment vertical_alignment) noexcept
 {
     if (window.placementRect.empty() || window.visualRect.empty() ||
-        window.workArea.empty()) {
+        window.workArea.empty() || window.placementRect.width() > window.workArea.width() ||
+        window.placementRect.height() > window.workArea.height()) {
         return std::nullopt;
     }
-    return window.placementRect.translated(
+    const auto desired = window.placementRect.translated(
         horizontal_delta(window.visualRect, window.workArea, horizontal_alignment),
         vertical_delta(window.visualRect, window.workArea, vertical_alignment));
+    if (!desired) return std::nullopt;
+    const auto left = std::clamp(desired->left, window.workArea.left,
+        window.workArea.right - static_cast<std::int64_t>(desired->width()));
+    const auto top = std::clamp(desired->top, window.workArea.top,
+        window.workArea.bottom - static_cast<std::int64_t>(desired->height()));
+    return desired->translated(left - desired->left, top - desired->top);
 }
 
 } // namespace stage_manager::window

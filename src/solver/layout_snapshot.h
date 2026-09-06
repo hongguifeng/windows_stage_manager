@@ -17,6 +17,7 @@ struct LayoutWindow {
     std::uintptr_t monitor = 0;
     std::uint32_t dpi = 96;
     std::uint32_t titleBarHeight = 0;
+    window::TitleBarHeightSource titleBarHeightSource = window::TitleBarHeightSource::Unknown;
     std::int32_t zIndex = -1;
     bool managed = false;
     bool movable = false;

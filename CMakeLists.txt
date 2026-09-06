@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(WindowsStageManager
-    VERSION 0.2.1
+    VERSION 0.5.0
     DESCRIPTION "Windows 11 freeform window visibility manager"
     LANGUAGES CXX
 )
@@ -41,6 +41,7 @@ add_library(stage_manager_core STATIC
     src/solver/candidate_ranker.cpp
     src/solver/layout_hash.cpp
     src/solver/layout_solver.cpp
+    src/solver/title_bar_solver.cpp
     src/window/event_queue.cpp
     src/window/event_coalescer.cpp
     src/window/activation_placement.cpp
@@ -105,6 +106,11 @@ target_link_libraries(scenario_runner PRIVATE stage_manager_core)
 
 if(STAGE_MANAGER_BUILD_TESTS)
     enable_testing()
+
+    add_executable(stage_manager_title_bar_solver_tests tests/title_bar_solver_tests.cpp)
+    stage_manager_target_defaults(stage_manager_title_bar_solver_tests)
+    target_link_libraries(stage_manager_title_bar_solver_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_title_bar_solver COMMAND stage_manager_title_bar_solver_tests)
 
     add_executable(stage_manager_smoke_tests
         tests/smoke.cpp

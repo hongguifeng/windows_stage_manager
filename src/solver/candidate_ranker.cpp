@@ -401,7 +401,9 @@ CandidateRankingResult rank_candidates(const LayoutSnapshot& snapshot,
                 result.rejected.clear();
                 return result;
             }
-            const bool satisfied = policy.visibility.goal == VisibilityGoal::TopAndSide
+            const bool satisfied = policy.visibility.goal == VisibilityGoal::TitleBarLeftHalf
+                ? visibility.visibility->top
+                : policy.visibility.goal == VisibilityGoal::TopAndSide
                 ? visibility.visibility->top_and_side()
                 : visibility.visibility->any_edge();
             if (!satisfied) {

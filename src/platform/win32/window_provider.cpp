@@ -179,18 +179,18 @@ WindowSnapshot read_snapshot(HWND hwnd,
         snapshot.queryFailures |= stage_manager::window::field_bit(SnapshotField::Dpi);
     }
 
-    if ((snapshot.style & WS_CAPTION) != 0) {
+    const auto caption = GetSystemMetricsForDpi(SM_CYCAPTION, snapshot.dpi);
+    const auto frame = GetSystemMetricsForDpi(SM_CYFRAME, snapshot.dpi);
+    const auto padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, snapshot.dpi);
+    snapshot.titleBarHeight = static_cast<std::uint32_t>(std::max(caption + frame + padding, 1));
+    snapshot.titleBarHeightSource = window::TitleBarHeightSource::SystemEstimate;
+    if ((snapshot.style & WS_CAPTION) == WS_CAPTION) {
         POINT client_origin{};
         if (ClientToScreen(hwnd, &client_origin) != FALSE &&
-            client_origin.y > snapshot.visualRect.top) {
+            client_origin.y - snapshot.visualRect.top >= std::max(caption, 1)) {
             snapshot.titleBarHeight = static_cast<std::uint32_t>(
                 client_origin.y - snapshot.visualRect.top);
-        } else {
-            const auto caption = GetSystemMetricsForDpi(SM_CYCAPTION, snapshot.dpi);
-            const auto frame = GetSystemMetricsForDpi(SM_CYFRAME, snapshot.dpi);
-            const auto padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, snapshot.dpi);
-            snapshot.titleBarHeight = static_cast<std::uint32_t>(
-                std::max(caption + frame + padding, 1));
+            snapshot.titleBarHeightSource = window::TitleBarHeightSource::NonClientMeasurement;
         }
     }
 

@@ -113,7 +113,7 @@ const wchar_t* field_title(SettingField field, UiLanguage language) noexcept
     case SettingField::AffordancePreset: return L"\u53ef\u8fa8\u8bc6\u5ea6\u9884\u8bbe";
     case SettingField::TopMinimumLengthDip: return L"\u9876\u90e8\u6700\u5c0f\u957f\u5ea6";
     case SettingField::TopMaximumLengthDip: return L"\u9876\u90e8\u6700\u5927\u957f\u5ea6";
-    case SettingField::TopDepthDip: return L"\u9876\u90e8\u56de\u9000\u9ad8\u5ea6";
+    case SettingField::TopDepthDip: return L"\u9876\u90e8\u6700\u5c0f\u9732\u51fa\u9ad8\u5ea6";
     case SettingField::TopLengthPercent: return L"\u9876\u90e8\u52a8\u6001\u6bd4\u4f8b";
     case SettingField::LeftMinimumLengthDip: return L"\u5de6\u4fa7\u6700\u5c0f\u957f\u5ea6";
     case SettingField::LeftMaximumLengthDip: return L"\u5de6\u4fa7\u6700\u5927\u957f\u5ea6";

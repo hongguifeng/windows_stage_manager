@@ -140,6 +140,7 @@ int main()
     CHECK(owner_snapshot->workArea.valid());
     CHECK(owner_snapshot->dpi > 0);
     CHECK(owner_snapshot->titleBarHeight > 0);
+    CHECK(owner_snapshot->titleBarHeightSource != stage_manager::window::TitleBarHeightSource::Unknown);
     CHECK(owned_snapshot->titleBarHeight > 0);
     CHECK(owner_snapshot->zOrderKnown);
     CHECK(first_snapshot->zOrderKnown);

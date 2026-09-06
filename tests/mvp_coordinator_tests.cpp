@@ -45,6 +45,12 @@ public:
         stage_manager::window::SnapshotRefreshReason reason) override
     {
         ++captureCalls;
+        if (staleSnapshots || (staleAtCapture && captureCalls == *staleAtCapture)) {
+            stage_manager::window::WindowSnapshotBatch stale;
+            stale.status = stage_manager::window::SnapshotStatus::Stale;
+            stale.complete = false;
+            return stale;
+        }
         if (switchMonitorAtCapture && captureCalls == *switchMonitorAtCapture) {
             const auto iterator = std::find_if(windows.begin(), windows.end(), [this](const auto& item) {
                 return item.key.hwnd == switchMonitorWindow;
@@ -155,6 +161,8 @@ public:
     }
 
     std::vector<stage_manager::window::WindowSnapshot> windows;
+    bool staleSnapshots = false;
+    std::optional<int> staleAtCapture;
     std::optional<int> switchMonitorAtCapture;
     std::optional<int> moveWindowAtCapture;
     std::optional<int> changeZOrderAtCapture;
@@ -203,7 +211,7 @@ stage_manager::solver::VisibilityRequirements two_edge_requirements()
     requirements.right = rule;
     requirements.bottom = rule;
     requirements.maximumRegionRectangles = 128;
-    requirements.goal = stage_manager::solver::VisibilityGoal::TopAndSide;
+    requirements.goal = stage_manager::solver::VisibilityGoal::TitleBarLeftHalf;
     return requirements;
 }
 
@@ -403,23 +411,15 @@ int main()
         ordered_fallback.coordinator.process(drag_events(44), true, true);
     CHECK(ordered_fallback_result.status == MvpBatchStatus::DryRun);
     CHECK(!ordered_fallback_result.affordanceGoalDegraded);
-    CHECK(ordered_fallback_result.affordanceGoal == VisibilityGoal::TopAndSide);
+    CHECK(ordered_fallback_result.affordanceGoal == VisibilityGoal::TitleBarLeftHalf);
     CHECK(ordered_fallback_result.solve.status == SolveStatus::Solved);
     CHECK(ordered_fallback_result.solve.moves.size() == 6);
     const auto& fallback_windows = ordered_fallback_result.solve.finalSnapshot.windows;
-    CHECK(fallback_windows[1].placementRect.top == 114);
-    CHECK(fallback_windows[2].placementRect.top == 78);
-    CHECK(fallback_windows[3].placementRect.top == 42);
-    CHECK(fallback_windows[4].placementRect.top == 6);
-    CHECK(fallback_windows[5].placementRect.top == 114);
-    CHECK(fallback_windows[6].placementRect.top == 78);
-    for (std::size_t index = 0; index < 4; ++index) {
-        CHECK(ordered_fallback_result.solve.moves[index].cost.placementDirection ==
-              stage_manager::solver::PlacementDirectionRank::TopLeft);
-    }
-    for (std::size_t index = 4; index < 6; ++index) {
-        CHECK(ordered_fallback_result.solve.moves[index].cost.placementDirection ==
-              stage_manager::solver::PlacementDirectionRank::TopRight);
+    CHECK(stage_manager::solver::scan_visibility_violations(
+        ordered_fallback_result.solve.finalSnapshot, two_edge_requirements()).violations.empty());
+    for (std::size_t index = 1; index < fallback_windows.size(); ++index) {
+        CHECK(fallback_windows[index].workArea.contains(fallback_windows[index].placementRect));
+        CHECK(fallback_windows[index].zIndex == static_cast<std::int32_t>(index));
     }
 
     MvpFixture two_edge_goal;
@@ -431,7 +431,7 @@ int main()
         two_edge_goal.coordinator.process(drag_events(14), true, true);
     CHECK(two_edge_result.status == MvpBatchStatus::DryRun);
     CHECK(!two_edge_result.affordanceGoalDegraded);
-    CHECK(two_edge_result.affordanceGoal == VisibilityGoal::TopAndSide);
+    CHECK(two_edge_result.affordanceGoal == VisibilityGoal::TitleBarLeftHalf);
     CHECK(two_edge_result.solve.status == SolveStatus::Solved);
     CHECK(two_edge_result.solve.moves.size() == 1);
     CHECK(two_edge_result.solve.moves[0].window.hwnd == 15);
@@ -451,11 +451,13 @@ int main()
     };
     const auto one_edge_result =
         one_edge_fallback.coordinator.process(drag_events(18), true, true);
-    CHECK(one_edge_result.status == MvpBatchStatus::Idle);
-    CHECK(one_edge_result.affordanceGoalDegraded);
-    CHECK(one_edge_result.affordanceGoal == VisibilityGoal::AnyRecognizableEdge);
-    CHECK(one_edge_result.solve.status == SolveStatus::NoViolation);
-    CHECK(one_edge_result.solve.moves.empty());
+    CHECK(one_edge_result.status == MvpBatchStatus::DryRun);
+    CHECK(!one_edge_result.affordanceGoalDegraded);
+    CHECK(one_edge_result.affordanceGoal == VisibilityGoal::TitleBarLeftHalf);
+    CHECK(one_edge_result.solve.status == SolveStatus::Solved);
+    CHECK(one_edge_result.solve.moves.size() == 1);
+    CHECK(stage_manager::solver::scan_visibility_violations(
+        one_edge_result.solve.finalSnapshot, two_edge_requirements()).violations.empty());
 
     auto z_order_settings = test_settings();
     z_order_settings.maxManagedWindows = 3;
@@ -607,6 +609,7 @@ int main()
     CHECK(prioritized_result.managedWindowCount == 2);
     CHECK(prioritized_result.solve.moves.size() == 1);
     CHECK(prioritized_result.solve.moves[0].window.hwnd == 132);
+    CHECK(prioritized_result.activeWindow && prioritized_result.activeWindow->hwnd == 131);
 
     auto repeated_type_settings = test_settings();
     repeated_type_settings.maxManagedWindows = 3;
@@ -638,8 +641,10 @@ int main()
     CHECK(repeated_type_result.solve.moves[1].window.hwnd == 304);
     CHECK(repeated_type_result.solve.moves[0].cost.placementDirection ==
           stage_manager::solver::PlacementDirectionRank::TopLeft);
-    CHECK(repeated_type_result.solve.moves[1].cost.placementDirection ==
-          stage_manager::solver::PlacementDirectionRank::TopLeft);
+    // The older title may align above its predecessor instead of extending
+    // the left staircase; recency proximity outranks an extra side strip.
+    CHECK(repeated_type_result.solve.moves[1].to.top < repeated_type_result.solve.moves[0].to.top);
+    CHECK(std::abs(repeated_type_result.solve.moves[1].to.left - 300) <= repeated_type_settings.leftDepthDip);
 
     MvpFixture coverage_prioritized(prioritized_settings);
     coverage_prioritized.desktop.windows = {
@@ -990,7 +995,7 @@ int main()
     CHECK(current_monitor_result.activationPlacementUsed);
     CHECK(current_monitor_result.solve.moves.size() == 1);
     CHECK((current_monitor_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{1390, 490, 1610, 710}));
+           stage_manager::geometry::Rect{1390, 480, 1610, 700}));
     CHECK(current_monitor_center.desktop.moveCalls == 0);
 
     MvpFixture already_centered;
@@ -1011,11 +1016,9 @@ int main()
     };
     const auto over_tall_result = over_tall_activation.coordinator.process(
         foreground_event(166), true, true);
-    CHECK(over_tall_result.status == MvpBatchStatus::DryRun);
-    CHECK(over_tall_result.activationPlacementUsed);
-    CHECK(over_tall_result.solve.moves.size() == 1);
-    CHECK((over_tall_result.solve.moves[0].to ==
-           stage_manager::geometry::Rect{400, 0, 600, 800}));
+    CHECK(over_tall_result.status == MvpBatchStatus::Idle);
+    CHECK(!over_tall_result.activationPlacementUsed);
+    CHECK(over_tall_result.solve.moves.empty());
 
     MvpFixture center_and_repair;
     center_and_repair.desktop.windows = {
@@ -1027,11 +1030,14 @@ int main()
     CHECK(center_and_repair_result.status == MvpBatchStatus::DryRun);
     CHECK(center_and_repair_result.solve.status == SolveStatus::Solved);
     CHECK(center_and_repair_result.activationPlacementUsed);
-    CHECK(center_and_repair_result.solve.moves.size() == 1);
+    CHECK(center_and_repair_result.solve.moves.size() == 2);
     CHECK(center_and_repair_result.solve.moves[0].window.hwnd == 162);
     CHECK((center_and_repair_result.solve.moves[0].to ==
            stage_manager::geometry::Rect{350, 400, 650, 700}));
-    CHECK(center_and_repair_result.movedWindowCount == 1);
+    CHECK(center_and_repair_result.solve.moves[1].window.hwnd == 163);
+    CHECK(stage_manager::solver::scan_visibility_violations(
+        center_and_repair_result.solve.finalSnapshot, two_edge_requirements()).violations.empty());
+    CHECK(center_and_repair_result.movedWindowCount == 2);
     CHECK(center_and_repair.desktop.moveCalls == 0);
 
     auto one_move_settings = test_settings();
@@ -1055,7 +1061,7 @@ int main()
     const auto default_profile_result = default_profile.coordinator.process(
         drag_events(170), true, true);
     CHECK(default_profile_result.status == MvpBatchStatus::DryRun);
-    CHECK(default_profile_result.affordanceGoal == VisibilityGoal::TopAndSide);
+    CHECK(default_profile_result.affordanceGoal == VisibilityGoal::TitleBarLeftHalf);
     CHECK(!default_profile_result.affordanceGoalDegraded);
     CHECK(default_profile_result.solve.moves.size() == 1);
     CHECK(default_profile_result.solve.moves[0].window.hwnd == 171);
@@ -1067,7 +1073,118 @@ int main()
           default_profile.desktop.windows[1].titleBarHeight * 3 / 2);
     CHECK(default_profile_result.solve.moves[0].cost.placementDirection ==
           stage_manager::solver::PlacementDirectionRank::TopLeft);
-    CHECK(default_profile_result.solve.moves[0].cost.hiddenArea == 259840);
+    CHECK(stage_manager::solver::analyze_title_bar_exposure(
+        default_profile_result.solve.finalSnapshot, 1, two_edge_requirements()).satisfied());
+
+    // A one-move batch continues from fresh readback, without repositioning
+    // the active window or rearranging a completed desktop periodically.
+    auto retry_settings = test_settings();
+    retry_settings.placeActivatedWindow = false;
+    retry_settings.maxMovesPerBatch = 1;
+    const auto reconcile_at = [](std::uint64_t time) {
+        return std::vector<WindowEvent>{{WindowEventType::Reconcile, 0, 0, time, time}};
+    };
+    const auto retry_windows = std::vector{
+        make_window(201, {300, 300, 800, 700}, 0),
+        make_window(202, {300, 300, 800, 700}, 1),
+        make_window(203, {300, 300, 800, 700}, 2)};
+    MvpFixture retry(retry_settings);
+    retry.desktop.windows = retry_windows;
+    const auto first_repair = retry.coordinator.process(foreground_event(201), true, false);
+    CHECK(first_repair.status == MvpBatchStatus::PartiallySolved);
+    CHECK(first_repair.backgroundRetryPending);
+    CHECK(first_repair.backgroundRetryDelayMs == 500);
+    CHECK(retry.desktop.moveCalls == 1);
+    CHECK(!retry.coordinator.process(reconcile_at(599), true, false).solveAttempted);
+    const auto next_repair = retry.coordinator.process(reconcile_at(600), true, false);
+    CHECK(next_repair.backgroundRetryUsed);
+    CHECK(!next_repair.activationPlacementUsed);
+    CHECK(!next_repair.backgroundRetryPending);
+    CHECK(next_repair.status == MvpBatchStatus::Applied);
+    CHECK(retry.desktop.moveCalls == 2);
+    CHECK(!retry.coordinator.process(reconcile_at(1200), true, false).solveAttempted);
+    CHECK(retry.desktop.reorderCalls == 0);
+    CHECK(retry.desktop.windows[0].placementRect.left == 300);
+
+    MvpFixture backoff(retry_settings);
+    backoff.desktop.windows = {
+        make_window(201, {0, 0, 1000, 700}, 0),
+        make_window(202, {300, 300, 800, 700}, 1)};
+    CHECK(backoff.coordinator.process(foreground_event(201), true, false).backgroundRetryDelayMs == 500);
+    CHECK(backoff.coordinator.process(reconcile_at(600), true, false).backgroundRetryDelayMs == 1000);
+    CHECK(!backoff.coordinator.process(reconcile_at(1599), true, false).solveAttempted);
+    CHECK(backoff.coordinator.process(reconcile_at(1600), true, false).backgroundRetryDelayMs == 2000);
+    // The next retry must use the changed geometry, not replay an old plan.
+    backoff.desktop.windows[0].placementRect = {300, 300, 800, 700};
+    backoff.desktop.windows[0].visualRect = backoff.desktop.windows[0].placementRect;
+    CHECK(backoff.coordinator.process(reconcile_at(3600), true, false).status == MvpBatchStatus::Applied);
+
+    for (int cancel_case = 0; cancel_case < 6; ++cancel_case) {
+        MvpFixture cancelled(retry_settings);
+        cancelled.desktop.windows = retry_windows;
+        CHECK(cancelled.coordinator.process(foreground_event(201), true, false).backgroundRetryPending);
+        if (cancel_case == 0) {
+            const std::vector<WindowEvent> drag{{WindowEventType::MoveSizeStart, 201, 1, 200, 2}};
+            cancelled.coordinator.process(drag, true, false);
+        } else if (cancel_case == 1) {
+            cancelled.coordinator.process({}, false, false);
+        } else if (cancel_case == 2) {
+            auto suppressed = foreground_event(203);
+            suppressed[0].timestampMs = 200;
+            suppressed[0].suppressLayout = true;
+            cancelled.coordinator.process(suppressed, true, false);
+        } else if (cancel_case == 3) {
+            cancelled.desktop.windows[0].monitor = 2;
+        } else if (cancel_case == 4) {
+            cancelled.desktop.windows[0].key.processId += 1;
+        } else {
+            auto foreign = foreground_event(999);
+            foreign[0].timestampMs = 200;
+            cancelled.coordinator.process(foreign, true, false);
+        }
+        CHECK(!cancelled.coordinator.process(reconcile_at(700), true, false).backgroundRetryUsed);
+        CHECK(cancelled.desktop.moveCalls == 1);
+    }
+    MvpFixture quiet(retry_settings);
+    quiet.desktop.windows = retry_windows;
+    CHECK(quiet.coordinator.process(foreground_event(201), true, false).backgroundRetryPending);
+    const std::vector<WindowEvent> external{{WindowEventType::LocationChange, 201, 1, 550, 2}};
+    quiet.coordinator.process(external, true, false);
+    CHECK(!quiet.coordinator.process(reconcile_at(600), true, false).solveAttempted);
+    CHECK(quiet.coordinator.process(reconcile_at(800), true, false).backgroundRetryUsed);
+    MvpFixture dry_retry(retry_settings);
+    dry_retry.desktop.windows = retry_windows;
+    CHECK(!dry_retry.coordinator.process(foreground_event(201), true, true).backgroundRetryPending);
+    CHECK(!dry_retry.coordinator.process(reconcile_at(700), true, true).solveAttempted);
+
+    for (int stale_phase = 0; stale_phase < 3; ++stale_phase) {
+        MvpFixture stale(retry_settings);
+        stale.desktop.windows = retry_windows;
+        if (stale_phase == 0) stale.desktop.staleSnapshots = true;
+        else stale.desktop.staleAtCapture = stale_phase + 1; // before apply / after first native move
+        const auto unavailable = stale.coordinator.process(foreground_event(201), true, false);
+        CHECK(unavailable.reason == MvpSuspendReason::SnapshotStale);
+        CHECK(unavailable.status == MvpBatchStatus::Rebuilding);
+        CHECK(stale.desktop.moveCalls == (stale_phase == 2 ? 1 : 0));
+        stale.desktop.staleSnapshots = false;
+        stale.desktop.staleAtCapture.reset();
+        const auto resumed = stale.coordinator.process(reconcile_at(700), true, false);
+        CHECK(resumed.solveAttempted);
+        CHECK(resumed.reason == MvpSuspendReason::None);
+        CHECK(!resumed.activationPlacementUsed);
+    }
+    MvpFixture stale_retry(retry_settings);
+    stale_retry.desktop.windows = retry_windows;
+    CHECK(stale_retry.coordinator.process(foreground_event(201), true, false).backgroundRetryPending);
+    stale_retry.desktop.staleSnapshots = true;
+    for (std::uint64_t time = 600; time < 1600; time += 250) {
+        const auto waiting = stale_retry.coordinator.process(reconcile_at(time), true, false);
+        CHECK(waiting.reason == MvpSuspendReason::SnapshotStale);
+        CHECK(waiting.backgroundRetryPending);
+        CHECK(stale_retry.desktop.moveCalls == 1);
+    }
+    stale_retry.desktop.staleSnapshots = false;
+    CHECK(stale_retry.coordinator.process(reconcile_at(1700), true, false).status == MvpBatchStatus::Applied);
 
     MvpFixture live;
     live.desktop.windows = dry.desktop.windows;

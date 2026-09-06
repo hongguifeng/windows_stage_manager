@@ -2,7 +2,7 @@
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
 > 适用版本：0.2.1
-> 更新日期：2026-09-05
+> 更新日期：2026-09-06
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 
 ## 1. 文档目标
@@ -314,7 +314,7 @@ coordinator thread
 5. 如果枚举过程中窗口集合变陈旧，最多重试两次；
 6. 按 zIndex 从上到下稳定排序并返回完整批次。
 
-标题栏高度优先使用 `ClientToScreen` 得到的客户区上边与 visual rect 顶边之差；失败时用 DPI 感知的系统 caption、frame、padded border 指标回退。
+标题栏基准默认使用 DPI 感知的系统 caption、frame、padded border 之和，标记 `TitleBarHeightSource::SystemEstimate`。只有带完整 `WS_CAPTION` 且 `ClientToScreen` 偏移不小于系统 caption 高度时接受非客户区测量，标记 `NonClientMeasurement`，拒绝细边框偏移。`snapshot_report` 输出 `titleBarHeight` 与 `titleBarHeightSource`。
 
 ### 9.2 身份包装
 
@@ -369,7 +369,9 @@ coordinator thread
 
 ### 10.4 reconcile
 
-`Reconcile`、队列溢出或环境变化会要求完整抓取快照。通常这条分支只重建/校正内部状态，不主动修复一个静止不变的无解桌面；例外是前台切换的三次即时抓取都未得到有效 active window，此时协调器保留激活意图，并在后续 `Reconcile` 首次捕获到该受管理窗口时调用 `settle` 补做布局。
+`Reconcile`、队列溢出或环境变化会要求完整抓取快照。前台切换的三次即时抓取都未得到有效 active window 时，保留激活意图，后续首次捕获到受管理窗口时补做布局。
+
+`settle` 包装 `settle_impl`：非 DryRun 的未完成求解或执行后 `requiresReconcile` 会保存活动窗口完整 `WindowKey`，从 500 ms 开始重试，无进展倍增至最多 8000 ms，有应用移动则恢复 500 ms。到期且外部事件至少安静 250 ms 后，使用最新完整快照启动新事务、清空本事务 visited hash，只修复后台违约，不再次激活放置或纯外观优化。完成、拖动、前台切换、右键抑制、停用、活动身份或 monitor 不符时取消；快照暂时不可用时等待后续刷新。
 
 ## 11. `settle` 布局管线
 
@@ -396,7 +398,7 @@ Win32 捕获批次仍枚举所有根级顶层窗口，用于分类、owner 关�
 
 ### 11.3 激活放置预模拟
 
-若需要放置活动窗口，`calculate_activated_placement` 根据两个枚举计算 3×3 对齐位移。高度超过工作区时垂直强制靠上。该位移先写入求解快照，使后台窗口求解基于活动窗口的最终位置，而不是旧位置。
+若需要放置活动窗口，`calculate_activated_placement` 根据两个枚举计算 3×3 对齐位移。对齐后先保证整个 placement rect 位于工作区内；本体宽或高超过工作区时跳过激活移动。该位移先写入求解快照，使后台窗口求解基于活动窗口的最终位置，而不是旧位置。
 
 激活移动作为独立 `MovePlan` 暂存，成功求解后插到移动列表首位。后台求解不能移动 active window。
 
@@ -428,7 +430,7 @@ min(axisLength,
           scaleDipCeil(maximumLengthDip, dpi)))
 ```
 
-顶部深度优先使用实际 `titleBarHeight`，只有没有标题栏测量值时才使用 `topDepthDip`。其他边使用各自 `depthDip`。
+通用旧目标的顶部深度优先使用 `titleBarHeight`，没有基准时使用 `topDepthDip`。主流程 `TitleBarLeftHalf` 则统一取 `max(ceil(1.5 × titleBarHeight), scale_dip_ceil(topDepthDip, dpi))`，配置下限不再乘 1.5，物理像素基准也不重复缩放。保护高度超过窗口高度时直接不达标，不能截短冒充成功。其他边使用各自 `depthDip`。
 
 ### 12.2 遮挡区域
 
@@ -441,11 +443,19 @@ min(axisLength,
 - 与目标同显示器；
 - visual rect 与目标相交。
 
-所有遮挡矩形通过 `geometry::unite` 合并。每条边的交互区域先裁剪到 work area，再减去遮挡并集，然后检查是否存在触边、长度和深度都满足的矩形段。
+通用旧边缘目标的所有遮挡矩形通过 `geometry::unite` 合并。每条边的交互区域先裁剪到 work area，再减去遮挡并集，然后检查是否存在触边、长度和深度都满足的矩形段。
 
 区域运算使用不相交矩形集合，默认最大复杂度为 1024 个矩形。超过上限返回 `GeometryTooComplex`，而不是静默近似。
 
-### 12.3 双边独立性
+### 12.3 标题栏保护与辅助侧条
+
+主流程使用 `VisibilityGoal::TitleBarLeftHalf`。保护区从 visual rect 左上角开始，高度为上述至少 1.5 倍的保护高度，宽度为 `max(ceil(visualWidth / 2), configuredTopLength)`。旧比例和最大长度配置不能降低半宽下限。
+
+`analyze_title_bar_exposure` 将每个与标题栏高度相交的更上层遮挡矩形投影到水平轴，取从最左端开始的连续无遮挡长度，不需要建立复杂矩形并集。任意一行被覆盖都截断该长度。侧条从标题栏底部开始单独判断，使用左右配置的宽度和连续长度；辅助侧条失败不代表标题栏失败。
+
+`scan_visibility_violations` 和移动后验证都使用同一标题栏规则。通用 `analyze_window_visibility_with_status` 在新目标下也返回相同的 top 判定。
+
+### 12.4 保留的旧目标与双边独立性
 
 `VisibilityGoal::TopAndSide` 只接受 `topLeft` 或 `topRight`。顶部和侧边在检查前都会去掉共享角，并限制到相应角通道；两段必须独立满足长度和深度。
 
@@ -453,7 +463,7 @@ min(axisLength,
 
 ## 13. 通用候选生成与排序
 
-本节描述 `solve_layout` 使用的通用有限候选搜索。它保留给单窗口、属性测试和诊断路径；主协调流程的 `solve_layout_prioritized` 已改为第 14.3 节的锚点阶梯算法，不再用候选的实际 `deltaX/deltaY` 判断整条布局方向。
+本节描述 `solve_layout` 使用的通用有限候选搜索。它保留给单窗口、属性测试和诊断路径；主协调流程的 `solve_layout_prioritized` 已改为第 14.3 节的标题栏有限候选搜索，不再用候选的实际 `deltaX/deltaY` 判断整条布局方向。
 
 ### 13.1 候选生成
 
@@ -522,63 +532,46 @@ min(axisLength,
 
 ### 14.3 `solve_layout_prioritized`
 
-这是主协调流程使用的确定性阶梯求解器。初始可辨识扫描为空时直接返回 `NoViolation`，不会为了隐藏面积或中心距离移动已经合格的窗口。
+入口根据目标分派：`TitleBarLeftHalf` 使用 `src/solver/title_bar_solver.cpp` 中的 `solve_title_bar_layout`；旧 `TopAndSide`、`AnyRecognizableEdge` 阶梯保留供兼容测试，不再接入主协调流程。
 
-存在违规时，managed 后台窗口按不可变 zIndex 排序。`attempt_staircase` 以 active window 的 visual rect 为第一个 anchor，并用 `staircase_placement` 逐个计算后续节点：
+新求解器先快速修复：只遍历未达标目标，左端标题前缀为零者优先，其他维持 Z-order。每个目标最多 512 个候选（同时受配置候选上限约束），只接受自身达标且不碰已达标下层标题保护矩形的移动，不做全布局反复评分。处理到半个时间预算后不再启动新目标，候选仍受完整截止时间约束；每个改善立即保存，后续超时不会丢弃。若仍未全部达标，先尝试四种重建方案：两种按行从右向左填充标题前缀（其中一种为侧方窄标题保留通道），两种左上/右上阶梯。重建允许联动重叠组里的已达标窗口，固定窗口及完全独立的窗口不随重建移动；只在全局达标数增加且所有原本达标窗口仍达标时接受。
 
-- `TopLeft`：目标左边等于 anchor 左边减去目标左侧深度，目标顶边等于 anchor 顶边减去目标实际标题栏高度的 1.5 倍（向上取整到完整像素）；
-- `TopRight`：目标右边等于 anchor 右边加上目标右侧深度，顶边计算相同；
-- `Left`、`Right`、`Bottom` 只在 `AnyRecognizableEdge` 降级目标中启用。
+之后对剩余目标尝试递归位移链：允许在内存中临时盖住下层保护区，递归修复这些必须保留的标题，整条链成功后才能发布。每层最多保留 24 个候选，向子分支分配有限状态额度防止首个死路耗尽所有机会，每根链最多使用约总状态额度的三分之一、只在总时间预算前三分之四内展开。失败或超时回退到安全结果。最后才按 Z-order 扩展窗口，每层保留最多 6 个候选布局（beam search）。候选包括当前位置、稳定位置、左右上方节点、整个窗口合法位置域边界以及标题栏禁入区域边界的组合。固定遮挡物与先安排的更上层窗口共同决定边界；右上分支不以整个已占用区域包围盒作为唯一入口。
 
-这里的步长描述同一分段内的相邻节点，不约束目标相对原始位置的实际移动距离。顶部使用 1.5 倍标题栏高度，给完整标题栏额外留下半个标题栏的可见余量；`TopRight` 使用相同的纵向步长。窗口旧坐标不会改变分段方向。节点越界时，已完成分段保留，剩余目标进入下一分段；不会沿顶边水平续排。
+左上节点为 `left = anchor.left - leftDepth`；右上节点为 `right = anchor.right + rightDepth`。纵向使用统一保护高度（至少标题栏基准的 1.5 倍），不生成薄高度降级位置。尺寸及 frame/visual 偏移始终保持，候选整窗必须在工作区内，非法坐标输入返回 `InvalidSnapshot`。
 
-每一轮生成后调用 `scan_visibility_violations` 做全局验证。新出现的违规 target 及其 managed blocker 会加入同一条链，然后再次从 active anchor 计算，直到闭包稳定。所有 placement rect 必须完整位于 work area；任何节点越界、不可移动或超过 move/state/time budget 都使该方向失败。若只得到部分结果，以第一个失败 zIndex 为界回退该层和所有更低层，只返回重新扫描后确实减少违规的安全前缀。
+每个状态代表一个父布局的下一窗口扩展。候选还包括活动窗口同高/同左边界，以及下层已达标标题保护区的相切边界；按行重建将交叉网格按 Y、X 降序枚举，避免候选截断先耗在屏幕顶边。交叉边界候选最多 512 个，受 `maximumCandidatesPerViolation` 限制；总父状态数、时间和移动次数仍使用配置上限。候选扫描定期检查时钟，并保留已验证结果，所以时间预算是协作式截止，不是实时调度保证。
 
-`attempt_staircase` 接收固定顺序的方向 span，并用一个 `direction_index` 分配连续目标。当前分段无法放置下一目标时，索引只向后推进，不回退：右上段以 active 的垂直位置重新开始，并把水平 anchor 放到已占用区域右缘加顶部可辨识长度之外；左、右、下方段分别使用已占用区域对应外缘。每轮完成后仍执行一次全局可辨识扫描。
+布局比较顺序为达标窗口数、上层达标向量、按真实 Z-order 排列的标题距离向量、距离倒序数、侧条达标数量、方向向量、标题栏额外可见宽度、移动数和总位移。距离使用两个可视标题栏左上角：`dx = max(0, abs(target.left - active.left) - leftDepthPx)`，`dy = target.top - active.top`，比较 `dx² + dy²`。一个 DPI 换算后的左侧条宽度内的横向错位不罚分，便于保留辨识线索；距离不依赖窗口宽度，也不再计算到活动窗口正文矩形的距离。优先缩短第一后台标题的距离，再比较第二、第三个，不能用下层整体侧条数量换取上层远移。距离相同时仍偏好左上、右上、仅上方，再考虑侧方和下方。距离和侧条是软目标，不能通过越界或改变尺寸/层级来满足。
 
-协调器先用 `TopAndSide` 运行左上、右上两个分段。仍无法容纳全部目标时，从原始布局强制运行 `AnyRecognizableEdge`，把全部 managed targets 按左上、右上、左侧、右侧、下方顺序分配；只有所有方向均用尽时，才退回严格阶段重新验证过的安全前缀。
+第四版在四种安全重建退路后增加锚定重建：为最上层重叠后台窗口保留最多六个可见、合法且按标题距离排序的锚点，每点尝试两种按行布局。优先候选直接包含活动标题左偏一个侧条、左端对齐、右偏一个侧条的上方位置，不依赖网格截断碰巧保留它们。固定该窗口后联动安排其余窗口；只有增加达标数，或全部达标且整体质量更好时才接受。原本全部可辨认且请求前台优化时也允许尝试，距离比已保存第一后台标题更远的锚点不再展开。各阶段共用状态、移动和时间预算，失败保留安全结果，不宣称有限锚点覆盖全部可行布局。
 
-参与者选择在协调器中先按是否被 active window 直接遮挡分组；同组内 `processId + className` 重复出现的窗口优先于单一类型，再按遮挡比例和 zIndex 确定顺序。该优先级只决定最多 20 扇窗口中谁进入 managed 集合，不改变进入阶梯后的真实 Z-order。
+按行重建只用已安排的更高窗口生成禁入边界，不把将被重排的下层旧标题边界塞入网格；在候选计数前排除与上层相交的标题前缀，避免数百个不可能的下部位置耗尽额度、截掉真正可用的上方行。局部修复仍保留下层标题相切边界；所有重建仍经过完整全局安全检查。19 窗口前台快照与全达标但远离的快照均固化为匿名几何回归。
 
-最终：
+全部标题达标后按真实 Z-order 做最多三轮安全紧凑调整：每次保护所有已达标下层标题，只接受更好的整组质量。下层移动释放的上层侧条平局尽量在本轮内消化。只有仍未达标时才继续六状态 beam，不再为了完整布局的装饰优化总是耗尽预算。每层保留候选再对全部目标评分，确保未处理或保留原位的下层窗口仍参与验证。部分结果必须比原始快照新增达标窗口，且不能破坏原本达标窗口或活动窗口。因此遇到不可移动大窗口时可以继续寻找下层小窗口的安全改善。
 
-- 无剩余违规：`Solved`；
-- 有成功移动但仍有违规：`PartiallySolved`；
-- 一个窗口都无法改善：`Unsatisfiable`。
+完全不与更上层窗口重叠的窗口保持原位。普通修复无违规时返回 `NoViolation`；前台激活事务可设置 `optimizeTitleBarLayout`，改善已有重叠布局的距离和侧条。稳定排序和平局保持旧结果，周期刷新不会持续优化。此版本没有引入额外的像素改善阈值。
 
-如果在已经完成部分移动后达到时间、状态或几何上限，同样先验证当前快照；有效的前缀返回 `PartiallySolved`，不会因为后段失败丢弃。
+`MvpBatchResult.activeWindow` 保存实际锚点身份，不能把数组下标 0 当作活动窗口（前面可能有非受管理的更高层遮挡物）。`window_inspector --solve/--solve-top` 输出活动 HWND/索引与规划 visual/placement 矩形，假设后续求解沿用正确活动索引。Debug 日志 `background_title_plan` 按 HWND、Z-order 记录 `title_before`、`title_planned`、`active_title_planned`（可视左上角 x,y），以事务编号关联批次；这是规划坐标，不是实际执行成功证据，不记录应用标题或文件路径。
 
-因为链节点按 Z-order 一次生成并整体验证，较下层窗口不会反向改变整链方向。新增下层违规通过闭包加入同方向阶梯，不回到逐窗左右选边。
+参与者选择仍在协调器中按直接遮挡及同类窗口优先筛选，最多 20 扇；这不改变真实 Z-order。候选截断与 beam 剪枝可能漏解，`Unsatisfiable` 仅表示本次有限搜索没有找到安全改善。
 
 ### 14.4 协调器调用顺序
 
 ```text
-TopAndSide:
-    solve_layout_prioritized（填充左上 → 剩余目标填充右上）
-
-AnyRecognizableEdge:
-    严格阶段无完整解时，从原始布局强制重排全部 targets
-    分段填充左上 → 右上 → 左侧 → 右侧 → 下方
-
-若所有方向均用尽且 TopAndSide 有安全前缀:
-    使用该 PartiallySolved 前缀
-
-若 peer 仍失败但存在 activation move:
-    只应用 activation move，标记 PartiallySolved
-
-否则:
-    Unsatisfiable，不执行移动
+预模拟合法激活移动，预留移动预算
+    → TitleBarLeftHalf / solve_layout_prioritized
+    → 完整解或安全部分解：加入激活移动
+    → 后台失败但激活移动合法：仅应用激活移动，重新扫描标题栏
+    → 没有安全移动：保持原位
+    → 执行事务并按相同标题栏目标验证
 ```
 
-`fallbackUsed` 为兼容旧诊断字段保留；逐层求解已经是主流程，因此正常结果保持 false。`affordanceGoalDegraded` 表示最终采用了 `AnyRecognizableEdge` 分段链；只有全部方向用尽并最终保留严格前缀时该字段保持 false。无效输入和区域复杂度错误不会被当作普通无解继续掩盖。
-
-若强制方向重排因极小的 state/time/move budget 无法执行，协调器会再做一次非强制单边校验；当前布局本来已经满足 `AnyRecognizableEdge` 时保持原位，而不是误报无解。
+不再进行任意边降级或 Z-order fallback。`fallbackUsed` 和 `affordanceGoalDegraded` 为兼容保留且正常结果为 false；日志目标为 `title_bar_left_half`。零剩余后台移动预算仍允许验证和独立激活放置。新 solver 不依赖通用候选路径的 `requireStableLayout=true`，而是显式检查所有原本达标窗口不退化。
 
 ### 14.5 循环避免
 
-布局使用双 64 位 FNV 风格哈希，包含窗口身份、placement/visual rect、zIndex 和 topmost。协调器在同一事务中记录已见最终状态；若方案回到已见状态，会改为 `Unsatisfiable`，防止反复摆动。
-
-`preferred_edge_` 仍为通用候选求解路径保留；主阶梯路径的方向由整链尝试次序确定，不读取上一扇窗口的实际移动符号，因此不会在同一条链内左右反复。
+协调器保留事务内已见布局 hash，拒绝回到同一事务的已见状态。`preferred_edge_` 仅为旧通用路径兼容保留，新搜索不依赖旧位移符号。搜索时检查状态与时间预算，最终只应用经过全局可见性验证的布局。
 
 ## 15. 移动执行与验证
 
@@ -748,6 +741,14 @@ kSettingCommandBase + field * kSettingCommandStride + choiceIndex
 
 `RuntimeMetrics` 使用 atomic 累计批次、输入、合并位置事件、求解状态、计划/应用移动、reconcile、DryRun、求解失败、API 失败、部分布局、最大队列深度和最大耗时。
 
+执行诊断增加 `apply_status_code`（`MoveApplyStatus` 枚举）、`failed_move_index`（从 0 开始）、`apply_last_error`、`apply_snapshot_status_code`（`SnapshotStatus` 枚举）和 `apply_snapshot_last_error`；仅执行过 apply 的批次才有实际意义，不能把默认值解读为执行成功。
+
+`SnapshotStatus::Stale` 被协调器保留为 `MvpSuspendReason::SnapshotStale` / `snapshot_stale`，包括求解前和执行中的快照失效。此时不使用旧快照移动，保留待修复意图；健康监视器既不增加也不清空真实故障计数。只有真实枚举失败等 `snapshot_unavailable` 或执行/验证错误参与原熔断计数。快照恢复后正常补做事务；拖动结束时丢失快照也会保留 settle 意图，不凭空增加激活放置。
+
+`solver_elapsed_ms` 记录纯求解耗时，`duration_us` 仍为整批耗时。`background_retry_used`、`background_retry_pending`、`background_retry_delay_ms` 记录补排使用、排队和等待间隔。
+
+`window_inspector --solve` 使用当前配置与前台窗口通过协调器 DryRun 计算；`--solve-top` 模拟最上层受管理窗口激活，适用于当前前台不受管理时。诊断 applier 无原生 mover，不能移动窗口，输出每个目标的基准来源、保护高度、所需与规划可见宽度。
+
 `snapshot_windows` 是 Win32 捕获的根窗口总数；`solver_windows` 是过滤后的实际求解对象数，等于 `managed_windows + blocking_windows`。这组字段用于区分系统 HWND 数量和真实搜索规模。`planned_reorders` 目前总是 0；`fallback_used` 是逐窗位置 fallback；诊断工具和新功能不要重新赋予这些旧字段不同语义而不改名。
 
 ## 19. 几何层设计
@@ -899,7 +900,7 @@ mvp_coordinator.cpp
 2. **Z-order 基础设施是 dormant code**：有接口和测试，但产品路径不调用。
 3. **`fallbackUsed` 是兼容字段**：逐层求解成为主流程后正常保持 false，后续大版本可移除。
 4. **全局求解的 stable 约束较强**：不允许仍有其他 managed 违规的中间节点。
-5. **严格目标搜索成本较高**：当前会先尝试双边目标，再降级到任意可辨识边缘；复杂重叠下应关注两阶段的总预算。
+5. **有界搜索可能漏解**：标题栏 beam search 保留 6 个状态，复杂重叠下关注候选截断、时间预算和部分解比例。
 6. **periodic reconcile 不直接 settle**：它刷新状态但不主动移动静止桌面。
 7. **执行不回滚**：批次后段失败时，前序成功移动保留。
 8. **设置变更全量重启管线**：稳定布局和身份缓存会清空。

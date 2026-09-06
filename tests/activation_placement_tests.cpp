@@ -27,8 +27,8 @@ int main()
         ActivationVerticalAlignment::Center,
         ActivationVerticalAlignment::Bottom,
     };
-    constexpr std::array<std::int64_t, 3> expected_left = {40, 390, 740};
-    constexpr std::array<std::int64_t, 3> expected_top = {20, 220, 420};
+    constexpr std::array<std::int64_t, 3> expected_left = {50, 390, 730};
+    constexpr std::array<std::int64_t, 3> expected_top = {40, 220, 420};
 
     for (std::size_t x = 0; x < horizontal.size(); ++x) {
         for (std::size_t y = 0; y < vertical.size(); ++y) {
@@ -39,6 +39,7 @@ int main()
             CHECK(result->top == expected_top[y]);
             CHECK(result->width() == window.placementRect.width());
             CHECK(result->height() == window.placementRect.height());
+            CHECK(window.workArea.contains(*result));
         }
     }
 
@@ -49,9 +50,7 @@ int main()
         oversized,
         ActivationHorizontalAlignment::Center,
         ActivationVerticalAlignment::Bottom);
-    CHECK(oversized_bottom.has_value());
-    CHECK(oversized_bottom->top == 20);
-    CHECK(oversized_bottom->height() == oversized.placementRect.height());
+    CHECK(!oversized_bottom.has_value());
 
     LayoutWindow invalid = window;
     invalid.visualRect = {100, 100, 100, 400};

@@ -148,6 +148,8 @@ void write_snapshot_report(std::ostream& output,
         write_rect(output, snapshot.workArea);
         output << ",\"monitor\":";
         write_handle(output, snapshot.monitor);
+        output << ",\"titleBarHeight\":" << snapshot.titleBarHeight
+               << ",\"titleBarHeightSource\":\"" << title_bar_source_name(snapshot.titleBarHeightSource) << "\"";
         output << ",\"dpi\":" << snapshot.dpi << ",\"zIndex\":" << snapshot.zIndex
                << ",\"zOrderKnown\":" << (snapshot.zOrderKnown ? "true" : "false")
                << ",\"currentDesktop\":" << (snapshot.currentDesktop ? "true" : "false")
