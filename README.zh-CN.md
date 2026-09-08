@@ -22,6 +22,7 @@
 
 - 窗口由"未活动"变为"活动"（鼠标点击、任务栏、Alt+Tab 等均可）时，把它的可视矩形放到你选择的位置：水平可选靠左、居中、靠右，竖直可选靠上、居中、靠下，默认**水平居中 + 竖直靠下**；包括边框的整个窗口保持在工作区内，窗口本体大于工作区时跳过自动放置。
 - 已经活动的窗口不会再次被放置；你把它拖到哪里，它就停在哪里。
+- 达到窗口管理数量上限时，仍为最上层后台窗口保留名额。自动放置若无法保护原本可见的后台标题栏，会保留活动窗口原位置；持续的布局失败只提醒一次，确认恢复后才重置通知。
 - 右键点击只用于激活窗口或打开上下文菜单，菜单弹出、关闭并返回原窗口的整个过程都不触发自动窗口移动；另一个普通窗口正常激活后，自动布局照常恢复。
 - 不想让程序动刚激活的窗口？托盘"快速参数设置"里关掉"自动放置新激活窗口"即可，可再随时打开。
 
@@ -66,7 +67,7 @@ Release 构建改用 `windows-release` 预设；每个提交都必须在 Debug �
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.2.1 -Commit (git rev-parse --short HEAD)
+  -Version 0.6.0 -Commit (git rev-parse --short HEAD)
 ```
 
 生成带版本号的 ZIP 与 `manifest.json`，更新 `current.json`，并把上一个版本留作 `rollback.json` 以便回滚。

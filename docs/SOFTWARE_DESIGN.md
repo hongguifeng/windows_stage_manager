@@ -1,8 +1,8 @@
 # Windows Stage Manager 软件设计文档
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
-> 适用版本：0.2.1
-> 更新日期：2026-09-06
+> 适用版本：0.6.0
+> 更新日期：2026-09-08
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 
 ## 1. 文档目标
@@ -386,7 +386,7 @@ coordinator thread
 
 ### 11.2 受管理集合
 
-本批集合包含活动窗口和同屏 peers，上限被夹在 2 到 20。peers 先按“是否被活动窗口直接覆盖”排序；直接覆盖者再按覆盖面积比例从高到低排序，其余保持快照的 Z-order 顺序。
+本批集合包含活动窗口和同屏 peers，上限被夹在 2 到 20。首先为活动窗口下方 Z-order 最近的可管理 peer 保留名额，再按直接遮挡、同进程同类窗口优先、遮挡比例及 Z-order 选择其余 peers，防止最上层后台窗口被数量截断排除。
 
 Win32 捕获批次仍枚举所有根级顶层窗口，用于分类、owner 关系和 Z-order 校验；这些 HWND 不会原样进入求解器。布局快照只包含本批 managed 窗口，以及可能影响它们候选位置的只读遮挡物。只读遮挡物必须同时满足：
 
@@ -401,6 +401,8 @@ Win32 捕获批次仍枚举所有根级顶层窗口，用于分类、owner 关�
 若需要放置活动窗口，`calculate_activated_placement` 根据两个枚举计算 3×3 对齐位移。对齐后先保证整个 placement rect 位于工作区内；本体宽或高超过工作区时跳过激活移动。该位移先写入求解快照，使后台窗口求解基于活动窗口的最终位置，而不是旧位置。
 
 激活移动作为独立 `MovePlan` 暂存，成功求解后插到移动列表首位。后台求解不能移动 active window。
+
+协调器保留 `before_activation` 真实快照。组合计划（包括后台失败时的 activation-only 计划）若使其中任何原本达标的 managed peer 标题栏退化，则撤销激活放置，以真实快照和剩余时间/状态预算重算，关闭纯外观优化；耗尽预算时直接返回真实快照及其违规。两次求解统计合并，恢复完整移动数预算，不将模拟后的可见性作为唯一安全基准。
 
 ### 11.4 策略组装
 
@@ -554,7 +556,7 @@ min(axisLength,
 
 `MvpBatchResult.activeWindow` 保存实际锚点身份，不能把数组下标 0 当作活动窗口（前面可能有非受管理的更高层遮挡物）。`window_inspector --solve/--solve-top` 输出活动 HWND/索引与规划 visual/placement 矩形，假设后续求解沿用正确活动索引。Debug 日志 `background_title_plan` 按 HWND、Z-order 记录 `title_before`、`title_planned`、`active_title_planned`（可视左上角 x,y），以事务编号关联批次；这是规划坐标，不是实际执行成功证据，不记录应用标题或文件路径。
 
-参与者选择仍在协调器中按直接遮挡及同类窗口优先筛选，最多 20 扇；这不改变真实 Z-order。候选截断与 beam 剪枝可能漏解，`Unsatisfiable` 仅表示本次有限搜索没有找到安全改善。
+参与者选择在协调器中先保留最上层后台窗口，再按直接遮挡及同类窗口优先筛选，最多 20 扇；这不改变真实 Z-order。候选截断与 beam 剪枝可能漏解，`Unsatisfiable` 仅表示本次有限搜索没有找到安全改善。
 
 ### 14.4 协调器调用顺序
 
@@ -705,7 +707,7 @@ kSettingCommandBase + field * kSettingCommandStride + choiceIndex
 
 ### 17.2 无解通知
 
-通知请求持续 5 秒、无声音，最短冷却 10 秒。连续停留在无解状态不会重复弹出；必须离开后再次进入，并满足冷却时间。
+通知请求持续 5 秒、无声音，最短冷却 10 秒。`LayoutFailureEpisode` 跨 Idle/Rebuilding/部分改善和重试保留故障状态，不因错误原因变化重复通知。协调线程仅在 Applied 或本次实际求解得到 NoViolation 且状态为 Idle 时，在状态消息的 LPARAM 中附加 0x100 恢复标记（低 8 位仍为失败原因）；UI 线程据此或 Disabled 重置故障状态。普通空闲批次和 DryRun 不能冒充实际恢复。
 
 ### 17.3 健康熔断
 

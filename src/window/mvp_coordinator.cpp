@@ -533,6 +533,11 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
         }
     }
     std::unordered_map<const WindowSnapshot*, std::size_t> same_type_counts;
+    const WindowSnapshot* nearest_peer = nullptr;
+    for (const auto* peer : peers) {
+        if (peer->zIndex > active->zIndex &&
+            (!nearest_peer || peer->zIndex < nearest_peer->zIndex)) nearest_peer = peer;
+    }
     for (const auto* target : peers) {
         same_type_counts[target] = std::count_if(
             peers.begin(), peers.end(), [target](const auto* item) {
@@ -540,9 +545,10 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
                 item->className == target->className;
         });
     }
-    std::stable_sort(peers.begin(), peers.end(), [&active, &same_type_counts](
+    std::stable_sort(peers.begin(), peers.end(), [&active, &same_type_counts, nearest_peer](
                                                      const auto* left,
                                                      const auto* right) {
+        if ((left == nearest_peer) != (right == nearest_peer)) return left == nearest_peer;
         const bool left_direct = directly_obscured_by(*active, *left);
         const bool right_direct = directly_obscured_by(*active, *right);
         if (left_direct != right_direct) {
@@ -627,6 +633,7 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
         return result;
     }
 
+    const auto before_activation = layout;
     const auto observed_state = solver::hash_layout(layout);
     std::optional<solver::MovePlan> activation_move;
     if (place_activated_window) {
@@ -723,6 +730,47 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
             result.solve.finalState = solver::hash_layout(full_layout);
             result.activationPlacementUsed = true;
             result.partialLayoutUsed = !remaining.violations.empty();
+        }
+    }
+    // The solver's baseline already contains activation placement. Validate
+    // against the real pre-move snapshot as well: a failed peer repair must
+    // never authorize covering a previously recognizable title.
+    if (activation_move) {
+        bool regressed = false;
+        for (std::size_t i = 0; i < before_activation.windows.size(); ++i) {
+            if (!before_activation.windows[i].managed || i == *active_index) continue;
+            if (solver::analyze_title_bar_exposure(before_activation, i,
+                    policy.ranking.visibility).satisfied() &&
+                !solver::analyze_title_bar_exposure(result.solve.finalSnapshot, i,
+                    policy.ranking.visibility).satisfied()) regressed = true;
+        }
+        if (regressed) {
+            const auto elapsed = result.solve.elapsedMs;
+            const auto states = result.solve.statesVisited;
+            activation_move.reset();
+            result.activationPlacementUsed = false;
+            // Keep the user's actual placement and repair within the remaining
+            // search budget. If exhausted, publish the unchanged snapshot.
+            policy.limits.maximumMoves = maximum_moves;
+            policy.optimizeTitleBarLayout = false;
+            policy.limits.maximumElapsedMs = elapsed < settings_.maxSolveTimeMs
+                ? settings_.maxSolveTimeMs - elapsed : 0;
+            policy.limits.maximumStates = states < settings_.maxSolverStates
+                ? settings_.maxSolverStates - states : 0;
+            if (policy.limits.maximumElapsedMs && policy.limits.maximumStates) {
+                result.solve = solver::solve_layout_prioritized(before_activation, policy, *active_index);
+            } else {
+                result.solve = {};
+                result.solve.finalSnapshot = before_activation;
+                result.solve.finalState = observed_state;
+                result.solve.violations = solver::scan_visibility_violations(
+                    before_activation, policy.ranking.visibility).violations;
+                result.solve.status = result.solve.violations.empty()
+                    ? solver::SolveStatus::NoViolation : solver::SolveStatus::Timeout;
+            }
+            result.solve.elapsedMs += elapsed;
+            result.solve.statesVisited += states;
+            result.partialLayoutUsed = result.solve.status == solver::SolveStatus::PartiallySolved;
         }
     }
     if (transaction_seen_states_.empty()) {

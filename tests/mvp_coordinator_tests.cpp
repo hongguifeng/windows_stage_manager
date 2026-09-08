@@ -637,8 +637,8 @@ int main()
     CHECK(repeated_type_result.managedWindowCount == 3);
     CHECK(repeated_type_result.solve.status == SolveStatus::Solved);
     CHECK(repeated_type_result.solve.moves.size() == 2);
-    CHECK(repeated_type_result.solve.moves[0].window.hwnd == 303);
-    CHECK(repeated_type_result.solve.moves[1].window.hwnd == 304);
+    CHECK(repeated_type_result.solve.moves[0].window.hwnd == 301);
+    CHECK(repeated_type_result.solve.moves[1].window.hwnd == 303);
     CHECK(repeated_type_result.solve.moves[0].cost.placementDirection ==
           stage_manager::solver::PlacementDirectionRank::TopLeft);
     // The older title may align above its predecessor instead of extending
@@ -658,7 +658,7 @@ int main()
     CHECK(coverage_result.solve.status == SolveStatus::Solved);
     CHECK(coverage_result.managedWindowCount == 2);
     CHECK(coverage_result.solve.moves.size() == 1);
-    CHECK(coverage_result.solve.moves[0].window.hwnd == 142);
+    CHECK(coverage_result.solve.moves[0].window.hwnd == 141);
 
     MvpFixture activated;
     activated.desktop.windows = {
@@ -1050,6 +1050,25 @@ int main()
     CHECK(center_budget_result.activationPlacementUsed);
     CHECK(center_budget_result.solve.moves.size() == 1);
     CHECK(center_budget.desktop.moveCalls == 0);
+
+    // Activation would hide an initially visible nearest peer, and the single
+    // move budget cannot place the active window AND repair that peer.
+    // Preserve both real windows instead of accepting activation-only damage.
+    for (const bool dry_run : {true, false}) {
+        MvpFixture protected_activation(one_move_settings);
+        protected_activation.desktop.windows = {
+            make_window(180, {0, 0, 300, 300}, 0),
+            make_window(181, {350, 450, 650, 650}, 1),
+        };
+        const auto protected_result = protected_activation.coordinator.process(
+            foreground_event(180), true, dry_run);
+        CHECK(protected_result.solve.status == SolveStatus::NoViolation);
+        CHECK(!protected_result.activationPlacementUsed);
+        CHECK(protected_result.solve.moves.empty());
+        CHECK(protected_activation.desktop.moveCalls == 0);
+        CHECK(protected_result.solve.finalSnapshot.windows[0].placementRect.left == 0);
+        CHECK(protected_result.solve.finalSnapshot.windows[1].placementRect.top == 450);
+    }
 
     auto default_profile_settings = stage_manager::app::Settings{};
     default_profile_settings.maxSolveTimeMs = 1000;

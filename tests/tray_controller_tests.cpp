@@ -13,6 +13,18 @@ int main()
     using stage_manager::app::SettingField;
     using stage_manager::app::LayoutFailureReason;
 
+    stage_manager::app::LayoutFailureEpisode episode;
+    CHECK(episode.observe(true, false));
+    // Reconcile/idle batches and repeated retries never end the episode,
+    // even after the tray's ten-second cooldown has elapsed.
+    for (int retry = 0; retry < 20; ++retry) {
+        CHECK(!episode.observe(false, false));
+        CHECK(!episode.observe(true, false));
+    }
+    CHECK(!episode.observe(false, true));
+    CHECK(episode.observe(true, false));
+    CHECK(!episode.observe(true, false));
+
     const auto notification = stage_manager::app::layout_failure_notification(
         LayoutFailureReason::NoFeasibleLayout,
         stage_manager::app::UiLanguage::SimplifiedChinese);

@@ -22,6 +22,7 @@ A system-tray utility that automatically organizes ordinary desktop windows. Whe
 
 - When an inactive window becomes active through a mouse click, the taskbar, Alt+Tab, or another normal activation path, its visible rectangle is moved to the configured position. Horizontal alignment can be Left, Center, or Right; vertical alignment can be Top, Center, or Bottom. The default is **Center + Bottom**. The entire placement rectangle stays inside the work area; oversized windows are not automatically placed.
 - A window that is already active is not placed again. If you drag it, it remains where you leave it.
+- The nearest background window keeps a slot even at the managed-window limit. Automatic placement is cancelled if the combined plan would hide a previously recognizable background title. A continuing layout failure generates only one notification until the layout recovers or management is disabled.
 - A right click that activates a window or opens its context menu does not trigger automatic window movement, including while the menu opens, closes, and returns focus to the original window. Normal layout resumes after another ordinary window is activated.
 - To keep newly activated windows in place, turn off **Place newly activated windows** under **Quick settings** in the tray menu. It can be turned back on at any time.
 
@@ -65,7 +66,7 @@ Use the `windows-release` preset for a Release build. Every commit must pass Con
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.2.1 -Commit (git rev-parse --short HEAD)
+  -Version 0.6.0 -Commit (git rev-parse --short HEAD)
 ```
 
 This produces a versioned ZIP archive and `manifest.json`, updates `current.json`, and retains the previous release as `rollback.json`.

@@ -316,7 +316,8 @@ LRESULT AppLifecycle::handle_message(HWND window, UINT message, WPARAM w_param, 
     case kCoordinatorStatusMessage:
         update_runtime_status(
             static_cast<window::MvpBatchStatus>(w_param),
-            static_cast<LayoutFailureReason>(l_param));
+            static_cast<LayoutFailureReason>(l_param & 0xff),
+            (l_param & 0x100) != 0);
         return 0;
     case kSafetyTripMessage:
         tray_.set_enabled(false);
@@ -745,23 +746,20 @@ void AppLifecycle::coordinator_loop()
             PostMessageW(message_window_,
                          kCoordinatorStatusMessage,
                          static_cast<WPARAM>(reported_status),
-                         static_cast<LPARAM>(layout_failure_reason(result.solve.status)));
+                         static_cast<LPARAM>(layout_failure_reason(result.solve.status)) |
+                             ((reported_status == window::MvpBatchStatus::Applied ||
+                               (result.solveAttempted && result.solve.status == solver::SolveStatus::NoViolation &&
+                                reported_status == window::MvpBatchStatus::Idle)) ? 0x100 : 0));
         }
     }
 }
 
 void AppLifecycle::update_runtime_status(
-    window::MvpBatchStatus status, LayoutFailureReason failure_reason)
+    window::MvpBatchStatus status, LayoutFailureReason failure_reason, bool layout_recovered)
 {
-    const bool entered_unsatisfiable = status == window::MvpBatchStatus::Unsatisfiable &&
-        (!last_runtime_status_ ||
-         *last_runtime_status_ != window::MvpBatchStatus::Unsatisfiable ||
-         !last_layout_failure_reason_ ||
-         *last_layout_failure_reason_ != failure_reason);
-    last_runtime_status_ = status;
-    if (status == window::MvpBatchStatus::Unsatisfiable) {
-        last_layout_failure_reason_ = failure_reason;
-    }
+    const bool entered_unsatisfiable = layout_failure_episode_.observe(
+        status == window::MvpBatchStatus::Unsatisfiable,
+        layout_recovered || status == window::MvpBatchStatus::Disabled);
     if (entered_unsatisfiable &&
         tray_.show_layout_failure_notification(steady_now_ms(), failure_reason)) {
         diagnostics::Logger::instance().log(

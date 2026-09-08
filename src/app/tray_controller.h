@@ -64,6 +64,21 @@ struct LayoutFailureNotification final {
 
 constexpr std::uint64_t kUnsatisfiableNotificationCooldownMs = 10'000;
 
+// Idle/rebuilding/partial progress is not recovery. Only a verified complete
+// layout or explicitly disabling management ends a failure episode.
+class LayoutFailureEpisode final {
+public:
+    bool observe(bool failed, bool recovered) noexcept
+    {
+        if (recovered) reported_ = false;
+        if (!failed || reported_) return false;
+        reported_ = true;
+        return true;
+    }
+private:
+    bool reported_ = false;
+};
+
 LayoutFailureNotification layout_failure_notification(
     LayoutFailureReason reason,
     UiLanguage language = UiLanguage::English) noexcept;
