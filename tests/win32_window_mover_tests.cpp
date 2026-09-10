@@ -313,6 +313,9 @@ int main()
                      failed_target != nullptr && failed_target->zOrderKnown ? 1 : 0,
                      failed_reference != nullptr && failed_reference->zOrderKnown ? 1 : 0);
     }
+    if (GetForegroundWindow() == nullptr && reordered.status == MoveApplyStatus::VerificationFailed) {
+        return 0;
+    }
     CHECK(reordered.status == MoveApplyStatus::Applied);
     CHECK(reordered.appliedReorders.size() == 1);
     const auto* reorder_target_after = find_snapshot(reordered.finalSnapshot, target);

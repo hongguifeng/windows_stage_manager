@@ -1,4 +1,5 @@
 #include "window/move_applier.h"
+#include "diagnostics/logger.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -169,6 +170,15 @@ MoveApplyResult VerifiedMoveApplier::apply(
         !valid_reorders(reorders) ||
         (!options.dryRun &&
          (options.transactionId == 0 || options.layoutGeneration == 0))) {
+        diagnostics::Logger::instance().log(diagnostics::LogLevel::Error,
+            "move_apply_rejected_request",
+            {{"moves", std::to_string(plan.size())},
+             {"reorders", std::to_string(reorders.size())},
+             {"dry_run", options.dryRun ? "true" : "false"},
+             {"transaction", std::to_string(options.transactionId)},
+             {"generation", std::to_string(options.layoutGeneration)},
+             {"valid_plan", valid_plan(plan) ? "true" : "false"},
+             {"valid_reorders", valid_reorders(reorders) ? "true" : "false"}});
         return result;
     }
     if (options.dryRun) {
@@ -308,9 +318,15 @@ MoveApplyResult VerifiedMoveApplier::apply(
         if (before == nullptr || !usable_window(*before) ||
             !rectangles_match(before->placementRect, move.from, options.positionTolerance)) {
             result.status = MoveApplyStatus::WindowUnavailable;
+            result.failedMoveIndex = index;
+            result.failedMoves.push_back(move.window);
+            result.requiresReconcile = true;
             record_failure(move.window);
-            result.finalSnapshot = std::move(snapshot);
-            return result;
+            if (options.stopOnFailure) {
+                result.finalSnapshot = std::move(snapshot);
+                return result;
+            }
+            continue;
         }
         invariants.try_emplace(move.window.hwnd, invariant_of(*before));
 
@@ -333,8 +349,14 @@ MoveApplyResult VerifiedMoveApplier::apply(
             result.nativeStatus = native_result.status;
             result.lastError = native_result.lastError;
             record_failure(move.window);
-            result.finalSnapshot = std::move(snapshot);
-            return result;
+            result.failedMoveIndex = index;
+            result.failedMoves.push_back(move.window);
+            result.requiresReconcile = true;
+            if (options.stopOnFailure) {
+                result.finalSnapshot = std::move(snapshot);
+                return result;
+            }
+            continue;
         }
 
         auto after = provider_.capture(SnapshotRefreshReason::Event);
@@ -427,7 +449,9 @@ MoveApplyResult VerifiedMoveApplier::apply(
 
     result.failedMoveIndex = plan.size();
     result.failedReorderIndex = reorders.size();
-    result.status = MoveApplyStatus::Applied;
+    result.status = result.appliedMoves.empty() && !result.failedMoves.empty()
+        ? MoveApplyStatus::NativeMoveFailed
+        : MoveApplyStatus::Applied;
     result.finalSnapshot = std::move(final_snapshot);
     return result;
 }

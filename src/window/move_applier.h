@@ -66,6 +66,7 @@ enum class MoveApplyStatus : std::uint8_t {
 };
 
 struct MoveApplyOptions {
+    bool stopOnFailure = false;
     bool dryRun = true;
     std::uint64_t transactionId = 0;
     std::uint64_t layoutGeneration = 0;
@@ -94,6 +95,8 @@ struct MoveApplyResult {
     bool transactionNonCooperative = false;
     bool requiresReconcile = false;
     std::vector<AppliedMove> appliedMoves;
+    // Windows that rejected a native move are isolated from this batch's verification/retry.
+    std::vector<WindowKey> failedMoves;
     std::vector<AppliedReorder> appliedReorders;
     WindowSnapshotBatch finalSnapshot;
 };

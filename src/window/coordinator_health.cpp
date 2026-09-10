@@ -22,9 +22,10 @@ HealthAction CoordinatorHealthMonitor::observe(MvpBatchStatus status,
                                                MvpSuspendReason reason)
 {
     const std::scoped_lock lock(mutex_);
-    if (state_.tripped) {
-        return HealthAction::DisableAutomation;
-    }
+    // Layout/search failures are recoverable and are retried from fresh
+    // snapshots. Do not permanently disable management after a short burst
+    // of native move failures; the retry scheduler already backs off.
+    if (state_.tripped) state_.tripped = false;
     // A changing desktop is not a failed API. Do not increment or erase a
     // preceding real failure; automation remains suspended until a fresh scan.
     if (reason == MvpSuspendReason::SnapshotStale) return HealthAction::Continue;
@@ -36,10 +37,6 @@ HealthAction CoordinatorHealthMonitor::observe(MvpBatchStatus status,
     }
     if (state_.consecutiveFailures != std::numeric_limits<std::uint32_t>::max()) {
         ++state_.consecutiveFailures;
-    }
-    if (state_.consecutiveFailures >= failure_threshold_) {
-        state_.tripped = true;
-        return HealthAction::DisableAutomation;
     }
     return HealthAction::Continue;
 }

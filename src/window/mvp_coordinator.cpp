@@ -1,4 +1,5 @@
 #include "window/mvp_coordinator.h"
+#include "diagnostics/logger.h"
 
 #include "geometry/dpi.h"
 #include "geometry/work_area.h"
@@ -27,24 +28,10 @@ bool valid_for_layout(const WindowSnapshot& window) noexcept
         window.workArea.valid();
 }
 
-bool rectangles_intersect(const PixelRect& left, const PixelRect& right) noexcept
-{
-    return left.left < right.right && left.right > right.left &&
-        left.top < right.bottom && left.bottom > right.top;
-}
-
 bool same_rectangle(const PixelRect& left, const PixelRect& right) noexcept
 {
     return left.left == right.left && left.top == right.top &&
         left.right == right.right && left.bottom == right.bottom;
-}
-
-bool directly_obscured_by(const WindowSnapshot& blocker,
-                          const WindowSnapshot& target) noexcept
-{
-    return blocker.zOrderKnown && target.zOrderKnown &&
-        blocker.zIndex < target.zIndex &&
-        rectangles_intersect(blocker.visualRect, target.visualRect);
 }
 
 bool can_block_managed_layout(
@@ -60,30 +47,8 @@ bool can_block_managed_layout(
         managed_windows.begin(), managed_windows.end(), [&candidate](const auto* target) {
             return target != nullptr && candidate.monitor == target->monitor &&
                 candidate.zIndex < target->zIndex &&
-                rectangles_intersect(candidate.visualRect, target->workArea);
+                to_rect(candidate.visualRect).intersects(to_rect(target->workArea));
         });
-}
-
-long double obscured_fraction(const PixelRect& blocker, const PixelRect& target) noexcept
-{
-    if (!rectangles_intersect(blocker, target)) {
-        return 0.0L;
-    }
-    const auto intersection_width = static_cast<std::int64_t>(
-        std::min(blocker.right, target.right)) -
-        static_cast<std::int64_t>(std::max(blocker.left, target.left));
-    const auto intersection_height = static_cast<std::int64_t>(
-        std::min(blocker.bottom, target.bottom)) -
-        static_cast<std::int64_t>(std::max(blocker.top, target.top));
-    const auto target_width = static_cast<std::int64_t>(target.right) - target.left;
-    const auto target_height = static_cast<std::int64_t>(target.bottom) - target.top;
-    if (target_width <= 0 || target_height <= 0) {
-        return 0.0L;
-    }
-    return (static_cast<long double>(intersection_width) *
-            static_cast<long double>(intersection_height)) /
-        (static_cast<long double>(target_width) *
-         static_cast<long double>(target_height));
 }
 
 bool contains_hash(std::span<const solver::LayoutHash> hashes,
@@ -152,8 +117,21 @@ std::optional<WindowSnapshotBatch> MvpCoordinator::capture(SnapshotRefreshReason
     auto snapshot = provider_.capture(reason);
     last_snapshot_status_ = snapshot.status;
     if (snapshot.status != SnapshotStatus::Ok || !snapshot.complete) {
+        diagnostics::Logger::instance().log(
+            diagnostics::LogLevel::Warning,
+            "snapshot_capture_failed",
+            {{"reason", std::to_string(static_cast<unsigned>(reason))},
+             {"status", std::to_string(static_cast<unsigned>(snapshot.status))},
+             {"last_error", std::to_string(snapshot.lastError)},
+             {"window_count", std::to_string(snapshot.windows.size())},
+             {"complete", snapshot.complete ? "true" : "false"}});
         return std::nullopt;
     }
+    diagnostics::Logger::instance().log(
+        diagnostics::LogLevel::Debug,
+        "snapshot_capture_ok",
+        {{"reason", std::to_string(static_cast<unsigned>(reason))},
+         {"window_count", std::to_string(snapshot.windows.size())}});
     classifier_.annotate(snapshot);
     return snapshot;
 }
@@ -409,7 +387,18 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
             // window invalidate the queued repair, never reuse its old plan.
             background_retry_window_.reset();
         }
-        result.status = MvpBatchStatus::Rebuilding;
+        // A successful reconcile must continue through the normal solver;
+        // returning here leaves every background window untouched forever.
+        if (rebuilt && !background_retry_window_ && !dry_run &&
+            !dragging_window_ && !suppressed_activation_window_) {
+            guard_.activate(next_transaction_id_, layout_generation_);
+            return settle(dry_run, std::move(result.events), false,
+                          std::move(rebuilt), std::nullopt, false);
+        }
+        result.snapshotWindowCount = rebuilt ? rebuilt->windows.size() : 0;
+        result.transactionId = next_transaction_id_;
+        result.layoutGeneration = layout_generation_;
+        result.status = rebuilt ? MvpBatchStatus::Idle : MvpBatchStatus::Rebuilding;
         result.reason = rebuilt ? MvpSuspendReason::None
                                 : snapshot_failure_reason();
         status_ = rebuilt ? MvpBatchStatus::Idle : MvpBatchStatus::Rebuilding;
@@ -502,6 +491,9 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
         status_ = MvpBatchStatus::Suspended;
         result.status = status_;
         result.reason = MvpSuspendReason::ActiveWindowUnavailable;
+        if (active != captured->windows.end()) {
+            result.activeUnmanagedReason = classifier_.classify(*active, captured->windows).reason;
+        }
         return result;
     }
     pending_activation_retry_ = false;
@@ -532,41 +524,7 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
             peers.push_back(&window);
         }
     }
-    std::unordered_map<const WindowSnapshot*, std::size_t> same_type_counts;
-    const WindowSnapshot* nearest_peer = nullptr;
-    for (const auto* peer : peers) {
-        if (peer->zIndex > active->zIndex &&
-            (!nearest_peer || peer->zIndex < nearest_peer->zIndex)) nearest_peer = peer;
-    }
-    for (const auto* target : peers) {
-        same_type_counts[target] = std::count_if(
-            peers.begin(), peers.end(), [target](const auto* item) {
-            return item->key.processId == target->key.processId &&
-                item->className == target->className;
-        });
-    }
-    std::stable_sort(peers.begin(), peers.end(), [&active, &same_type_counts, nearest_peer](
-                                                     const auto* left,
-                                                     const auto* right) {
-        if ((left == nearest_peer) != (right == nearest_peer)) return left == nearest_peer;
-        const bool left_direct = directly_obscured_by(*active, *left);
-        const bool right_direct = directly_obscured_by(*active, *right);
-        if (left_direct != right_direct) {
-            return left_direct;
-        }
-        const bool left_repeated_type = same_type_counts.at(left) > 1;
-        const bool right_repeated_type = same_type_counts.at(right) > 1;
-        if (left_repeated_type != right_repeated_type) {
-            return left_repeated_type;
-        }
-        if (!left_direct) {
-            return left->zIndex < right->zIndex;
-        }
-        const auto left_fraction = obscured_fraction(active->visualRect, left->visualRect);
-        const auto right_fraction = obscured_fraction(active->visualRect, right->visualRect);
-        if (left_fraction != right_fraction) {
-            return left_fraction > right_fraction;
-        }
+    std::stable_sort(peers.begin(), peers.end(), [](const auto* left, const auto* right) {
         return left->zIndex < right->zIndex;
     });
     for (const auto* peer : peers) {
@@ -706,7 +664,7 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
         }
         result.activationPlacementUsed = true;
     };
-    result.solve = solver::solve_layout_prioritized(layout, policy, *active_index);
+    result.solve = solver::solve_title_bar_layout(layout, policy, *active_index);
     result.activeWindow = layout.windows[*active_index].key;
     const bool solved = result.solve.status == solver::SolveStatus::Solved ||
         result.solve.status == solver::SolveStatus::NoViolation ||
@@ -732,59 +690,15 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
             result.partialLayoutUsed = !remaining.violations.empty();
         }
     }
-    // The solver's baseline already contains activation placement. Validate
-    // against the real pre-move snapshot as well: a failed peer repair must
-    // never authorize covering a previously recognizable title.
-    if (activation_move) {
-        bool regressed = false;
-        for (std::size_t i = 0; i < before_activation.windows.size(); ++i) {
-            if (!before_activation.windows[i].managed || i == *active_index) continue;
-            if (solver::analyze_title_bar_exposure(before_activation, i,
-                    policy.ranking.visibility).satisfied() &&
-                !solver::analyze_title_bar_exposure(result.solve.finalSnapshot, i,
-                    policy.ranking.visibility).satisfied()) regressed = true;
-        }
-        if (regressed) {
-            const auto elapsed = result.solve.elapsedMs;
-            const auto states = result.solve.statesVisited;
-            activation_move.reset();
-            result.activationPlacementUsed = false;
-            // Keep the user's actual placement and repair within the remaining
-            // search budget. If exhausted, publish the unchanged snapshot.
-            policy.limits.maximumMoves = maximum_moves;
-            policy.optimizeTitleBarLayout = false;
-            policy.limits.maximumElapsedMs = elapsed < settings_.maxSolveTimeMs
-                ? settings_.maxSolveTimeMs - elapsed : 0;
-            policy.limits.maximumStates = states < settings_.maxSolverStates
-                ? settings_.maxSolverStates - states : 0;
-            if (policy.limits.maximumElapsedMs && policy.limits.maximumStates) {
-                result.solve = solver::solve_layout_prioritized(before_activation, policy, *active_index);
-            } else {
-                result.solve = {};
-                result.solve.finalSnapshot = before_activation;
-                result.solve.finalState = observed_state;
-                result.solve.violations = solver::scan_visibility_violations(
-                    before_activation, policy.ranking.visibility).violations;
-                result.solve.status = result.solve.violations.empty()
-                    ? solver::SolveStatus::NoViolation : solver::SolveStatus::Timeout;
-            }
-            result.solve.elapsedMs += elapsed;
-            result.solve.statesVisited += states;
-            result.partialLayoutUsed = result.solve.status == solver::SolveStatus::PartiallySolved;
-        }
-    }
-    if (transaction_seen_states_.empty()) {
-        transaction_seen_states_.push_back(observed_state);
-    }
+    if (transaction_seen_states_.empty()) transaction_seen_states_.push_back(observed_state);
+    result.partialLayoutUsed = result.solve.status == solver::SolveStatus::PartiallySolved;
     if (result.solve.status == solver::SolveStatus::NoViolation) {
         result.status = status_;
         return result;
     }
     if (result.solve.status != solver::SolveStatus::Solved &&
-        result.solve.status != solver::SolveStatus::PartiallySolved &&
-        result.solve.status != solver::SolveStatus::NoViolation) {
-        status_ = MvpBatchStatus::Unsatisfiable;
-        result.status = status_;
+        result.solve.status != solver::SolveStatus::PartiallySolved) {
+        result.status = status_ = MvpBatchStatus::Unsatisfiable;
         result.reason = MvpSuspendReason::SolverFailure;
         return result;
     }
@@ -813,10 +727,17 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
     result.movedWindowCount = moved_handles.size();
 
     MoveApplyOptions options;
+    options.stopOnFailure = true;
     options.dryRun = dry_run;
     options.transactionId = next_transaction_id_;
     options.layoutGeneration = layout_generation_;
+    result.applyAttempted = true;
     result.apply = applier_.apply(result.solve.moves, options);
+    std::unordered_set<NativeWindowHandle> failed_handles;
+    for (const auto& failed : result.apply.failedMoves) {
+        failed_handles.insert(failed.hwnd);
+        moved_handles.erase(failed.hwnd);
+    }
     if (result.apply.status == MoveApplyStatus::DryRun) {
         status_ = MvpBatchStatus::DryRun;
     } else if (result.apply.status == MoveApplyStatus::Applied) {
@@ -833,10 +754,13 @@ MvpBatchResult MvpCoordinator::settle_impl(bool dry_run,
             }
             const auto actual_placement = to_rect(actual->placementRect);
             if (moved_handles.contains(item.key.hwnd) &&
+                actual_placement != item.placementRect) verification_failed = true;
+            if (moved_handles.contains(item.key.hwnd) &&
                 !geometry::fully_within_work_area(actual_placement, to_rect(actual->workArea))) {
                 verification_failed = true;
             }
             if (item.managed && !moved_handles.contains(item.key.hwnd) &&
+                !failed_handles.contains(item.key.hwnd) &&
                 actual_placement != item.placementRect) {
                 verification_failed = true;
             }

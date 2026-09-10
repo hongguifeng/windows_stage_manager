@@ -46,6 +46,8 @@ std::string_view suspend_reason_name(MvpSuspendReason reason) noexcept;
 struct MvpBatchResult {
     MvpBatchStatus status = MvpBatchStatus::Idle;
     MvpSuspendReason reason = MvpSuspendReason::None;
+    // Classification reason when the requested foreground window is skipped.
+    UnmanagedReason activeUnmanagedReason = UnmanagedReason::None;
     std::uint64_t transactionId = 0;
     std::uint64_t layoutGeneration = 0;
     CoalescedBatch events;
@@ -59,6 +61,7 @@ struct MvpBatchResult {
     std::size_t blockingWindowCount = 0;
     std::size_t movedWindowCount = 0;
     bool solveAttempted = false;
+    bool applyAttempted = false;
     bool fallbackUsed = false;
     solver::VisibilityGoal affordanceGoal = solver::VisibilityGoal::AnyRecognizableEdge;
     bool affordanceGoalDegraded = false;

@@ -111,6 +111,11 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_title_bar_solver_tests)
     target_link_libraries(stage_manager_title_bar_solver_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_title_bar_solver COMMAND stage_manager_title_bar_solver_tests)
+    add_test(NAME stage_manager_retry_regression COMMAND stage_manager_mvp_coordinator_tests --retry-regression)
+    add_executable(stage_manager_prefix_regression_tests tests/prefix_regression_tests.cpp)
+    stage_manager_target_defaults(stage_manager_prefix_regression_tests)
+    target_link_libraries(stage_manager_prefix_regression_tests PRIVATE stage_manager_core)
+    add_test(NAME stage_manager_prefix_regression COMMAND stage_manager_prefix_regression_tests)
 
     add_executable(stage_manager_smoke_tests
         tests/smoke.cpp

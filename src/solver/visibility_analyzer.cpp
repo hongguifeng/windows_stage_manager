@@ -293,12 +293,10 @@ std::array<PixelEdgeAffordance, 4> resolve_edge_affordances(
         pixel_rule(target, requirements.bottom, geometry::Edge::Bottom),
     }};
     if (requirements.goal == VisibilityGoal::TitleBarLeftHalf) {
-        const auto configured = static_cast<std::uint64_t>(geometry::scale_dip_ceil(
-            requirements.top.depthDip, target.dpi == 0 ? 96 : target.dpi));
-        // The configured value is already a protected-height floor, not a base
-        // to multiply again. System estimates must never override that floor.
-        const auto base = static_cast<std::uint64_t>(target.titleBarHeight);
-        result[2].depth = std::max(base + base / 2 + base % 2, configured);
+        // titleBarHeight is already in physical pixels. Use exactly the same
+        // protected height as the staircase spacing, without an old DIP floor.
+        const auto base = static_cast<std::uint64_t>(std::max(1u, target.titleBarHeight));
+        result[2].depth = base + base / 2 + base % 2;
     }
     return result;
 }

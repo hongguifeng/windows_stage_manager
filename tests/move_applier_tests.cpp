@@ -427,6 +427,9 @@ int main()
     CHECK(failed.nativeStatus == NativeMoveStatus::ApiFailure);
     CHECK(failed.lastError == 1234);
     CHECK(!failed_tracker.find(first.hwnd));
+    // A rejected native move must not publish a fabricated post-move layout.
+    CHECK(failed.appliedMoves.empty());
+    CHECK(failed.requiresReconcile);
 
     FakeDesktop stale_desktop;
     stale_desktop.windows = dry_desktop.windows;

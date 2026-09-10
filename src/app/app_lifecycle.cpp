@@ -636,9 +636,16 @@ void AppLifecycle::coordinator_loop()
             : std::string_view{"not_run"};
         const auto planned_moves = std::to_string(result.solve.moves.size());
         const auto applied_moves = std::to_string(result.apply.appliedMoves.size());
-        const auto apply_status = std::to_string(static_cast<unsigned>(result.apply.status));
+        const auto apply_status = result.applyAttempted
+            ? std::to_string(static_cast<unsigned>(result.apply.status)) : std::string{"not_run"};
         const auto apply_error = std::to_string(result.apply.lastError);
         const auto failed_move_index = std::to_string(result.apply.failedMoveIndex);
+        const auto failed_move_hwnd = result.apply.failedMoveIndex < result.solve.moves.size()
+            ? std::to_string(result.solve.moves[result.apply.failedMoveIndex].window.hwnd)
+            : std::string{"0"};
+        const auto failed_move_process = result.apply.failedMoveIndex < result.solve.moves.size()
+            ? std::to_string(result.solve.moves[result.apply.failedMoveIndex].window.processId)
+            : std::string{"0"};
         const auto apply_snapshot_status = std::to_string(static_cast<unsigned>(result.apply.finalSnapshot.status));
         const auto apply_snapshot_error = std::to_string(result.apply.finalSnapshot.lastError);
         const auto planned_reorders = std::string{"0"};
@@ -658,9 +665,27 @@ void AppLifecycle::coordinator_loop()
             ? std::string_view{"true"}
             : std::string_view{"false"};
         const auto remaining_violations = std::to_string(result.solve.violations.size());
+        const auto highest_unresolved = [&]() {
+            std::optional<std::int32_t> z;
+            for (const auto& item : result.solve.finalSnapshot.windows)
+                if (item.managed && item.visible && item.currentDesktop &&
+                    (!z || item.zIndex < *z)) z = item.zIndex;
+            for (const auto& v : result.solve.violations)
+                if (v.targetIndex < result.solve.finalSnapshot.windows.size() && z &&
+                    result.solve.finalSnapshot.windows[v.targetIndex].zIndex == *z) return "true";
+            return "false";
+        }();
         const auto activation_placement_used = result.activationPlacementUsed
             ? std::string_view{"true"}
             : std::string_view{"false"};
+        const bool activation_move_planned = result.activeWindow && std::any_of(
+            result.solve.moves.begin(), result.solve.moves.end(), [&](const auto& move) {
+                return move.window == *result.activeWindow;
+            });
+        const bool activation_move_applied = result.activeWindow && std::any_of(
+            result.apply.appliedMoves.begin(), result.apply.appliedMoves.end(), [&](const auto& move) {
+                return move.plan.window == *result.activeWindow;
+            });
         const auto activation_layout_suppressed = result.activationLayoutSuppressed
             ? std::string_view{"true"}
             : std::string_view{"false"};
@@ -673,6 +698,7 @@ void AppLifecycle::coordinator_loop()
             "batch_complete",
             {{"status", status_name(result.status)},
              {"reason", window::suspend_reason_name(result.reason)},
+             {"active_unmanaged_reason", std::to_string(static_cast<unsigned>(result.activeUnmanagedReason))},
              {"transaction_id", transaction_id},
              {"layout_generation", layout_generation},
              {"input_events", input_count},
@@ -683,6 +709,10 @@ void AppLifecycle::coordinator_loop()
              {"blocking_windows", blocking_windows},
              {"moved_windows", moved_windows},
              {"solve_status", solve_status},
+             {"solver_stop_reason", result.solve.stopReason},
+             {"accepted_prefix_count", std::to_string(result.solve.acceptedPrefixCount)},
+             {"first_unresolved_hwnd", result.solve.firstUnresolved
+                 ? std::to_string(result.solve.firstUnresolved->hwnd) : "0"},
              {"solver_states", solver_states},
              {"solver_elapsed_ms", solver_elapsed_ms},
              {"background_retry_used", result.backgroundRetryUsed ? "true" : "false"},
@@ -691,8 +721,11 @@ void AppLifecycle::coordinator_loop()
              {"planned_moves", planned_moves},
              {"applied_moves", applied_moves},
              {"apply_status_code", apply_status},
+             {"apply_attempted", result.applyAttempted ? "true" : "false"},
              {"apply_last_error", apply_error},
              {"failed_move_index", failed_move_index},
+             {"failed_move_hwnd", failed_move_hwnd},
+             {"failed_move_process_id", failed_move_process},
              {"apply_snapshot_status_code", apply_snapshot_status},
              {"apply_snapshot_last_error", apply_snapshot_error},
              {"planned_reorders", planned_reorders},
@@ -702,12 +735,53 @@ void AppLifecycle::coordinator_loop()
              {"affordance_goal_degraded", affordance_goal_degraded},
              {"partial_layout_used", partial_layout_used},
              {"remaining_violation_count", remaining_violations},
-              {"activation_placement_used", activation_placement_used},
+             {"highest_unresolved", highest_unresolved},
+             {"activation_placement_used", activation_placement_used},
+             {"activation_move_planned", activation_move_planned ? "true" : "false"},
+             {"activation_move_applied", activation_move_applied ? "true" : "false"},
               {"activation_layout_suppressed", activation_layout_suppressed},
              {"duration_us", duration_us},
              {"queue_depth", queue_depth_text},
              {"total_batches", total_batches},
              {"total_dropped_events", total_dropped}});
+        // One record per move makes a failed transaction replayable: planned
+        // coordinates can be compared with the native readback even when the
+        // applier stops halfway through the list.
+        for (std::size_t index = 0; index < result.solve.moves.size(); ++index) {
+            const auto& move = result.solve.moves[index];
+            const auto applied = std::find_if(result.apply.appliedMoves.begin(),
+                result.apply.appliedMoves.end(), [&](const auto& item) {
+                    return item.plan.window == move.window && item.plan.to == move.to;
+                });
+            const auto text_rect = [](const auto& rect) {
+                return std::to_string(rect.left) + "," + std::to_string(rect.top) + "," +
+                    std::to_string(rect.right) + "," + std::to_string(rect.bottom);
+            };
+            diagnostics::Logger::instance().log(diagnostics::LogLevel::Debug, "layout_move",
+                {{"transaction_id", transaction_id}, {"index", std::to_string(index)},
+                 {"hwnd", std::to_string(move.window.hwnd)},
+                 {"process_id", std::to_string(move.window.processId)},
+                 {"direction", std::to_string(static_cast<unsigned>(move.cost.placementDirection))},
+                 {"from", text_rect(move.from)}, {"planned_to", text_rect(move.to)},
+                 {"applied", applied != result.apply.appliedMoves.end() ? "true" : "false"},
+                 {"actual", applied != result.apply.appliedMoves.end()
+                     ? text_rect(applied->actualPlacementRect) : ""}});
+        }
+        for (const auto& violation : result.solve.violations) {
+            if (violation.targetIndex >= result.solve.finalSnapshot.windows.size()) continue;
+            const auto& target = result.solve.finalSnapshot.windows[violation.targetIndex];
+            std::string blockers;
+            for (const auto index : violation.blockerIndices) {
+                if (!blockers.empty()) blockers += ",";
+                if (index < result.solve.finalSnapshot.windows.size()) {
+                    blockers += std::to_string(result.solve.finalSnapshot.windows[index].key.hwnd) +
+                        ":" + std::to_string(result.solve.finalSnapshot.windows[index].zIndex);
+                }
+            }
+            diagnostics::Logger::instance().log(diagnostics::LogLevel::Debug, "layout_violation",
+                {{"transaction_id", transaction_id}, {"hwnd", std::to_string(target.key.hwnd)},
+                 {"z_index", std::to_string(target.zIndex)}, {"blockers", blockers}});
+        }
         // Planned geometry, not proof that native applications accepted it.
         // No application titles or paths: HWND + Z-order make later reports
         // of a recent window moving far away diagnosable from the log.

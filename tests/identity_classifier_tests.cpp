@@ -96,6 +96,13 @@ int main()
     CHECK(normal_result.disposition == WindowDisposition::Managed);
     CHECK(normal_result.reason == UnmanagedReason::None);
 
+    // Task Manager commonly starts maximized; preserve the diagnostic that
+    // explains why activation placement is intentionally skipped.
+    auto task_manager_maximized = make_snapshot(31);
+    task_manager_maximized.className = L"TaskManagerWindow";
+    task_manager_maximized.zoomed = true;
+    CHECK(has_reason(classifier, task_manager_maximized, UnmanagedReason::Maximized));
+
     auto invalid_identity = normal;
     invalid_identity.key.instanceGeneration = 0;
     CHECK(has_reason(classifier, invalid_identity, UnmanagedReason::InvalidIdentity));

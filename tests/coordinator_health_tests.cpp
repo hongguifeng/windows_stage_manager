@@ -32,10 +32,10 @@ int main()
           HealthAction::Continue);
     CHECK(monitor.state().consecutiveFailures == 2);
     CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) ==
-          HealthAction::DisableAutomation);
-    CHECK(monitor.state().tripped);
+          HealthAction::Continue);
+    CHECK(!monitor.state().tripped);
     CHECK(monitor.observe(MvpBatchStatus::Idle, MvpSuspendReason::None) ==
-          HealthAction::DisableAutomation);
+          HealthAction::Continue);
 
     monitor.reset();
     CHECK(!monitor.state().tripped);
@@ -47,13 +47,13 @@ int main()
 
     monitor.set_failure_threshold(0);
     CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) ==
-          HealthAction::DisableAutomation);
+          HealthAction::Continue);
     monitor.set_failure_threshold(1'000);
     for (std::uint32_t index = 0; index < 99; ++index) {
         CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) ==
               HealthAction::Continue);
     }
     CHECK(monitor.observe(MvpBatchStatus::ApiError, MvpSuspendReason::ApplyFailure) ==
-          HealthAction::DisableAutomation);
+          HealthAction::Continue);
     return 0;
 }

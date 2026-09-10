@@ -59,6 +59,9 @@ public:
 };
 
 struct SolveResult {
+    const char* stopReason = "none";
+    std::size_t acceptedPrefixCount = 0;
+    std::optional<window::WindowKey> firstUnresolved;
     SolveStatus status = SolveStatus::InvalidSnapshot;
     std::vector<MovePlan> moves;
     std::vector<Violation> violations;

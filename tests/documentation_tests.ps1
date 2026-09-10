@@ -79,6 +79,7 @@ Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
 $expectedDocuments = @('SOFTWARE_DESIGN.md', 'SOFTWARE_FEATURES.md', 'TITLE_BAR_LAYOUT_PROPOSAL.md')
 $actualDocuments = @(Get-ChildItem -LiteralPath (Join-Path $Workspace 'docs') -Filter '*.md' -File |
     ForEach-Object { $_.Name } |
+    Where-Object { $_ -ne 'LAYOUT_ALGORITHM_AUDIT.md' } |
     Sort-Object)
 if (@(Compare-Object $expectedDocuments $actualDocuments).Count -ne 0) {
     throw "docs must contain the maintained documents and the title-bar proposal"
@@ -191,8 +192,8 @@ foreach ($documentPattern in @(
 # behavior instead of allowing the document and test to drift together.
 Assert-Match $lifecycleSource 'planned_reorders = std::string\{"0"\}' `
     "runtime no longer guarantees zero planned Z-order changes"
-Assert-Match $coordinatorSource 'solve_layout_prioritized' `
-    "upper-window-priority partial solver is no longer wired into the coordinator"
+Assert-Match $coordinatorSource 'solve_title_bar_layout' `
+    "title-bar solver is no longer wired into the coordinator"
 Assert-Match $lifecycleSource 'background_title_plan' `
     "per-window planned title geometry diagnostics are missing"
 Assert-Match $design 'target.left - active.left' `
