@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(WindowsStageManager
-    VERSION 0.6.0
+    VERSION 0.6.1
     DESCRIPTION "Windows 11 freeform window visibility manager"
     LANGUAGES CXX
 )
@@ -319,6 +319,7 @@ if(STAGE_MANAGER_BUILD_TESTS)
     stage_manager_target_defaults(stage_manager_mvp_coordinator_tests)
     target_link_libraries(stage_manager_mvp_coordinator_tests PRIVATE stage_manager_core)
     add_test(NAME stage_manager_mvp_coordinator COMMAND stage_manager_mvp_coordinator_tests)
+    add_test(NAME stage_manager_layout_suppression COMMAND stage_manager_mvp_coordinator_tests --layout-suppression)
 
     add_executable(stage_manager_activation_placement_tests
         tests/activation_placement_tests.cpp

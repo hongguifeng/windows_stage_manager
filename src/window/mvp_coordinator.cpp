@@ -174,10 +174,17 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         if (event.type == WindowEventType::MoveSizeStart) {
             background_retry_window_.reset();
             background_retry_delay_ms_ = 500;
+            pending_activation_retry_ = false;
+            pending_activation_placement_ = false;
             last_external_change_ms_ = event_time_ms_;
             guard_.observe(event);
             const bool activation_preceded_drag = foreground_window &&
                 foreground_changed && *foreground_window == event.hwnd;
+            // Moving an already foreground window is a manual placement only.
+            // Keep suppression across reconciles and popup focus round trips.
+            if (!activation_preceded_drag && foreground_window_ == event.hwnd) {
+                suppressed_activation_window_ = event.hwnd;
+            }
             const bool suppressed_activation_preceded_drag =
                 activation_preceded_drag && foreground_suppresses_layout;
             ended_drag_window.reset();
@@ -260,9 +267,12 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
     const bool returns_to_suppressed_activation = foreground_window &&
         suppressed_activation_window_ &&
         *foreground_window == *suppressed_activation_window_;
-    if (foreground_window && foreground_changed &&
-        (foreground_suppresses_layout || returns_to_suppressed_activation)) {
+    if (foreground_window &&
+        (foreground_suppresses_layout ||
+         (foreground_changed && returns_to_suppressed_activation))) {
         guard_.cancel();
+        background_retry_window_.reset();
+        background_retry_delay_ms_ = 500;
         dragging_window_.reset();
         dragging_start_rect_.reset();
         dragging_started_by_activation_ = false;
@@ -346,6 +356,16 @@ MvpBatchResult MvpCoordinator::process(std::span<const WindowEvent> events,
         dragging_start_rect_.reset();
         dragging_started_by_activation_ = false;
         dragging_location_change_seen_ = false;
+        if (suppressed_activation_window_ &&
+            *suppressed_activation_window_ == *ended_drag_window) {
+            guard_.cancel();
+            status_ = MvpBatchStatus::Idle;
+            result.status = status_;
+            result.transactionId = next_transaction_id_;
+            result.layoutGeneration = layout_generation_;
+            result.activationLayoutSuppressed = true;
+            return result;
+        }
         return settle(dry_run,
                       std::move(result.events),
                       place_activated_window,

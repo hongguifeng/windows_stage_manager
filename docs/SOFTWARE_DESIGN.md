@@ -1,7 +1,7 @@
 # Windows Stage Manager 软件设计文档
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
-> 适用版本：0.6.0
+> 适用版本：0.6.1
 > 更新日期：2026-09-08
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 
@@ -365,7 +365,7 @@ coordinator thread
 - `InternalMoveTracker` 能匹配：这是程序自己的移动完成事件；
 - 正在拖动且无法匹配：这是用户或应用改变了窗口位置/尺寸。
 
-`MoveSizeEnd` 时，如果激活和 move/size 同时发生、期间没有真实位置变化并且启用了自动放置，仍执行激活放置；否则尊重用户最终位置，只重新求解后台窗口。
+`MoveSizeStart` 清除 pending activation 和后台补排。如果拖动前已是前台窗口且本批次没有该窗口的新激活，将 HWND 记录到 `suppressed_activation_window_`；此状态也用于右键激活保护。`MoveSizeEnd` 命中抑制窗口时直接返回 `Idle`，不调用 `settle`、求解器或移动器。抑制跨定期刷新和菜单焦点往返保留，正常激活另一个受管理窗口时解除。右键抑制事件即使 HWND 未变也取消旧事务及补排。对于通过拖动新激活的窗口，如果期间没有真实位置变化并且启用了自动放置，仍执行激活放置；否则尊重用户最终位置并求解后台窗口。
 
 ### 10.4 reconcile
 

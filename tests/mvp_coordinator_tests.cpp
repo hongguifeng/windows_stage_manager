@@ -262,7 +262,7 @@ std::vector<stage_manager::window::WindowEvent> foreground_event(std::uintptr_t 
 
 } // namespace
 
-int main(int argc, char**)
+int main(int argc, char** argv)
 {
     using stage_manager::solver::SolveStatus;
     using stage_manager::solver::VisibilityGoal;
@@ -270,6 +270,92 @@ int main(int argc, char**)
     using stage_manager::window::MvpSuspendReason;
     using stage_manager::window::WindowEvent;
     using stage_manager::window::WindowEventType;
+
+    // Suppressed gestures must never invoke the solver, even when the manual
+    // placement completely covers a peer and periodic reconciliation follows.
+    for (const bool dry_run : {false, true}) {
+        for (const bool split_batch : {false, true}) {
+            MvpFixture manual;
+            manual.desktop.windows = {make_window(190, {50, 50, 250, 250}, 0)};
+            manual.coordinator.process(foreground_event(190), true, dry_run);
+            manual.desktop.windows[0].placementRect = {50, 50, 250, 250};
+            manual.desktop.windows[0].visualRect = {50, 50, 250, 250};
+            manual.desktop.windows.push_back(make_window(191, {50, 50, 250, 250}, 1));
+            const auto moves_before = manual.desktop.moveCalls;
+            const auto events = drag_events(190);
+            stage_manager::window::MvpBatchResult finished;
+            if (split_batch) {
+                manual.coordinator.process(std::span(events).first(1), true, dry_run);
+                finished = manual.coordinator.process(std::span(events).subspan(1), true, dry_run);
+            } else {
+                finished = manual.coordinator.process(events, true, dry_run);
+            }
+            CHECK(finished.status == MvpBatchStatus::Idle);
+            CHECK(!finished.solveAttempted);
+            CHECK(!finished.applyAttempted);
+            CHECK(!finished.backgroundRetryPending);
+            const std::vector<WindowEvent> reconcile{{WindowEventType::Reconcile, 0, 0, 2000, 5}};
+            const auto refreshed = manual.coordinator.process(reconcile, true, dry_run);
+            CHECK(!refreshed.solveAttempted);
+            CHECK(!refreshed.applyAttempted);
+            CHECK(manual.desktop.moveCalls == moves_before);
+            const auto switched = manual.coordinator.process(foreground_event(191), true, dry_run);
+            CHECK(switched.solveAttempted);
+        }
+    }
+    for (const bool already_foreground : {false, true}) {
+        MvpFixture right;
+        right.desktop.windows = {make_window(190, {50, 50, 250, 250}, 0)};
+        if (already_foreground) right.coordinator.process(foreground_event(190), true, false);
+        right.desktop.windows.push_back(make_window(191, right.desktop.windows[0].placementRect, 1));
+        const auto moves_before = right.desktop.moveCalls;
+        auto event = foreground_event(190);
+        event[0].suppressLayout = true;
+        const auto suppressed = right.coordinator.process(event, true, false);
+        CHECK(suppressed.activationLayoutSuppressed);
+        CHECK(!suppressed.solveAttempted);
+        const auto dragged = right.coordinator.process(drag_events(190), true, false);
+        CHECK(!dragged.solveAttempted);
+        const std::vector<WindowEvent> reconcile{{WindowEventType::Reconcile, 0, 0, 2000, 5}};
+        CHECK(!right.coordinator.process(reconcile, true, false).solveAttempted);
+        right.coordinator.process(foreground_event(999), true, false);
+        CHECK(!right.coordinator.process(foreground_event(190), true, false).solveAttempted);
+        CHECK(!right.coordinator.process(reconcile, true, false).solveAttempted);
+        CHECK(right.desktop.moveCalls == moves_before);
+    }
+
+    for (const bool right_click : {false, true}) {
+        auto settings = test_settings();
+        settings.placeActivatedWindow = false;
+        MvpFixture pending(settings);
+        pending.desktop.windows = {
+            make_window(901, {200, 200, 800, 600}, 0),
+            make_window(902, {200, 200, 1600, 1200}, 1)};
+        CHECK(pending.coordinator.process(foreground_event(901), true, false).backgroundRetryPending);
+        const auto moves_before = pending.desktop.moveCalls;
+        auto gesture = right_click ? foreground_event(901) : drag_events(901);
+        if (right_click) gesture[0].suppressLayout = true;
+        const auto suppressed = pending.coordinator.process(gesture, true, false);
+        CHECK(!suppressed.solveAttempted);
+        CHECK(!suppressed.backgroundRetryPending);
+        const std::vector<WindowEvent> reconcile{{WindowEventType::Reconcile, 0, 0, 2000, 5}};
+        CHECK(!pending.coordinator.process(reconcile, true, false).solveAttempted);
+        CHECK(pending.desktop.moveCalls == moves_before);
+    }
+    {
+        MvpFixture newly_activated;
+        newly_activated.desktop.windows = {
+            make_window(190, {50, 50, 250, 250}, 0),
+            make_window(191, {50, 50, 250, 250}, 1)};
+        auto gesture = drag_events(190);
+        auto activation = foreground_event(190)[0];
+        activation.sequence = 0;
+        gesture.insert(gesture.begin(), activation);
+        CHECK(newly_activated.coordinator.process(gesture, true, true).solveAttempted);
+    }
+
+    if (argc > 1 && std::string_view(argv[1]) == "--layout-suppression") return 0;
+
 
     {
         auto settings = test_settings();

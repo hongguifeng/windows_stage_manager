@@ -21,7 +21,7 @@ A system-tray utility that automatically organizes ordinary desktop windows. Whe
 ### Place newly activated windows
 
 - When an inactive window becomes active through a mouse click, the taskbar, Alt+Tab, or another normal activation path, its visible rectangle is moved to the configured position. Horizontal alignment can be Left, Center, or Right; vertical alignment can be Top, Center, or Bottom. The default is **Center + Bottom**. The entire placement rectangle stays inside the work area; oversized windows are not automatically placed.
-- A window that is already active is not placed again. If you drag it, it remains where you leave it.
+- A window that is already active is not placed again. Dragging it preserves your placement and suppresses background layout calculation and movement, including periodic repairs, until another managed window is normally activated. Right-click activation also suppresses layout calculation and movement.
 - The nearest background window keeps a slot even at the managed-window limit. Automatic placement is cancelled if the combined plan would hide a previously recognizable background title. A continuing layout failure generates only one notification until the layout recovers or management is disabled.
 - A right click that activates a window or opens its context menu does not trigger automatic window movement, including while the menu opens, closes, and returns focus to the original window. Normal layout resumes after another ordinary window is activated.
 - To keep newly activated windows in place, turn off **Place newly activated windows** under **Quick settings** in the tray menu. It can be turned back on at any time.
@@ -29,7 +29,7 @@ A system-tray utility that automatically organizes ordinary desktop windows. Whe
 ### Keep covered windows recognizable
 
 - Preview 4 prioritizes the most recent background title immediately above the active title, then older titles. Distance uses title origins with one side-strip width of horizontal tolerance. Bounded anchored reconstruction can rearrange older peers while keeping the recent title nearby; a complete safe layout is never replaced by a closer but obscured one. New `background_title_plan` logs record each peer's before/planned title coordinates, not proof of actual native placement.
-- After an activation change or the end of a drag, the app creates one batch plan for up to 20 ordinary windows on the **same monitor**, validates it, and then applies it.
+- After an ordinary activation change (including activation by dragging), the app creates one batch plan for up to 20 ordinary windows on the **same monitor**, validates it, and then applies it.
 - The main target is a continuous, full-height title-bar segment starting at the left edge and covering at least half the window width. Left-side strips help recognition; top-right branches may expose a right-side strip instead. Side or bottom edges alone do not count as success.
 - A bounded search compares top-left staircases and top-right branch entries against all higher windows, preserves size and Z-order, and favors shorter title-bar click distances for more recent windows. The protected height and vertical step are at least 1.5 times the measured/system title-bar baseline, or the configured top height if larger. A quick repair pass handles hidden title prefixes, followed by joint reconstruction and displacement-chain search when needed. Wider titles share rows above the active window; narrower titles can use reserved side space. Only globally safe improvements are applied. Foreground changes may improve existing overlaps; completely separate windows stay in place. Every moved rectangle remains fully inside the work area.
 - When the 20-window management limit matters, directly covered peers are selected first; repeated windows with the same process and window class (for example, several File Explorer windows) are selected before single-instance types.
@@ -66,7 +66,7 @@ Use the `windows-release` preset for a Release build. Every commit must pass Con
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.6.0 -Commit (git rev-parse --short HEAD)
+  -Version 0.6.1 -Commit (git rev-parse --short HEAD)
 ```
 
 This produces a versioned ZIP archive and `manifest.json`, updates `current.json`, and retains the previous release as `rollback.json`.
