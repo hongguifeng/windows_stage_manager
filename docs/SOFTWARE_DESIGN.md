@@ -1,7 +1,7 @@
 # Windows Stage Manager 软件设计文档
 
 > 文档性质：当前代码架构与详细设计（As-built Design）
-> 适用版本：0.6.1
+> 适用版本：0.7.0
 > 更新日期：2026-09-08
 > 配套文档：[软件功能说明](SOFTWARE_FEATURES.md)
 

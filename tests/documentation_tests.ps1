@@ -79,7 +79,7 @@ Assert-Match $functions '\u552f\u4e00\u57fa\u51c6' `
 $expectedDocuments = @('SOFTWARE_DESIGN.md', 'SOFTWARE_FEATURES.md', 'TITLE_BAR_LAYOUT_PROPOSAL.md')
 $actualDocuments = @(Get-ChildItem -LiteralPath (Join-Path $Workspace 'docs') -Filter '*.md' -File |
     ForEach-Object { $_.Name } |
-    Where-Object { $_ -notin @('LAYOUT_ALGORITHM_AUDIT.md', 'RELEASE_NOTES_0.6.1.md') } |
+    Where-Object { $_ -notin @('LAYOUT_ALGORITHM_AUDIT.md', 'RELEASE_NOTES_0.6.1.md', 'RELEASE_NOTES_0.7.0.md') } |
     Sort-Object)
 if (@(Compare-Object $expectedDocuments $actualDocuments).Count -ne 0) {
     throw "docs must contain the maintained documents and the title-bar proposal"

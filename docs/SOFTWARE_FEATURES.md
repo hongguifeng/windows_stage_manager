@@ -3,7 +3,7 @@
 > 文件：`docs/SOFTWARE_FEATURES.md`
 
 > 文档性质：当前实现说明（As-built）
-> 适用版本：0.6.1
+> 适用版本：0.7.0
 > 状态基准：以 `src/` 中的现有代码为准，更新日期为 2026-09-08
 > 文档定位：本文件是当前软件功能的唯一基准；代码架构和扩展方法见 [软件设计文档](SOFTWARE_DESIGN.md)。研究背景见 `TITLE_BAR_LAYOUT_PROPOSAL.md`，提案不替代现状文档。
 

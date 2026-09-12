@@ -67,7 +67,7 @@ Release 构建改用 `windows-release` 预设；每个提交都必须在 Debug �
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage_release.ps1 `
   -BuildDirectory build\release -OutputDirectory artifacts\release `
-  -Version 0.6.1 -Commit (git rev-parse --short HEAD)
+  -Version 0.7.0 -Commit (git rev-parse --short HEAD)
 ```
 
 生成带版本号的 ZIP 与 `manifest.json`，更新 `current.json`，并把上一个版本留作 `rollback.json` 以便回滚。
