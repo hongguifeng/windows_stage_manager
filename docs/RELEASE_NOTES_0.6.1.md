@@ -12,12 +12,6 @@
 
 ## 验证状态
 
-Debug、Release 配置和编译成功。两种配置的完整测试均为 30/33 通过；新增布局抑制、重试回归、文档和发布包测试通过。
+标题栏和协调器回归已迁移到 v0.6.1 的确定性左上阶梯契约：求解器只发布可验证的前缀，后缀越出工作区或被固定遮挡时停止，不再尝试已删除的远距离候选/beam 回退。测试同时验证完成阶梯的固定点、阻塞原因，以及协调器在工作区边界保留部分结果。
 
-尚未通过的测试：
-
-- `stage_manager_title_bar_solver`：回放布局的可见性断言失败。
-- `stage_manager_mvp_coordinator`：`ordered_fallback_result.solve.status` 断言失败，已在本次功能修改前的代码上复现。
-- `stage_manager_win32_window_mover`：当前桌面中前台窗口为空，Z-order 操作返回错误 5，应用断言失败。
-
-没有禁用或跳过这些测试。标签推送会触发原有 CI；只有完整 CI 通过后，工作流才会自动创建 GitHub Release 并上传 ZIP。
+文档清单校验现在将版本发布说明视为补充文档，不再把 `RELEASE_NOTES_0.6.1.md` 误判为维护文档集合成员。本地 Debug、Release 配置、构建及各自完整的 33 项测试均已通过；标签推送只有通过完整 CI 后才会自动创建 GitHub Release 并上传 ZIP。
